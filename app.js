@@ -640,10 +640,26 @@ var TIP = (function() {
     }
     return d;
   }
+  const GCOL = { Easy: "var(--tip-c3)", Medium: "var(--tip-c1)", Hard: "var(--tip-c5)", Custom: "var(--tip-c4)" }, GEXTRA = ["var(--tip-c2)", "var(--tip-c6)"];
   function LineChart({ title, sub, data, fmt, label, height, zero, avgLabel }) {
     const box = useRef(null);
     const [w, setW] = useState(460);
     const [hov, setHov] = useState(null);
+    const [off, setOff] = useState([]);
+    const groups = useMemo(() => {
+      const seen = [];
+      data.forEach((d) => {
+        if (d.g != null && typeof d.v === "number" && isFinite(d.v) && !seen.includes(d.g)) seen.push(d.g);
+      });
+      const order = Object.keys(GCOL);
+      return seen.sort((a, b) => (order.indexOf(a) < 0 ? 99 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 99 : order.indexOf(b)) || String(a).localeCompare(String(b)));
+    }, [data]);
+    const multi = groups.length > 1;
+    const colOf = (g) => GCOL[g] || GEXTRA[Math.max(0, groups.filter((x) => !GCOL[x]).indexOf(g)) % GEXTRA.length];
+    const toggle = (g) => {
+      setHov(null);
+      setOff((o) => o.includes(g) ? o.filter((x) => x !== g) : [...o, g]);
+    };
     useEffect(() => {
       if (!box.current || !window.ResizeObserver) return;
       const ro = new ResizeObserver((es) => {
@@ -654,13 +670,26 @@ var TIP = (function() {
       return () => ro.disconnect();
     }, []);
     const H = height || 190, ml = 44, mr = 14, mt = 10, mb = 26;
-    const pts = data.filter((d) => typeof d.v === "number" && isFinite(d.v));
-    const roll = pts.map((d, i) => {
+    const pts = data.filter((d) => typeof d.v === "number" && isFinite(d.v) && !(multi && off.includes(d.g)));
+    const roll = multi ? [] : pts.map((d, i) => {
       const a = pts.slice(Math.max(0, i - 4), i + 1);
       return a.reduce((x, y) => x + y.v, 0) / a.length;
     });
+    const legendM = multi ? /* @__PURE__ */ TH("div", { className: "tip-legend tip-legend-g" }, groups.map((g) => /* @__PURE__ */ TH(
+      "button",
+      {
+        type: "button",
+        key: g,
+        className: "tip-lg" + (off.includes(g) ? " off" : ""),
+        "aria-pressed": !off.includes(g),
+        title: (off.includes(g) ? "Show " : "Hide ") + g,
+        onClick: () => toggle(g)
+      },
+      /* @__PURE__ */ TH("i", { style: { background: colOf(g) } }),
+      g
+    ))) : null;
     const f = fmt || ((v, d) => ie(v, d == null ? 0 : d));
-    if (pts.length === 0) return /* @__PURE__ */ TH("div", { className: "tip-cbox" }, /* @__PURE__ */ TH("div", { className: "tip-ch" }, /* @__PURE__ */ TH("h4", null, title), sub ? /* @__PURE__ */ TH("span", null, sub) : null), /* @__PURE__ */ TH("div", { className: "tip-empty" }, "Play a session to see your progress"));
+    if (pts.length === 0) return /* @__PURE__ */ TH("div", { className: "tip-cbox" }, /* @__PURE__ */ TH("div", { className: "tip-ch" }, /* @__PURE__ */ TH("h4", null, title), sub ? /* @__PURE__ */ TH("span", null, sub) : null), /* @__PURE__ */ TH("div", { className: "tip-empty" }, multi ? "Every line is hidden. Tap a difficulty below to show it." : "Play a session to see your progress"), legendM);
     const all = pts.map((d) => d.v).concat(roll);
     let lo = Math.min(...all), hi = Math.max(...all);
     if (zero) {
@@ -679,8 +708,12 @@ var TIP = (function() {
     const iw = Math.max(40, w - ml - mr), ih = H - mt - mb;
     const X = (i) => ml + (pts.length === 1 ? iw / 2 : i / (pts.length - 1) * iw);
     const Y = (v) => mt + ih - (v - y0) / (y1 - y0 || 1) * ih;
-    const line = monotone(pts.map((d, i) => [X(i), Y(d.v)]));
-    const avg = pts.length > 2 ? monotone(roll.map((v, i) => [X(i), Y(v)])) : null;
+    const line = multi ? null : monotone(pts.map((d, i) => [X(i), Y(d.v)]));
+    const avg = !multi && pts.length > 2 ? monotone(roll.map((v, i) => [X(i), Y(v)])) : null;
+    const series = multi ? groups.filter((g) => !off.includes(g)).map((g) => {
+      const idx = pts.map((d, i) => d.g === g ? i : -1).filter((i) => i >= 0);
+      return { g, idx, d: idx.length > 1 ? monotone(idx.map((i) => [X(i), Y(pts[i].v)])) : null };
+    }) : [];
     const every = Math.max(1, Math.ceil(pts.length / Math.max(1, Math.floor(iw / 64))));
     const onMove = (e) => {
       const r = e.currentTarget.getBoundingClientRect(), x = (e.clientX - r.left) * (w / r.width);
@@ -696,7 +729,17 @@ var TIP = (function() {
     };
     const hp = hov != null ? pts[hov] : null;
     const TW = 190, tipLeft = hov != null ? Math.max(0, Math.min(X(hov) + 14 + TW > w ? X(hov) - 14 - TW : X(hov) + 14, w - TW)) : 0;
-    return /* @__PURE__ */ TH("div", { className: "tip-cbox" }, /* @__PURE__ */ TH("div", { className: "tip-ch" }, /* @__PURE__ */ TH("h4", null, title), sub ? /* @__PURE__ */ TH("span", null, sub) : null), /* @__PURE__ */ TH("div", { className: "tip-cwrap", ref: box, style: { height: H } }, /* @__PURE__ */ TH("svg", { width: w, height: H, viewBox: `0 0 ${w} ${H}`, onPointerMove: onMove, onPointerLeave: () => setHov(null), onPointerDown: onMove }, ticks.map((t) => /* @__PURE__ */ TH("g", { key: t }, /* @__PURE__ */ TH("line", { x1: ml, x2: w - mr, y1: Y(t), y2: Y(t), className: "tip-grid-l" + (t === 0 && zero ? " zero" : "") }), /* @__PURE__ */ TH("text", { x: ml - 8, y: Y(t) + 4, textAnchor: "end", className: "tip-axis" }, f(t, tdec)))), /* @__PURE__ */ TH("line", { x1: ml, x2: w - mr, y1: mt + ih, y2: mt + ih, className: "tip-axis-l" }), pts.map((d, i) => i % every === 0 && (i + every <= pts.length - 1 || i === pts.length - 1) || i === pts.length - 1 ? /* @__PURE__ */ TH("text", { key: i, x: X(i), y: H - 6, textAnchor: pts.length > 1 && i === pts.length - 1 ? "end" : pts.length > 1 && i === 0 ? "start" : "middle", className: "tip-axis" }, xl(i)) : null), hov != null ? /* @__PURE__ */ TH("rect", { x: X(hov) - Math.max(6, iw / pts.length / 2), y: mt, width: Math.max(12, iw / pts.length), height: ih, className: "tip-cursor" }) : null, avg ? /* @__PURE__ */ TH("path", { d: avg, className: "tip-l2", pathLength: "1" }) : null, /* @__PURE__ */ TH("path", { d: line, className: "tip-l1", pathLength: "1" }), pts.map((d, i) => /* @__PURE__ */ TH("circle", { key: i, cx: X(i), cy: Y(d.v), r: hov === i ? 5 : 3, className: "tip-dot1" + (hov === i ? " on" : ""), style: { animationDelay: 0.3 + i * 0.02 + "s" } }))), hp ? /* @__PURE__ */ TH("div", { className: "tip-tip", style: { left: tipLeft, top: 6, width: TW } }, /* @__PURE__ */ TH("div", { className: "tip-tip-h" }, (oneDay ? "Session " + (hov + 1) + " · " : "") + fmtWhen(hp.ts) + (hp.note ? " · " + hp.note : "")), /* @__PURE__ */ TH("div", { className: "tip-tip-r" }, /* @__PURE__ */ TH("i", { className: "c1" }), label || "Value", ": ", /* @__PURE__ */ TH("b", null, f(hp.v))), avg ? /* @__PURE__ */ TH("div", { className: "tip-tip-r" }, /* @__PURE__ */ TH("i", { className: "c2" }), avgLabel || "5-session avg", ": ", /* @__PURE__ */ TH("b", null, f(roll[hov]))) : null) : null), avg ? /* @__PURE__ */ TH("div", { className: "tip-legend" }, /* @__PURE__ */ TH("span", null, /* @__PURE__ */ TH("i", { className: "c1" }), "per session"), /* @__PURE__ */ TH("span", null, /* @__PURE__ */ TH("i", { className: "c2 dash" }), avgLabel || "5-session avg")) : null);
+    return /* @__PURE__ */ TH("div", { className: "tip-cbox" }, /* @__PURE__ */ TH("div", { className: "tip-ch" }, /* @__PURE__ */ TH("h4", null, title), sub ? /* @__PURE__ */ TH("span", null, sub) : null), /* @__PURE__ */ TH("div", { className: "tip-cwrap", ref: box, style: { height: H } }, /* @__PURE__ */ TH("svg", { width: w, height: H, viewBox: `0 0 ${w} ${H}`, onPointerMove: onMove, onPointerLeave: () => setHov(null), onPointerDown: onMove }, ticks.map((t) => /* @__PURE__ */ TH("g", { key: t }, /* @__PURE__ */ TH("line", { x1: ml, x2: w - mr, y1: Y(t), y2: Y(t), className: "tip-grid-l" + (t === 0 && zero ? " zero" : "") }), /* @__PURE__ */ TH("text", { x: ml - 8, y: Y(t) + 4, textAnchor: "end", className: "tip-axis" }, f(t, tdec)))), /* @__PURE__ */ TH("line", { x1: ml, x2: w - mr, y1: mt + ih, y2: mt + ih, className: "tip-axis-l" }), pts.map((d, i) => i % every === 0 && (i + every <= pts.length - 1 || i === pts.length - 1) || i === pts.length - 1 ? /* @__PURE__ */ TH("text", { key: i, x: X(i), y: H - 6, textAnchor: pts.length > 1 && i === pts.length - 1 ? "end" : pts.length > 1 && i === 0 ? "start" : "middle", className: "tip-axis" }, xl(i)) : null), hov != null ? /* @__PURE__ */ TH("rect", { x: X(hov) - Math.max(6, iw / pts.length / 2), y: mt, width: Math.max(12, iw / pts.length), height: ih, className: "tip-cursor" }) : null, avg ? /* @__PURE__ */ TH("path", { d: avg, className: "tip-l2", pathLength: "1" }) : null, multi ? series.map((S) => S.d ? /* @__PURE__ */ TH("path", { key: "l" + S.g + off.length, d: S.d, className: "tip-l1", pathLength: "1", style: { stroke: colOf(S.g) } }) : null) : /* @__PURE__ */ TH("path", { d: line, className: "tip-l1", pathLength: "1" }), pts.map((d, i) => /* @__PURE__ */ TH(
+      "circle",
+      {
+        key: i + "-" + off.length,
+        cx: X(i),
+        cy: Y(d.v),
+        r: hov === i ? 5 : 3,
+        className: "tip-dot1" + (hov === i ? " on" : ""),
+        style: { animationDelay: 0.3 + i * 0.02 + "s", ...multi ? { stroke: colOf(d.g), fill: hov === i ? colOf(d.g) : void 0 } : {} }
+      }
+    ))), hp ? /* @__PURE__ */ TH("div", { className: "tip-tip", style: { left: tipLeft, top: 6, width: TW } }, /* @__PURE__ */ TH("div", { className: "tip-tip-h" }, (oneDay ? "Session " + (hov + 1) + " · " : "") + fmtWhen(hp.ts) + (hp.note ? " · " + hp.note : "")), /* @__PURE__ */ TH("div", { className: "tip-tip-r" }, /* @__PURE__ */ TH("i", { className: "c1", style: multi ? { background: colOf(hp.g) } : void 0 }), multi ? hp.g + " · " : "", label || "Value", ": ", /* @__PURE__ */ TH("b", null, f(hp.v))), avg ? /* @__PURE__ */ TH("div", { className: "tip-tip-r" }, /* @__PURE__ */ TH("i", { className: "c2" }), avgLabel || "5-session avg", ": ", /* @__PURE__ */ TH("b", null, f(roll[hov]))) : null) : null), avg ? /* @__PURE__ */ TH("div", { className: "tip-legend" }, /* @__PURE__ */ TH("span", null, /* @__PURE__ */ TH("i", { className: "c1" }), "per session"), /* @__PURE__ */ TH("span", null, /* @__PURE__ */ TH("i", { className: "c2 dash" }), avgLabel || "5-session avg")) : null, legendM);
   }
   function adaptGames(list, comps) {
     list.forEach((g, i) => {
@@ -791,6 +834,7 @@ var TIP = (function() {
     const [ask, setAsk] = useState(null);
     const [showAll, setShowAll] = useState(false);
     const vals = plays.map(valOf).filter((v) => typeof v === "number");
+    const diffAt = useMemo(() => Object.fromEntries(plays.map((p) => [p.ts, p.diff || "Other"])), [plays]);
     const best = vals.length ? Math.max(...vals) : null;
     const latest = vals.length ? vals[vals.length - 1] : null;
     const top = plays.filter((p) => typeof valOf(p) === "number").slice().sort((a, b) => valOf(b) - valOf(a)).slice(0, 5);
@@ -911,10 +955,10 @@ var TIP = (function() {
         sub: metric === "pnl" ? "dollars" : "points per session",
         label: metric === "pnl" ? "P&L" : "Score",
         zero: metric === "pnl",
-        data: plays.map((p) => ({ ts: p.ts, v: valOf(p), note: [p.diff, p.modeLabel].filter(Boolean).join(" · ") })),
+        data: plays.map((p) => ({ ts: p.ts, v: valOf(p), note: [p.diff, p.modeLabel].filter(Boolean).join(" · "), g: game.fixed ? void 0 : p.diff || "Other" })),
         fmt: game.fmtVal ? ((v) => game.fmtVal(v, clean)) : metric === "pnl" ? ((v, d) => Be(v, d == null ? 0 : d)) : ((v, d) => ie(v, d != null ? d : Number.isInteger(v) ? 0 : 1))
       }
-    ), game.extraStats ? game.extraStats(plays, clean) : null), game.charts && plays.length && game.charts(plays, clean).length ? /* @__PURE__ */ TH("section", { className: "card tip-panel" }, /* @__PURE__ */ TH("h3", { className: "tip-h" }, "Progress"), game.charts(plays, clean).map((c) => /* @__PURE__ */ TH(LineChart, { key: c.title, ...c }))) : null, /* @__PURE__ */ TH("section", { className: "card tip-panel" }, /* @__PURE__ */ TH("div", { className: "tip-h-row" }, /* @__PURE__ */ TH("h3", { className: "tip-h" }, "Your best sessions"), /* @__PURE__ */ TH("span", { className: "tip-cap" }, "Top 5")), top.length ? /* @__PURE__ */ TH("ol", { className: "tip-board" }, top.map((p, i) => /* @__PURE__ */ TH("li", { key: p.ts, className: "r" + (i + 1) }, /* @__PURE__ */ TH("span", { className: "tip-rank" }, i + 1), /* @__PURE__ */ TH("span", { className: "tip-who" }, /* @__PURE__ */ TH("b", null, fmtDate(p.ts)), /* @__PURE__ */ TH("em", null, [p.diff, p.modeLabel].filter(Boolean).join(" · "))), /* @__PURE__ */ TH("span", { className: "tip-amt " + (metric === "pnl" ? Xe(valOf(p)) : "") }, fmtVal(valOf(p))), /* @__PURE__ */ TH("button", { className: "tip-del", "aria-label": "Delete this session", title: "Delete this session", onClick: () => setAsk({ play: p }) }, TH(se, { name: "x", size: 14 }))))) : /* @__PURE__ */ TH("div", { className: "tip-empty small" }, "Your top 10 sessions will show here.")), plays.length ? /* @__PURE__ */ TH("section", { className: "card tip-panel" }, /* @__PURE__ */ TH("div", { className: "tip-h-row" }, /* @__PURE__ */ TH("h3", { className: "tip-h" }, "Recent sessions"), /* @__PURE__ */ TH("span", { className: "tip-cap" }, plays.length, " saved")), /* @__PURE__ */ TH("ul", { className: "tip-hist" }, (showAll ? plays.slice() : plays.slice(-5)).reverse().map((p) => /* @__PURE__ */ TH("li", { key: p.ts }, /* @__PURE__ */ TH("span", { className: "tip-hist-when" }, fmtWhen(p.ts)), /* @__PURE__ */ TH("span", { className: "tip-hist-d" }, [p.diff, p.modeLabel].filter(Boolean).join(" · ")), /* @__PURE__ */ TH("span", { className: "tip-amt " + (metric === "pnl" ? Xe(valOf(p)) : "") }, fmtVal(valOf(p))), /* @__PURE__ */ TH("button", { className: "tip-del", "aria-label": "Delete this session", title: "Delete this session", onClick: () => setAsk({ play: p }) }, TH(se, { name: "x", size: 14 }))))), /* @__PURE__ */ TH("div", { className: "row" }, plays.length > 5 ? /* @__PURE__ */ TH("button", { className: "link", onClick: () => setShowAll((v) => !v) }, showAll ? "Show recent only" : `Show all ${plays.length}`) : null, /* @__PURE__ */ TH("span", { className: "sp" }), /* @__PURE__ */ TH("button", { className: "link danger-link", onClick: () => setAsk({ all: true }) }, "Clear history"))) : null)), ask && /* @__PURE__ */ TH("div", { className: "tm-scrim", onClick: () => setAsk(null) }, /* @__PURE__ */ TH("div", { className: "modal-in danger", role: "dialog", "aria-modal": "true", onClick: (e) => e.stopPropagation() }, /* @__PURE__ */ TH("h3", { className: "h small" }, ask.all ? `Clear all ${game.name} history?` : "Delete this session?"), /* @__PURE__ */ TH("div", { className: "del-summary" }, ask.all ? [/* @__PURE__ */ TH("div", { key: "a" }, game.name), /* @__PURE__ */ TH("div", { key: "b", className: "big-line" }, plays.length, " session", plays.length === 1 ? "" : "s")] : [/* @__PURE__ */ TH("div", { key: "a" }, fmtWhen(ask.play.ts) + " · " + game.name + " · " + ask.play.diff), /* @__PURE__ */ TH("div", { key: "b", className: "big-line" }, fmtVal(valOf(ask.play)))]), /* @__PURE__ */ TH("p", { className: "note" }, ask.all ? "This permanently removes every saved session for this game." : "This permanently removes the session from your statistics and best sessions.", " It can't be undone."), /* @__PURE__ */ TH("div", { className: "start-row" }, /* @__PURE__ */ TH("button", { className: "start danger-btn", autoFocus: true, onClick: () => {
+    ), game.extraStats ? game.extraStats(plays, clean) : null), game.charts && plays.length && game.charts(plays, clean).length ? /* @__PURE__ */ TH("section", { className: "card tip-panel" }, /* @__PURE__ */ TH("h3", { className: "tip-h" }, "Progress"), game.charts(plays, clean).map((c) => /* @__PURE__ */ TH(LineChart, { key: c.title, ...c, data: game.fixed ? c.data : c.data.map((d) => d.g != null ? d : { ...d, g: diffAt[d.ts] }) }))) : null, /* @__PURE__ */ TH("section", { className: "card tip-panel" }, /* @__PURE__ */ TH("div", { className: "tip-h-row" }, /* @__PURE__ */ TH("h3", { className: "tip-h" }, "Your best sessions"), /* @__PURE__ */ TH("span", { className: "tip-cap" }, "Top 5")), top.length ? /* @__PURE__ */ TH("ol", { className: "tip-board" }, top.map((p, i) => /* @__PURE__ */ TH("li", { key: p.ts, className: "r" + (i + 1) }, /* @__PURE__ */ TH("span", { className: "tip-rank" }, i + 1), /* @__PURE__ */ TH("span", { className: "tip-who" }, /* @__PURE__ */ TH("b", null, fmtDate(p.ts)), /* @__PURE__ */ TH("em", null, [p.diff, p.modeLabel].filter(Boolean).join(" · "))), /* @__PURE__ */ TH("span", { className: "tip-amt " + (metric === "pnl" ? Xe(valOf(p)) : "") }, fmtVal(valOf(p))), /* @__PURE__ */ TH("button", { className: "tip-del", "aria-label": "Delete this session", title: "Delete this session", onClick: () => setAsk({ play: p }) }, TH(se, { name: "x", size: 14 }))))) : /* @__PURE__ */ TH("div", { className: "tip-empty small" }, "Your top 10 sessions will show here.")), plays.length ? /* @__PURE__ */ TH("section", { className: "card tip-panel" }, /* @__PURE__ */ TH("div", { className: "tip-h-row" }, /* @__PURE__ */ TH("h3", { className: "tip-h" }, "Recent sessions"), /* @__PURE__ */ TH("span", { className: "tip-cap" }, plays.length, " saved")), /* @__PURE__ */ TH("ul", { className: "tip-hist" }, (showAll ? plays.slice() : plays.slice(-5)).reverse().map((p) => /* @__PURE__ */ TH("li", { key: p.ts }, /* @__PURE__ */ TH("span", { className: "tip-hist-when" }, fmtWhen(p.ts)), /* @__PURE__ */ TH("span", { className: "tip-hist-d" }, [p.diff, p.modeLabel].filter(Boolean).join(" · ")), /* @__PURE__ */ TH("span", { className: "tip-amt " + (metric === "pnl" ? Xe(valOf(p)) : "") }, fmtVal(valOf(p))), /* @__PURE__ */ TH("button", { className: "tip-del", "aria-label": "Delete this session", title: "Delete this session", onClick: () => setAsk({ play: p }) }, TH(se, { name: "x", size: 14 }))))), /* @__PURE__ */ TH("div", { className: "row" }, plays.length > 5 ? /* @__PURE__ */ TH("button", { className: "link", onClick: () => setShowAll((v) => !v) }, showAll ? "Show recent only" : `Show all ${plays.length}`) : null, /* @__PURE__ */ TH("span", { className: "sp" }), /* @__PURE__ */ TH("button", { className: "link danger-link", onClick: () => setAsk({ all: true }) }, "Clear history"))) : null)), ask && /* @__PURE__ */ TH("div", { className: "tm-scrim", onClick: () => setAsk(null) }, /* @__PURE__ */ TH("div", { className: "modal-in danger", role: "dialog", "aria-modal": "true", onClick: (e) => e.stopPropagation() }, /* @__PURE__ */ TH("h3", { className: "h small" }, ask.all ? `Clear all ${game.name} history?` : "Delete this session?"), /* @__PURE__ */ TH("div", { className: "del-summary" }, ask.all ? [/* @__PURE__ */ TH("div", { key: "a" }, game.name), /* @__PURE__ */ TH("div", { key: "b", className: "big-line" }, plays.length, " session", plays.length === 1 ? "" : "s")] : [/* @__PURE__ */ TH("div", { key: "a" }, fmtWhen(ask.play.ts) + " · " + game.name + " · " + ask.play.diff), /* @__PURE__ */ TH("div", { key: "b", className: "big-line" }, fmtVal(valOf(ask.play)))]), /* @__PURE__ */ TH("p", { className: "note" }, ask.all ? "This permanently removes every saved session for this game." : "This permanently removes the session from your statistics and best sessions.", " It can't be undone."), /* @__PURE__ */ TH("div", { className: "start-row" }, /* @__PURE__ */ TH("button", { className: "start danger-btn", autoFocus: true, onClick: () => {
       deletePlays(game.id, ask.all ? plays.map((p) => p.ts) : [ask.play.ts]);
       setAsk(null);
     } }, "Delete"), /* @__PURE__ */ TH("button", { className: "ghost", onClick: () => setAsk(null) }, "Cancel"), /* @__PURE__ */ TH("span", { className: "hint" }, /* @__PURE__ */ TH("kbd", null, "Esc"), " cancels")))));
@@ -2454,13 +2498,14 @@ var TIP_DRILL = (function() {
       const ms = plays.filter((p) => p.avgMs != null), avg = ms.length ? ms.reduce((a, p) => a + p.avgMs * (p.correct || 1), 0) / ms.reduce((a, p) => a + (p.correct || 1), 0) : null;
       const streak = Math.max(0, ...plays.map((p) => p.bestStreak || 0));
       const last = plays.slice(-5), lastAcc = last.reduce((a, p) => a + (p.total || 0), 0) ? last.reduce((a, p) => a + (p.correct || 0), 0) / last.reduce((a, p) => a + (p.total || 0), 0) : null;
-      return /* @__PURE__ */ TH("div", { className: "tip-stats tip-stats4" }, /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Accuracy"), /* @__PURE__ */ TH("b", null, q ? Math.round(c / q * 100) + "%" : "—"), /* @__PURE__ */ TH("em", null, c, "/", q, " questions")), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Last 5 sessions"), /* @__PURE__ */ TH("b", null, lastAcc == null ? "—" : Math.round(lastAcc * 100) + "%"), /* @__PURE__ */ TH("em", null, "accuracy")), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Avg time"), /* @__PURE__ */ TH("b", null, fmtMs(avg)), /* @__PURE__ */ TH("em", null, "per correct answer")), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Best streak"), /* @__PURE__ */ TH("b", null, streak), /* @__PURE__ */ TH("em", null, "in a row")));
+      return /* @__PURE__ */ TH("div", { className: "tip-stats tip-stats4" }, /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Accuracy"), /* @__PURE__ */ TH("b", null, q ? Math.round(c / q * 100) + "%" : "—"), /* @__PURE__ */ TH("em", null, c, "/", q, " questions")), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Last 5 sessions"), /* @__PURE__ */ TH("b", null, lastAcc == null ? "—" : Math.round(lastAcc * 100) + "%"), /* @__PURE__ */ TH("em", null, "accuracy")), def.noSpeed ? /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Questions"), /* @__PURE__ */ TH("b", null, q), /* @__PURE__ */ TH("em", null, "answered in total")) : /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Avg time"), /* @__PURE__ */ TH("b", null, fmtMs(avg)), /* @__PURE__ */ TH("em", null, "per correct answer")), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Best streak"), /* @__PURE__ */ TH("b", null, streak), /* @__PURE__ */ TH("em", null, "in a row")));
     };
     const note = (p) => p.diff;
-    const charts = (plays) => [
+    const charts0 = (plays) => [
       { title: "Accuracy", sub: "% correct per session", label: "Accuracy", data: plays.filter((p) => p.total).map((p) => ({ ts: p.ts, v: (p.correct || 0) / p.total * 100, note: note(p) })), fmt: (v) => Math.round(v) + "%" },
       { title: "Solve speed", sub: "avg seconds per correct answer · lower is better", label: "Avg time", data: plays.filter((p) => p.avgMs != null).map((p) => ({ ts: p.ts, v: p.avgMs / 1e3, note: note(p) })), fmt: (v) => v.toFixed(v < 10 ? 1 : 0) + "s" }
     ];
+    const charts = (plays) => charts0(plays).filter((c) => !(def.noSpeed && c.title === "Solve speed"));
     const version = def.version || 2;
     return { metric: "score", unit: " pts", extraStats, charts, playFilter: (p) => (p.v || 1) === version, ...def, version, spec, component: C };
   }
@@ -3985,6 +4030,7 @@ var TIP_SHAPES = (function() {
     id: "frac",
     name: "80-in-8 Mental Maths",
     version: 2,
+    noSpeed: true,
     blurb: "The Optiver 80-in-8 as candidates report it: 80 four-option questions in 8 minutes on whole numbers, decimals, fractions and percentages, answered in order with no skipping, +1 right and −1 wrong. Fractions are sometimes shown unsimplified. A typed-answer practice mode is included.",
     fields: [
       { key: "format", label: "Answer format", type: "sel", choices: [{ value: "mc", label: "Real test: 4 options" }, { value: "typed", label: "Practice: type the answer" }] },
@@ -5276,11 +5322,11 @@ var TIP_MMT = (function() {
     note: (c) => c.mode === "untimed" ? "Sprint score is questions a minute, so a faster finish scores higher." : c.hard ? "Hard: press Enter to submit; +1 right, −1 wrong, Tab skips for 0." : "A right answer moves on as you type it. Enter skips.",
     extraStats: (plays) => {
       if (!plays.length) return null;
-      const tot = plays.reduce((a, p) => a + (p.total || 0), 0), c = plays.reduce((a, p) => a + (p.correct || 0), 0), qpm = plays.slice(-5).reduce((a, p) => a + (p.qpm || 0), 0) / Math.min(5, plays.length);
-      return /* @__PURE__ */ TH("div", { className: "tip-stats tip-stats4" }, /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Accuracy"), /* @__PURE__ */ TH("b", null, tot ? Math.round(100 * c / tot) + "%" : "—"), /* @__PURE__ */ TH("em", null, c, "/", tot, " questions")), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Last 5 sessions"), /* @__PURE__ */ TH("b", null, qpm.toFixed(1)), /* @__PURE__ */ TH("em", null, "questions a minute")), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Questions answered"), /* @__PURE__ */ TH("b", null, tot), /* @__PURE__ */ TH("em", null, "all sessions")), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Imported"), /* @__PURE__ */ TH("b", null, plays.filter((p) => p.imported).length), /* @__PURE__ */ TH("em", null, "from the old trainer")));
+      const tot = plays.reduce((a, p) => a + (p.total || 0), 0), c = plays.reduce((a, p) => a + (p.correct || 0), 0);
+      const accs = plays.filter((p) => p.total).map((p) => Math.round(100 * p.correct / p.total)), best = accs.length ? Math.max(...accs) : null;
+      return /* @__PURE__ */ TH("div", { className: "tip-stats tip-stats4" }, /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Accuracy"), /* @__PURE__ */ TH("b", null, tot ? Math.round(100 * c / tot) + "%" : "—"), /* @__PURE__ */ TH("em", null, c, "/", tot, " questions")), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Best accuracy"), /* @__PURE__ */ TH("b", null, best == null ? "—" : best + "%"), /* @__PURE__ */ TH("em", null, "in one session")), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Questions answered"), /* @__PURE__ */ TH("b", null, tot), /* @__PURE__ */ TH("em", null, "all sessions")), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Imported"), /* @__PURE__ */ TH("b", null, plays.filter((p) => p.imported).length), /* @__PURE__ */ TH("em", null, "from the old trainer")));
     },
     charts: (plays) => [
-      { title: "Speed", sub: "questions a minute", label: "Q/min", data: plays.filter((p) => p.qpm != null).map((p) => ({ ts: p.ts, v: p.qpm, note: p.setting })), fmt: (v) => v.toFixed(1) },
       { title: "Accuracy", sub: "% answered right", label: "Accuracy", data: plays.filter((p) => p.total).map((p) => ({ ts: p.ts, v: 100 * p.correct / p.total, note: p.setting })), fmt: (v) => Math.round(v) + "%" }
     ],
     component: Game
@@ -8432,6 +8478,729 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
   const HAVE = ["akuna", "balyasny", "belvedere", "brevan", "citsec", "ctc", "davinci", "deshaw", "drw", "fiverings", "flow", "geneva", "graviton", "gresearch", "hrt", "imc", "janestreet", "jump", "keyrock", "mako", "man", "marshallwace", "maven", "maverick", "millennium", "optiver", "peak6", "point72", "qrt", "rothesay", "sig", "squarepoint", "tower", "twosigma", "virtu", "wintermute", "xtx"];
   const logo = (id) => HAVE.includes(id) ? "logos/" + id + ".png" : null;
   return { DOMAINS, INFO, HAVE, logo, STATUS, nextDeadline, allProgrammes };
+})();
+
+(function() {
+  const C = "22 Nov 2026";
+  const T = (id, label) => ({ go: ["trainers", id], label });
+  const G = (id, label) => ({ go: ["games", id], label });
+  const L = (id, label) => ({ go: ["lessons", id], label });
+  const BANK = { go: ["trading"], label: "Trading Questions" }, CODE = { go: ["coding"], label: "Coding Bank" };
+  const MATH = [T("frac", "80-in-8 Mental Maths"), T("mmt", "Mental Math Trainer")];
+  const PROB = [T("prob", "Probability Trainer"), BANK];
+  const MM = [G("trading", "Trading Game"), L("marketmaking", "Making a market")];
+  const why = (name) => ({ name: "Why " + name + ", why trading, a time you took a risk or learned from a mistake", links: [] });
+  const S = (t, url) => ({ t, url });
+  Object.assign(TIP_FIRMINFO.INFO, {
+    citsec: {
+      checked: C,
+      programmes: [
+        {
+          id: "disc27",
+          name: "Discover Citadel Securities – EMEA (London)",
+          who: "First- and second-year undergraduates in Europe graduating between Dec 2027 and Jun 2029",
+          deadlines: [{ l: "Applications", at: "2027-01-29T23:59:00+00:00" }],
+          when: "In person in London, end of March 2027 (two days)",
+          apply: "Deadline 29 Jan 2027; selected attendees are told by 5 Feb 2027. Covers quant research, software engineering and trading.",
+          url: "https://www.citadelsecurities.com/careers/students/discover-citadel-securities/emea-apply/"
+        },
+        {
+          id: "spark27",
+          name: "Citadel Securities Spark (London)",
+          who: "Students early in their degree aiming for the 2028 quantitative trading internship",
+          deadlines: [{ l: "Applications", at: "2027-02-19T23:59:00+00:00" }],
+          when: "London, 30 March – 1 April 2027 (three days)",
+          apply: "Deadline 19 Feb 2027. A hands-on introduction to quant trading with an electronic trading simulation; strong participants can earn a fast-tracked offer.",
+          url: "https://www.citadelsecurities.com/careers/programs-and-events/citadel-securities-spark/apply-london/"
+        },
+        {
+          id: "qti",
+          name: "Quantitative Trading Intern (Europe, London)",
+          who: "Penultimate-year students",
+          when: "About 11 weeks in London, summer 2027",
+          apply: "Apply online; programming or statistics experience is preferred.",
+          url: "https://www.brightnetwork.co.uk/graduate-jobs/citadel-securities/quantitative-trading-intern-europe-2027-ajri"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "Candidates report a timed maths and probability test; some tracks add a coding test.", links: [...PROB, T("frac", "80-in-8 Mental Maths")] },
+        { name: "First-round interview", detail: "Probability, expected value and quick mental maths, often with a market-making question.", links: [...MM, L("ev", "Expected value")] },
+        { name: "Superday", detail: "Several back-to-back interviews: harder probability, trading games and behavioural questions.", links: [G("superday", "Superday Simulation"), G("cardmarket", "Market of Cards")] }
+      ],
+      topics: [
+        { name: "Conditional probability and Bayes", links: [L("bayes", "Bayes' rule"), T("prob", "Probability Trainer")] },
+        { name: "Making a market and updating on trades", links: MM },
+        { name: "Expected value of games and bets", links: [L("ev", "Expected value"), G("oddsbet", "Odds Betting")] },
+        why("Citadel Securities")
+      ],
+      sources: [
+        S("Citadel Securities: Discover EMEA", "https://www.citadelsecurities.com/careers/students/discover-citadel-securities/emea-apply/"),
+        S("Citadel Securities: Spark London", "https://www.citadelsecurities.com/careers/programs-and-events/citadel-securities-spark/apply-london/"),
+        S("Bright Network: Quantitative Trading Intern (Europe) 2027", "https://www.brightnetwork.co.uk/graduate-jobs/citadel-securities/quantitative-trading-intern-europe-2027-ajri")
+      ]
+    },
+    sig: {
+      checked: C,
+      programmes: [
+        {
+          id: "disc",
+          name: "Discovery Programme: Quantitative Trading (Dublin)",
+          who: "Second-year students (the 2026 edition was for 2028 graduates) in maths, statistics, CS, actuarial or similar",
+          when: "Two to three days in Dublin, usually April",
+          apply: "Shortlisting starts in January. Watch SIG's careers site for the 2027 edition.",
+          url: "https://careers-sig.icims.com/jobs/9858/discovery-programme-%3a-quantitative-trading-%28on-site%29/job"
+        },
+        {
+          id: "qti27",
+          name: "Quantitative Trading Internship: Summer 2027 (Dublin)",
+          who: "Penultimate-year students",
+          when: "10 weeks, late June to late August 2027; accommodation provided",
+          apply: "Hired on a rolling basis, so apply early. Classes cover options, game theory, poker and mock trading; strong interns are invited to the graduate programme.",
+          url: "https://www.efinancialcareers.com/jobs-Ireland-Dublin-Quantitative_Trading_Internship_Summer_2027.id24569154"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "Candidates report a timed maths and probability test, sometimes with a mental arithmetic section.", links: [...PROB, ...MATH] },
+        { name: "Phone or video interviews", detail: "Probability, expected value and decision-making questions, often framed as games or bets.", links: [L("ev", "Expected value"), G("oddsbet", "Odds Betting")] },
+        { name: "Final round", detail: "Interviews in the office; reports mention poker-style decision questions and market making.", links: [...MM, G("superday", "Superday Simulation")] }
+      ],
+      topics: [
+        { name: "Game theory and betting decisions", links: [G("oddsbet", "Odds Betting"), L("ev", "Expected value")] },
+        { name: "Dice and card probability", links: [L("counting", "Counting"), T("prob", "Probability Trainer")] },
+        { name: "Option basics", links: [L("options1", "Calls and puts"), T("options", "Options drills")] },
+        why("SIG")
+      ],
+      sources: [
+        S("SIG: Discovery Programme, Quantitative Trading", "https://careers-sig.icims.com/jobs/9858/discovery-programme-%3a-quantitative-trading-%28on-site%29/job"),
+        S("eFinancialCareers: SIG Quantitative Trading Internship Summer 2027", "https://www.efinancialcareers.com/jobs-Ireland-Dublin-Quantitative_Trading_Internship_Summer_2027.id24569154")
+      ]
+    },
+    flow: {
+      checked: C,
+      programmes: [
+        {
+          id: "sti27",
+          name: "Summer Trading Internship (Amsterdam)",
+          who: "Students living in Europe",
+          when: "Eight weeks from 1 July 2027; housing provided",
+          apply: "Rolling; the class closes once full and the process takes several weeks. Includes a numerical test with a practice link in the posting.",
+          url: "https://job-boards.greenhouse.io/flowtraders/jobs/6033643"
+        },
+        {
+          id: "gt",
+          name: "Graduate Trader",
+          who: "Penultimate- and final-year students",
+          when: "Several intakes a year; starts with three months of training in Amsterdam",
+          apply: "Open all year, rolling.",
+          url: "https://job-boards.greenhouse.io/flowtraders/jobs/6105336"
+        }
+      ],
+      stages: [
+        { name: "Numerical test", detail: "A fast timed arithmetic test; the posting says practice is key to passing.", links: MATH },
+        { name: "Online games and reasoning", detail: "Candidates report short cognitive and estimation games.", links: [T("numreason", "Numerical Reasoning"), G("fermi", "Fermi Estimation")] },
+        { name: "Interviews", detail: "Motivation, mental maths and market-making questions, then a final round with traders.", links: [...MM, G("etf", "ETF Arbitrage")] }
+      ],
+      topics: [{ name: "ETFs and arbitrage", links: [G("etf", "ETF Arbitrage")] }, { name: "Quick arithmetic under pressure", links: MATH }, why("Flow Traders")],
+      sources: [S("Flow Traders: Summer Trading Internship", "https://job-boards.greenhouse.io/flowtraders/jobs/6033643"), S("Flow Traders: Graduate Trader", "https://job-boards.greenhouse.io/flowtraders/jobs/6105336")]
+    },
+    hrt: {
+      checked: C,
+      programmes: [
+        {
+          id: "ad27",
+          name: "Algorithm Development (Quant Research & Trading) Internship – Summer 2027",
+          who: "Full-time students in quantitative fields",
+          when: "Summer 2027 in London, New York or Singapore",
+          apply: "Apply to one role only; HRT considers you for all suitable openings. AI tools are banned in interviews and assessments.",
+          url: "https://www.efinancialcareers.co.uk/jobs-UK-London-Algorithm_Development_Quant_Research__Trading_Internship_-_Summer_2027.id24725067"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "Candidates report a timed test mixing probability, statistics and programming.", links: [...PROB, CODE] },
+        { name: "Technical interviews", detail: "Probability and statistics problems plus coding (Python or C++).", links: [CODE, L("linearity", "Linearity of expectation")] },
+        { name: "Final round", detail: "Several technical interviews and a conversation about research projects.", links: [BANK] }
+      ],
+      topics: [{ name: "Expectation and conditional probability", links: [L("linearity", "Linearity of expectation"), L("bayes", "Bayes' rule")] }, { name: "Data structures and algorithms", links: [CODE] }, why("HRT")],
+      sources: [S("eFinancialCareers: HRT Algorithm Development Internship 2027", "https://www.efinancialcareers.co.uk/jobs-UK-London-Algorithm_Development_Quant_Research__Trading_Internship_-_Summer_2027.id24725067")]
+    },
+    jump: {
+      checked: C,
+      programmes: [
+        {
+          id: "cqt",
+          name: "Campus Quantitative Trader (Intern) – London / Amsterdam",
+          who: "Students in maths, CS, physics or similar; international students encouraged",
+          when: "10 weeks, summer 2027",
+          apply: "Apply online. Training covers trading, programming and research, with mock trading and poker.",
+          url: "https://www.efinancialcareers.com/jobs-UK-London-Campus_Quantitative_Trader_Intern.id24522970"
+        },
+        {
+          id: "cqr",
+          name: "Campus Quantitative Researcher (Intern) – London",
+          who: "Strong maths and programming students",
+          when: "Summer 2027",
+          apply: "Apply online.",
+          url: "https://www.efinancialcareers.com/jobs-UK-London-Campus_Quantitative_Researcher_Intern.id24523239"
+        }
+      ],
+      stages: [
+        { name: "Online test", detail: "Candidates report a timed probability, maths and logic test.", links: [...PROB, T("seq", "Sequence Trainer")] },
+        { name: "Technical interviews", detail: "Probability puzzles, statistics and some coding.", links: [BANK, CODE] },
+        { name: "Final round", detail: "Several interviews with traders and researchers, including a trading or betting game.", links: [...MM, G("oddsbet", "Odds Betting")] }
+      ],
+      topics: [{ name: "Probability puzzles", links: PROB }, { name: "Betting and risk decisions", links: [G("oddsbet", "Odds Betting"), L("ev", "Expected value")] }, why("Jump")],
+      sources: [S("eFinancialCareers: Jump Campus Quantitative Trader (Intern)", "https://www.efinancialcareers.com/jobs-UK-London-Campus_Quantitative_Trader_Intern.id24522970"), S("Bright Network: Jump Campus Quantitative Researcher", "https://www.brightnetwork.co.uk/graduate-jobs/jump-trading/campus-quantitative-researcher-london-2026-aijy")]
+    },
+    xtx: {
+      checked: C,
+      programmes: [
+        {
+          id: "int",
+          name: "Research and engineering internships (London)",
+          who: "Usually penultimate-year students in maths, CS or similar",
+          when: "About 12 weeks, summer 2027",
+          apply: "XTX does not run a graduate programme, and an internship does not automatically lead to a full-time role.",
+          url: "https://job-boards.greenhouse.io/xtxmarketstechnologies/jobs/6688989003"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "Candidates report maths, statistics and coding questions.", links: [...PROB, CODE] },
+        { name: "Interviews", detail: "Technical interviews on statistics, machine learning or programming, depending on the team.", links: [CODE] }
+      ],
+      topics: [{ name: "Statistics and regression", links: [BANK] }, { name: "Python and data analysis", links: [CODE] }, why("XTX")],
+      sources: [S("XTX Markets: internship posting", "https://job-boards.greenhouse.io/xtxmarketstechnologies/jobs/6688989003")]
+    },
+    drw: {
+      checked: C,
+      programmes: [
+        {
+          id: "disc",
+          name: "Discover DRW – London",
+          who: "Maths, statistics, physics or CS students at UK or European universities graduating Dec 2027 – Jun 2028",
+          when: "Two days in London",
+          apply: "Strong participants are fast-tracked in the interview process for the internship.",
+          url: "https://job-boards.greenhouse.io/drweng/jobs/7435235"
+        },
+        {
+          id: "qta",
+          name: "Quantitative Trading Analyst Intern (London)",
+          who: "Students with a quantitative background",
+          when: "10 weeks, summer 2027; ends with a presentation to senior leadership",
+          apply: "Apply online.",
+          url: "https://job-boards.greenhouse.io/drweng/jobs/7957243"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "Candidates report a timed maths, probability and logic test.", links: [...PROB, ...MATH] },
+        { name: "Interviews", detail: "Probability, expected value and market-making questions with traders.", links: [...MM, L("ev", "Expected value")] },
+        { name: "Final round", detail: "Several interviews in the office, including behavioural questions.", links: [G("superday", "Superday Simulation")] }
+      ],
+      topics: [{ name: "Expected value and betting", links: [L("ev", "Expected value"), G("oddsbet", "Odds Betting")] }, { name: "Making a market", links: MM }, why("DRW")],
+      sources: [S("DRW: Discover DRW – London", "https://job-boards.greenhouse.io/drweng/jobs/7435235"), S("DRW: Quantitative Trading Analyst Intern", "https://job-boards.greenhouse.io/drweng/jobs/7957243")]
+    },
+    akuna: {
+      checked: C,
+      programmes: [
+        {
+          id: "aka",
+          name: "Akunacademy internships (Chicago)",
+          who: "University students; see each posting",
+          when: "10 weeks, summer 2027",
+          apply: "Apply online. AI tools are not allowed in Akuna's assessments or interviews.",
+          url: "https://akunacapital.com/careers/job/8018856/"
+        },
+        {
+          id: "tip",
+          name: "Trading Immersion Program (Sydney)",
+          who: "Students in the APAC region near graduation",
+          when: "Two-week in-person cohorts",
+          apply: "Rolling; may include online tests.",
+          url: "https://builtin.com/job/trading-immersion-program/8369630"
+        }
+      ],
+      stages: [
+        { name: "Mental maths test", detail: "A short timed arithmetic test, often on Zoom; one report quotes questions like 0.45 × 62.", links: MATH },
+        { name: "Probability and options", detail: "Probability, expected value and option basics.", links: [...PROB, L("options1", "Calls and puts")] },
+        { name: "Final interviews", detail: "Market making and behavioural questions; developer tracks add a coding test.", links: [...MM, CODE] }
+      ],
+      topics: [{ name: "Options and volatility", links: [L("options1", "Calls and puts"), T("options", "Options drills")] }, { name: "Coin and dice sequences", links: PROB }, why("Akuna")],
+      sources: [
+        S("Akuna: careers posting", "https://akunacapital.com/careers/job/8018856/"),
+        S("Akuna: Trading Immersion Program", "https://builtin.com/job/trading-immersion-program/8369630"),
+        S("Candidate reports (Glassdoor, Akuna)", "https://www.glassdoor.co.in/Interview/AKUNA-CAPITAL-Interview-E608116-RVW93838185.htm")
+      ]
+    },
+    maven: {
+      checked: C,
+      programmes: [
+        {
+          id: "ams27",
+          name: "Amsterdam Trader Summer Internship 2027",
+          who: "Penultimate-year undergraduate or master's students with the right to work there",
+          when: "21 June – 20 August 2027; the first three weeks are options theory classes in London",
+          apply: "Closed 20 Oct 2026. Maven takes one application per candidate per cycle; strong interns may join the next year's Graduate Trader Programme.",
+          url: "https://www.kadoa.com/quant/job/mavensecurities-amsterdam-trader-summer-internship-2027-4b612016"
+        },
+        {
+          id: "lon27",
+          name: "London Trader Summer Internship 2027",
+          who: "Penultimate-year students",
+          when: "Summer 2027",
+          apply: "Opened 7 Sept 2026; one application per cycle.",
+          url: "https://www.tradermath.org/firms/maven-securities/jobs/amsterdam-trader-summer-internship-2027-in-amsterdam-4a7585"
+        }
+      ],
+      stages: [
+        { name: "Online tests", detail: "Candidates report timed arithmetic and probability tests.", links: [...MATH, ...PROB] },
+        { name: "Interviews", detail: "Options theory, probability and a market-making exercise.", links: [...MM, L("options1", "Calls and puts")] }
+      ],
+      topics: [{ name: "Option pricing basics", links: [L("options1", "Calls and puts"), L("options3", "Put–call parity")] }, { name: "Making a market", links: MM }, why("Maven")],
+      sources: [S("Maven: Amsterdam Trader Summer Internship 2027", "https://www.kadoa.com/quant/job/mavensecurities-amsterdam-trader-summer-internship-2027-4b612016")]
+    },
+    davinci: {
+      checked: C,
+      programmes: [
+        {
+          id: "spr27",
+          name: "Quant Trading Intern (May 2027, Amsterdam)",
+          who: "Students in maths, physics, engineering or similar",
+          when: "Spring internship, May 2027; flights and stay in Amsterdam covered",
+          apply: "Apply online. The summer internship opens separately later; both can lead to a full-time quant trader or researcher role.",
+          url: "https://job-boards.eu.greenhouse.io/davinciderivatives/jobs/4746470101"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "Candidates report maths, probability and logic tests.", links: [...MATH, ...PROB] },
+        { name: "Interviews", detail: "Probability, options and a trading game, then a final round in Amsterdam.", links: [...MM, L("options1", "Calls and puts")] }
+      ],
+      topics: [{ name: "Options market making", links: [T("options", "Options drills"), ...MM] }, why("Da Vinci")],
+      sources: [S("Da Vinci: Quant Trading Intern (May 2027)", "https://job-boards.eu.greenhouse.io/davinciderivatives/jobs/4746470101")]
+    },
+    ctc: {
+      checked: C,
+      programmes: [
+        {
+          id: "qt27",
+          name: "Quant Trading Internship – Summer 2027 (London)",
+          who: "Bachelor's or master's students, all majors",
+          when: "Eight weeks, summer 2027",
+          apply: "Apply online. The role mirrors a full-time Quant Trading Associate, with weekly one-to-ones.",
+          url: "https://job-boards.greenhouse.io/chicagotradingcampus/jobs/4718710005"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "Candidates report mental maths and probability tests.", links: [...MATH, ...PROB] },
+        { name: "Interviews", detail: "Options and probability questions plus a market-making game.", links: [...MM, T("options", "Options drills")] }
+      ],
+      topics: [{ name: "Options market making", links: [L("options1", "Calls and puts"), T("options", "Options drills")] }, why("CTC")],
+      sources: [S("CTC: Quant Trading Internship – Summer 2027", "https://job-boards.greenhouse.io/chicagotradingcampus/jobs/4718710005")]
+    },
+    gresearch: {
+      checked: C,
+      programmes: [
+        {
+          id: "qr27",
+          name: "Quant Research Internship 2027 (London)",
+          who: "Students with a strong maths background",
+          when: "10 weeks, 21 June – 27 August 2027, central London",
+          apply: "Apply for one internship only; G-Research considers you across its research roles. Top performers are considered for full-time roles.",
+          url: "https://www.brightnetwork.co.uk/graduate-jobs/g-research/quant-research-internship-2027"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "A timed maths, statistics and probability test.", links: [...PROB, T("numreason", "Numerical Reasoning")] },
+        { name: "Technical interview", detail: "With a researcher: probability, statistics and problem solving.", links: [BANK, L("bayes", "Bayes' rule")] },
+        { name: "Behavioural and final interviews", detail: "Motivation, then meetings with the team and managers.", links: [] }
+      ],
+      topics: [{ name: "Statistics and probability", links: PROB }, { name: "Linear algebra and data analysis", links: [BANK] }, why("G-Research")],
+      sources: [
+        S("G-Research: Quant Research Internship", "https://www.gresearch.com/vacancies/quant-research-internship/"),
+        S("Bright Network: G-Research QR Internship 2027", "https://www.brightnetwork.co.uk/graduate-jobs/g-research/quant-research-internship-2027"),
+        S("G-Research: students and graduates", "https://www.gresearch.com/students-graduates/graduates/")
+      ]
+    },
+    twosigma: {
+      checked: C,
+      programmes: [
+        {
+          id: "qr27",
+          name: "Quantitative Researcher Intern – Summer 2027 (New York)",
+          who: "Bachelor's, master's or PhD students",
+          when: "10 weeks; one project and a final presentation, plus academic seminars",
+          apply: "Apply online. London hires are mostly experienced roles.",
+          url: "https://simplify.jobs/p/d7896522-5218-4362-8092-60cacc29a642"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "Candidates report a coding test and probability or statistics questions.", links: [CODE, ...PROB] },
+        { name: "Technical interviews", detail: "Probability, statistics and coding with researchers.", links: [BANK, CODE] }
+      ],
+      topics: [{ name: "Statistics and machine learning basics", links: [BANK] }, { name: "Probability", links: PROB }, why("Two Sigma")],
+      sources: [S("Two Sigma: QR Intern Summer 2027", "https://simplify.jobs/p/d7896522-5218-4362-8092-60cacc29a642")]
+    },
+    deshaw: {
+      checked: C,
+      programmes: [
+        {
+          id: "ins27",
+          name: "Insight Programme (London)",
+          who: "Students curious about investing and strategy",
+          deadlines: [{ l: "Applications", at: "2027-01-04T23:59:00+00:00" }],
+          when: "One day, 8 April 2027 (Discretionary Investing, Strategy and Business Development)",
+          apply: "Applications close 11:59 PM on 4 Jan 2027.",
+          url: "https://campus.deshaw.com/"
+        },
+        {
+          id: "ta27",
+          name: "Trader/Analyst Intern (London) – Summer 2027",
+          who: "Any degree; usually students approaching their final year",
+          when: "10 weeks, June to August 2027",
+          apply: "D. E. Shaw picks its intern class early in the year, so apply by the end of 2026.",
+          url: "https://www.deshaw.com/careers/trader-analyst-intern-london-summer-2027-5862"
+        }
+      ],
+      stages: [
+        { name: "Online tests", detail: "Candidates report logic and numerical reasoning tests.", links: [T("numreason", "Numerical Reasoning"), T("seq", "Sequence Trainer")] },
+        { name: "Interviews", detail: "Brainteasers, probability and case-style questions about markets.", links: [BANK, G("fermi", "Fermi Estimation")] }
+      ],
+      topics: [{ name: "Brainteasers and estimation", links: [BANK, G("fermi", "Fermi Estimation")] }, why("D. E. Shaw")],
+      sources: [S("D. E. Shaw: campus site", "https://campus.deshaw.com/"), S("D. E. Shaw: Trader/Analyst Intern (London)", "https://www.deshaw.com/careers/trader-analyst-intern-london-summer-2027-5862")]
+    },
+    squarepoint: {
+      checked: C,
+      programmes: [
+        {
+          id: "qr",
+          name: "Intern Quant Researcher (London)",
+          who: "Usually penultimate-year students in maths, physics, statistics, ML or engineering",
+          when: "Internships through the year",
+          apply: "Apply online.",
+          url: "https://squarepoint-capital.com/early-careers"
+        }
+      ],
+      stages: [
+        { name: "Online test", detail: "Candidates report a coding and maths test.", links: [CODE, ...PROB] },
+        { name: "Interviews", detail: "Probability, statistics and coding questions.", links: [BANK, CODE] }
+      ],
+      topics: [{ name: "Statistics and Python", links: [CODE] }, why("Squarepoint")],
+      sources: [S("Squarepoint: early careers", "https://squarepoint-capital.com/early-careers")]
+    },
+    qrt: {
+      checked: C,
+      programmes: [
+        {
+          id: "int27",
+          name: "Quantitative Research internships (London, Paris, Geneva and others)",
+          who: "Penultimate- or final-year bachelor's, master's or PhD students",
+          when: "Four to six months, starting in 2027",
+          apply: "Apply online.",
+          url: "https://targetjobs.co.uk/jobs/2027-internship-quantitative-research-241547"
+        }
+      ],
+      stages: [
+        { name: "Online test", detail: "Candidates report a maths and coding test.", links: [CODE, ...PROB] },
+        { name: "Interviews", detail: "Probability, statistics and research discussion.", links: [BANK] }
+      ],
+      topics: [{ name: "Probability and statistics", links: PROB }, why("QRT")],
+      sources: [S("TARGETjobs: QRT 2027 internship", "https://targetjobs.co.uk/jobs/2027-internship-quantitative-research-241547")]
+    },
+    point72: {
+      checked: C,
+      programmes: [
+        {
+          id: "sip27",
+          name: "Point72 Academy Spring Insight Programme – UK",
+          who: "First-year students on a three-year degree (or second-year on four years) at UK or EU universities",
+          when: "Five days in London, early April 2027; travel and lodging covered",
+          apply: "Applications are reviewed after the deadline, not rolling; selected students hear by February 2027. GenAI is banned in the application.",
+          url: "https://www.efinancialcareers.co.uk/jobs-UK-London-2027_Point72_Academy_Spring_Insight_Programme_-_UK.id24840936"
+        },
+        {
+          id: "ai27",
+          name: "Academy Investment Analyst Summer Internship – EMEA",
+          who: "Penultimate-year students",
+          when: "Eight weeks, summer 2027 (London or Dubai)",
+          apply: "Apply online.",
+          url: "https://job-boards.greenhouse.io/point72/jobs/8435134002"
+        }
+      ],
+      stages: [
+        { name: "Application and tests", detail: "Written questions and online assessments.", links: [T("numreason", "Numerical Reasoning")] },
+        { name: "Interviews", detail: "For investing tracks: a stock pitch or case study and market discussion.", links: [] }
+      ],
+      topics: [{ name: "A stock pitch and why you like it", links: [] }, why("Point72")],
+      sources: [S("eFinancialCareers: Point72 Spring Insight Programme 2027", "https://www.efinancialcareers.co.uk/jobs-UK-London-2027_Point72_Academy_Spring_Insight_Programme_-_UK.id24840936"), S("Point72: Academy summer internship", "https://job-boards.greenhouse.io/point72/jobs/8435134002")]
+    },
+    marshallwace: {
+      checked: C,
+      programmes: [
+        {
+          id: "tech27",
+          name: "Technology Intern – London 2027",
+          who: "Open to first-year students, considered alongside penultimate years",
+          when: "28 June – 3 September 2027, fully in office",
+          apply: "Apply online.",
+          url: "https://www.mwam.com/technology-internship-programme/"
+        },
+        {
+          id: "qr27",
+          name: "Quant Research Intern – London 2027",
+          who: "Penultimate-year master's or PhD students in STEM (not bachelor's)",
+          when: "28 June – 3 September 2027",
+          apply: "Apply online.",
+          url: "https://www.brightnetwork.co.uk/graduate-jobs/marshall-wace/quant-research-intern-london-2027"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "Coding or maths tests depending on the track.", links: [CODE, ...PROB] },
+        { name: "Interviews", detail: "Technical interviews, then a final round.", links: [CODE] }
+      ],
+      topics: [{ name: "Programming projects you have built", links: [CODE] }, why("Marshall Wace")],
+      sources: [S("Marshall Wace: Technology Internship Programme", "https://www.mwam.com/technology-internship-programme/"), S("Marshall Wace: Quantitative Research Internship", "https://www.mwam.com/quantitative-research-internship/")]
+    },
+    man: {
+      checked: C,
+      programmes: [
+        {
+          id: "si27",
+          name: "Summer Internships 2027 (Central Trading, IDI, Quant Research, Risk)",
+          who: "Penultimate-year students",
+          when: "12 weeks, 21 June – 10 September 2027",
+          apply: "The 2027 windows ran from late September to mid-October 2026. Online tests in October, technical interviews in October and November, assessment centre in London in November and December.",
+          url: "https://job-boards.eu.greenhouse.io/mangroup/jobs/4988791101"
+        }
+      ],
+      stages: [
+        { name: "Online tests", detail: "Numerical and logical tests.", links: [T("numreason", "Numerical Reasoning"), T("diagram", "Diagrammatic Reasoning")] },
+        { name: "Technical interviews", detail: "Maths, statistics and coding, depending on the team.", links: [CODE, ...PROB] },
+        { name: "Assessment centre", detail: "In the London office.", links: [G("superday", "Superday Simulation")] }
+      ],
+      topics: [{ name: "Systematic investing basics", links: [] }, why("Man Group")],
+      sources: [S("Man Group: Central Trading Internship", "https://job-boards.eu.greenhouse.io/mangroup/jobs/4988791101"), S("TARGETjobs: Man Group 2027 Technology Internship", "https://targetjobs.co.uk/jobs/2027-summer-technology-internship-programme-244809")]
+    },
+    brevan: {
+      checked: C,
+      programmes: [
+        {
+          id: "si27",
+          name: "2027 Summer Internship Program – London (Trading, Systematic Trading, QIS, AI & Quant)",
+          who: "Penultimate-year students on track for at least a 2:1",
+          when: "10 weeks, summer 2027",
+          apply: "One application globally. Training covers markets, Excel and Python; top interns can convert to the 2028 Graduate Program.",
+          url: "https://www.efinancialcareers.com/jobs-UK-London-2027_Summer_Internship_Program_-_Trading_London.id24758388"
+        }
+      ],
+      stages: [
+        { name: "Application and tests", detail: "CV screen and online tests.", links: [T("numreason", "Numerical Reasoning")] },
+        { name: "Interviews", detail: "Macro and market questions plus quantitative problems.", links: [BANK] }
+      ],
+      topics: [{ name: "Macro: rates, FX and what moves them", links: [] }, why("Brevan Howard")],
+      sources: [S("eFinancialCareers: Brevan Howard 2027 Summer Internship – Trading", "https://www.efinancialcareers.com/jobs-UK-London-2027_Summer_Internship_Program_-_Trading_London.id24758388")]
+    },
+    balyasny: {
+      checked: C,
+      programmes: [
+        {
+          id: "qr",
+          name: "Quantitative Researcher – Summer Internship (London)",
+          who: "Master's or PhD students graduating Winter 2027 – Summer 2028",
+          when: "Summer 2027 (about eight weeks with a boot camp)",
+          apply: "Very selective: about 40,000 applications for around 100 places. Quant developer internships take undergraduates graduating Winter 2027 or Spring 2028.",
+          url: "https://www.kadoa.com/quant/job/bamfunds-jobs-quantitative-researcher-quantitative-strategies-summer-i-a317ba60"
+        }
+      ],
+      stages: [
+        { name: "Online test", detail: "Coding and statistics for quant roles.", links: [CODE, ...PROB] },
+        { name: "Interviews", detail: "Technical and team interviews.", links: [BANK] }
+      ],
+      topics: [{ name: "Statistics and Python", links: [CODE] }, why("Balyasny")],
+      sources: [S("Balyasny: QR Summer Internship (London)", "https://www.kadoa.com/quant/job/bamfunds-jobs-quantitative-researcher-quantitative-strategies-summer-i-a317ba60"), S("Pensions & Investments on hedge fund internships", "https://www.craincurrency.com/node/1013506")]
+    },
+    millennium: {
+      checked: C,
+      programmes: [
+        {
+          id: "qr27",
+          name: "2027 Quantitative Researcher Intern (London)",
+          who: "Bachelor's or master's students in a technical discipline",
+          when: "Summer 2027",
+          apply: "Apply online. Millennium's investment internship for London opened in February.",
+          url: "https://capd.mit.edu/jobs/millennium-management-llc-2027-quantitative-researcher-intern-london/"
+        }
+      ],
+      stages: [{ name: "Interviews", detail: "Technical interviews on statistics, machine learning and coding.", links: [CODE, BANK] }],
+      topics: [{ name: "Statistics and machine learning", links: [BANK] }, why("Millennium")],
+      sources: [S("Millennium: 2027 QR Intern London", "https://capd.mit.edu/jobs/millennium-management-llc-2027-quantitative-researcher-intern-london/"), S("eFinancialCareers: hedge fund internships in London", "https://www.efinancialcareers.com/news/hedge-fund-internships-london")]
+    },
+    tower: {
+      checked: C,
+      programmes: [
+        {
+          id: "qtr27",
+          name: "Quantitative Trader/Researcher Summer Internship 2027 (London)",
+          who: "Penultimate-year students only (2028 graduates)",
+          when: "Summer 2027; design and deploy high- or mid-frequency algorithms",
+          apply: "Rolling; apply early.",
+          url: "https://www.tradermath.org/firms/tower-research-capital/jobs/quantitative-trader-researcher-summer-internship-2027-2028-graduates-in-london-4a7468"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "Candidates report a coding and probability test.", links: [CODE, ...PROB] },
+        { name: "Interviews", detail: "Probability, statistics and coding with trading teams.", links: [BANK, CODE] }
+      ],
+      topics: [{ name: "Probability and statistics", links: PROB }, why("Tower")],
+      sources: [S("Tower: internships", "https://tower-research.com/internship/"), S("TraderMaths: Tower QT/QR Internship 2027", "https://www.tradermath.org/firms/tower-research-capital/jobs/quantitative-trader-researcher-summer-internship-2027-2028-graduates-in-london-4a7468")]
+    },
+    virtu: {
+      checked: C,
+      programmes: [
+        {
+          id: "qt27",
+          name: "2027 Internship – Quantitative Trading (Dublin)",
+          who: "University students in quantitative fields",
+          when: "10 weeks, 21 June – 27 August 2027",
+          apply: "Apply online. Very hands-on: interns look for patterns that could improve trading algorithms.",
+          url: "https://job-boards.greenhouse.io/virtu/jobs/8547254002"
+        }
+      ],
+      stages: [
+        { name: "Online assessment", detail: "A programming or maths assessment.", links: [CODE, ...MATH] },
+        { name: "Interviews", detail: "Probability, statistics and coding.", links: [BANK, CODE] }
+      ],
+      topics: [{ name: "Market structure and execution", links: [T("orderbook", "Orderbooks")] }, why("Virtu")],
+      sources: [S("Virtu: 2027 Internship – Quantitative Trading", "https://job-boards.greenhouse.io/virtu/jobs/8547254002")]
+    },
+    mako: {
+      checked: C,
+      programmes: [
+        {
+          id: "si",
+          name: "Mako Summer Internship – Trading & Technology (London)",
+          who: "Students; see the posting",
+          when: "Summer 2027",
+          apply: "Apply online; focuses on options markets.",
+          url: "https://www.tradermath.org/firms/mako-trading/jobs/mako-summer-internship-trading-technology-in-london-9eb4d6"
+        },
+        { id: "gt", name: "Graduate Trader (London)", who: "Final-year students and graduates", when: "Rolling", apply: "Apply online.", url: "https://mako.com/career" }
+      ],
+      stages: [
+        { name: "Online tests", detail: "Candidates report numerical and sequence tests.", links: [...MATH, T("seq", "Sequence Trainer")] },
+        { name: "Interviews", detail: "Options, probability and a market-making game.", links: [...MM, T("options", "Options drills")] }
+      ],
+      topics: [{ name: "Options market making", links: [L("options1", "Calls and puts"), T("options", "Options drills")] }, why("Mako")],
+      sources: [S("Mako: careers", "https://mako.com/career"), S("TraderMaths: Mako Summer Internship", "https://www.tradermath.org/firms/mako-trading/jobs/mako-summer-internship-trading-technology-in-london-9eb4d6")]
+    },
+    fiverings: {
+      checked: C,
+      programmes: [
+        {
+          id: "si27",
+          name: "Summer Intern 2027 – Quantitative Trader (New York)",
+          who: "Graduating Winter 2027 – Summer 2028; students outside the US can apply",
+          when: "Summer 2027 in New York",
+          apply: "Apply online. Five Rings also runs a four-week January winter internship and hires 2027 graduates in London and Amsterdam.",
+          url: "https://job-boards.greenhouse.io/fiveringsllc/jobs/5139668008"
+        }
+      ],
+      stages: [
+        { name: "Online test", detail: "Candidates report a timed probability and maths test.", links: [...PROB, T("seq", "Sequence Trainer")] },
+        { name: "Interviews", detail: "Hard probability puzzles and strategy games.", links: [BANK, G("oddsbet", "Odds Betting")] }
+      ],
+      topics: [{ name: "Probability puzzles and game strategy", links: PROB }, why("Five Rings")],
+      sources: [S("Five Rings: Summer Intern 2027 – Quantitative Trader", "https://job-boards.greenhouse.io/fiveringsllc/jobs/5139668008"), S("eFinancialCareers: Five Rings London 2027 QT", "https://www.efinancialcareers.com/jobs-UK-London-Campus_Full_Time_2027_-_Quantitative_Trader_-_London.id24528367")]
+    },
+    graviton: {
+      checked: C,
+      programmes: [
+        { id: "qr28", name: "Intern – Quantitative Researcher (2028 graduates, India)", who: "2028 graduates", when: "Eight weeks", apply: "India only.", url: "https://job-boards.greenhouse.io/gravitonresearchcapital/jobs/8630903002" }
+      ],
+      stages: [{ name: "Tests and interviews", detail: "Maths, probability and coding.", links: [...PROB, CODE] }],
+      topics: [{ name: "Probability and statistics", links: PROB }],
+      sources: [S("Graviton: QR Intern", "https://job-boards.greenhouse.io/gravitonresearchcapital/jobs/8630903002")]
+    },
+    wintermute: {
+      checked: C,
+      programmes: [
+        {
+          id: "at",
+          name: "Algorithmic Trading Internship (London)",
+          who: "Students with the right to intern in the UK",
+          when: "Flexible, one to six months",
+          apply: "Apply online. Trading knowledge isn't required, but they test your trading intuition; Python helps.",
+          url: "https://builtin.com/job/algorithmic-trading-internship-summer-2026/7057410"
+        }
+      ],
+      stages: [
+        { name: "Tests", detail: "Trading-intuition and maths questions, plus Python.", links: [...MM, CODE] },
+        { name: "Interviews", detail: "Market making, crypto market structure and coding.", links: [T("orderbook", "Orderbooks")] }
+      ],
+      topics: [{ name: "Market making and order books", links: [T("orderbook", "Orderbooks"), ...MM] }, why("Wintermute")],
+      sources: [S("Wintermute: careers", "https://jobs.lever.co/wintermute-trading"), S("Wintermute: Algorithmic Trading Internship", "https://builtin.com/job/algorithmic-trading-internship-summer-2026/7057410")]
+    },
+    keyrock: {
+      checked: C,
+      programmes: [{ id: "car", name: "Internships and graduate roles", who: "See current postings", when: "Varies", apply: "No 2027 student programme found when checked; watch Keyrock's careers page.", url: "https://keyrock.com/careers/" }],
+      stages: [{ name: "Interviews", detail: "Expect market-making, crypto and coding questions.", links: [...MM, CODE] }],
+      topics: [{ name: "Crypto market making", links: MM }],
+      sources: [S("Keyrock: careers", "https://keyrock.com/careers/")]
+    },
+    rothesay: {
+      checked: C,
+      programmes: [
+        {
+          id: "tao27",
+          name: "2027 Summer Internship – Trading and Asset Origination (London)",
+          who: "Penultimate-year students graduating in summer 2028",
+          when: "Eight weeks from June 2027, starting with a fundamentals week",
+          apply: "Closed 8 Nov 2026. The application asks for a comment on Rothesay's position in the pension buyout market.",
+          url: "https://opportunitiesfeed.com/2026/10/15/summer-internship-programme/"
+        },
+        {
+          id: "se27",
+          name: "2027 Summer Internship – Software Engineering",
+          who: "Penultimate-year students graduating in summer 2028",
+          deadlines: [{ l: "Applications", at: "2026-12-01T23:59:00+00:00" }],
+          when: "Eight weeks from June 2027",
+          apply: "Deadline 1 Dec 2026; may close earlier.",
+          url: "https://www.brightnetwork.co.uk/graduate-jobs/rothesay/2027-summer-internship-programme-software-engineering"
+        }
+      ],
+      stages: [
+        { name: "Application", detail: "CV plus written answers about Rothesay and the buyout market.", links: [] },
+        { name: "Tests and interviews", detail: "Numerical ability and interviews.", links: [T("numreason", "Numerical Reasoning")] }
+      ],
+      topics: [{ name: "Pension risk transfer and interest rates", links: [] }, why("Rothesay")],
+      sources: [S("Rothesay: graduate and intern programmes", "https://www.rothesay.com/about-us/working-here/careers/graduate-and-intern-programmes"), S("Rothesay: 2027 Software Engineering internship", "https://www.brightnetwork.co.uk/graduate-jobs/rothesay/2027-summer-internship-programme-software-engineering")]
+    },
+    geneva: {
+      checked: C,
+      programmes: [{ id: "us", name: "Trading internships (US)", who: "Mostly US students", when: "Summer", apply: "No UK programme found when checked; see the careers page.", url: "https://www.genevatrading.com/careers/" }],
+      stages: [{ name: "Tests and interviews", detail: "Mental maths, probability and market-making questions.", links: [...MATH, ...MM] }],
+      topics: [{ name: "Mental maths and probability", links: [...MATH, ...PROB] }],
+      sources: [S("Geneva Trading: careers", "https://www.genevatrading.com/careers/")]
+    },
+    peak6: {
+      checked: C,
+      programmes: [{ id: "us", name: "Internships (US)", who: "Mostly US students", when: "Summer", apply: "No UK programme found when checked; see the careers page.", url: "https://peak6.com/careers/" }],
+      stages: [{ name: "Tests and interviews", detail: "Mental maths, probability and options questions.", links: [...MATH, T("options", "Options drills")] }],
+      topics: [{ name: "Options basics", links: [L("options1", "Calls and puts")] }],
+      sources: [S("PEAK6: careers", "https://peak6.com/careers/")]
+    },
+    belvedere: {
+      checked: C,
+      programmes: [{ id: "us", name: "Trading internships (Chicago)", who: "Mostly US students", when: "Summer", apply: "No UK programme found when checked; see the careers page.", url: "https://www.belvederetrading.com/careers/" }],
+      stages: [{ name: "Tests and interviews", detail: "Mental maths, probability and options market making.", links: [...MATH, T("options", "Options drills"), ...MM] }],
+      topics: [{ name: "Options market making", links: [T("options", "Options drills")] }],
+      sources: [S("Belvedere Trading: careers", "https://www.belvederetrading.com/careers/")]
+    },
+    maverick: {
+      checked: C,
+      programmes: [{ id: "us", name: "Trading internships (US)", who: "Mostly US students", when: "Summer", apply: "No UK programme found when checked; see the careers page.", url: "https://www.maverickderivatives.com/careers" }],
+      stages: [{ name: "Tests and interviews", detail: "Mental maths, probability and options questions.", links: [...MATH, T("options", "Options drills")] }],
+      topics: [{ name: "Options and probability", links: [L("options1", "Calls and puts"), T("prob", "Probability Trainer")] }],
+      sources: [S("Maverick: careers", "https://www.maverickderivatives.com/careers")]
+    }
+  });
 })();
 
 var TIP_READY = (function() {

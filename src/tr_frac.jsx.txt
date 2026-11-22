@@ -67,7 +67,7 @@
   }
 
   TIP_TRAINERS.register(trainer({
-    id: "frac", name: "80-in-8 Mental Maths", version: 2,
+    id: "frac", name: "80-in-8 Mental Maths", version: 2, noSpeed: true,
     blurb: "The Optiver 80-in-8 as candidates report it: 80 four-option questions in 8 minutes on whole numbers, decimals, fractions and percentages, answered in order with no skipping, +1 right and −1 wrong. Fractions are sometimes shown unsimplified. A typed-answer practice mode is included.",
     fields: [
       { key: "format", label: "Answer format", type: "sel", choices: [{ value: "mc", label: "Real test: 4 options" }, { value: "typed", label: "Practice: type the answer" }] },

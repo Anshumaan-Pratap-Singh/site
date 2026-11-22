@@ -89,11 +89,20 @@ var TIP = (function () {
     }
     return d;
   }
+  /* one colour per difficulty when a chart splits its sessions into lines */
+  const GCOL = { Easy: "var(--tip-c3)", Medium: "var(--tip-c1)", Hard: "var(--tip-c5)", Custom: "var(--tip-c4)" }, GEXTRA = ["var(--tip-c2)", "var(--tip-c6)"];
   function LineChart({ title, sub, data, fmt, label, height, zero, avgLabel }) {
-    /* data: [{ ts, v, note }] oldest first */
+    /* data: [{ ts, v, note, g }] oldest first. With two or more groups (g, the difficulty) each group gets its own line,
+       and the legend under the chart turns lines off and on; hidden lines leave the axes. */
     const box = useRef(null);
     const [w, setW] = useState(460);
     const [hov, setHov] = useState(null);
+    const [off, setOff] = useState([]);
+    const groups = useMemo(() => { const seen = []; data.forEach(d => { if (d.g != null && typeof d.v === "number" && isFinite(d.v) && !seen.includes(d.g)) seen.push(d.g); });
+      const order = Object.keys(GCOL); return seen.sort((a, b) => (order.indexOf(a) < 0 ? 99 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 99 : order.indexOf(b)) || String(a).localeCompare(String(b))); }, [data]);
+    const multi = groups.length > 1;
+    const colOf = g => GCOL[g] || GEXTRA[Math.max(0, groups.filter(x => !GCOL[x]).indexOf(g)) % GEXTRA.length];
+    const toggle = g => { setHov(null); setOff(o => o.includes(g) ? o.filter(x => x !== g) : [...o, g]); };
     useEffect(() => {
       if (!box.current || !window.ResizeObserver) return;
       const ro = new ResizeObserver(es => { const cw = es[0].contentRect.width; if (cw > 0) setW(cw); });
@@ -101,11 +110,13 @@ var TIP = (function () {
       return () => ro.disconnect();
     }, []);
     const H = height || 190, ml = 44, mr = 14, mt = 10, mb = 26;
-    const pts = data.filter(d => typeof d.v === "number" && isFinite(d.v));
-    const roll = pts.map((d, i) => { const a = pts.slice(Math.max(0, i - 4), i + 1); return a.reduce((x, y) => x + y.v, 0) / a.length; });
+    const pts = data.filter(d => typeof d.v === "number" && isFinite(d.v) && !(multi && off.includes(d.g)));
+    const roll = multi ? [] : pts.map((d, i) => { const a = pts.slice(Math.max(0, i - 4), i + 1); return a.reduce((x, y) => x + y.v, 0) / a.length; });
+    const legendM = multi ? <div className="tip-legend tip-legend-g">{groups.map(g => <button type="button" key={g} className={"tip-lg" + (off.includes(g) ? " off" : "")} aria-pressed={!off.includes(g)}
+      title={(off.includes(g) ? "Show " : "Hide ") + g} onClick={() => toggle(g)}><i style={{ background: colOf(g) }}></i>{g}</button>)}</div> : null;
     const f = fmt || ((v, d) => ie(v, d == null ? 0 : d));
     if (pts.length === 0) return (
-      <div className="tip-cbox"><div className="tip-ch"><h4>{title}</h4>{sub ? <span>{sub}</span> : null}</div><div className="tip-empty">Play a session to see your progress</div></div>
+      <div className="tip-cbox"><div className="tip-ch"><h4>{title}</h4>{sub ? <span>{sub}</span> : null}</div><div className="tip-empty">{multi ? "Every line is hidden. Tap a difficulty below to show it." : "Play a session to see your progress"}</div>{legendM}</div>
     );
     const all = pts.map(d => d.v).concat(roll);
     let lo = Math.min(...all), hi = Math.max(...all);
@@ -119,8 +130,10 @@ var TIP = (function () {
     const iw = Math.max(40, w - ml - mr), ih = H - mt - mb;
     const X = i => ml + (pts.length === 1 ? iw / 2 : (i / (pts.length - 1)) * iw);
     const Y = v => mt + ih - ((v - y0) / ((y1 - y0) || 1)) * ih;
-    const line = monotone(pts.map((d, i) => [X(i), Y(d.v)]));
-    const avg = pts.length > 2 ? monotone(roll.map((v, i) => [X(i), Y(v)])) : null;
+    const line = multi ? null : monotone(pts.map((d, i) => [X(i), Y(d.v)]));
+    const avg = !multi && pts.length > 2 ? monotone(roll.map((v, i) => [X(i), Y(v)])) : null;
+    const series = multi ? groups.filter(g => !off.includes(g)).map(g => { const idx = pts.map((d, i) => d.g === g ? i : -1).filter(i => i >= 0);
+      return { g, idx, d: idx.length > 1 ? monotone(idx.map(i => [X(i), Y(pts[i].v)])) : null }; }) : [];
     const every = Math.max(1, Math.ceil(pts.length / Math.max(1, Math.floor(iw / 64))));
     const onMove = e => {
       const r = e.currentTarget.getBoundingClientRect(), x = (e.clientX - r.left) * (w / r.width);
@@ -139,18 +152,20 @@ var TIP = (function () {
             {pts.map((d, i) => (i % every === 0 && (i + every <= pts.length - 1 || i === pts.length - 1)) || i === pts.length - 1 ? <text key={i} x={X(i)} y={H - 6} textAnchor={pts.length > 1 && i === pts.length - 1 ? "end" : pts.length > 1 && i === 0 ? "start" : "middle"} className="tip-axis">{xl(i)}</text> : null)}
             {hov != null ? <rect x={X(hov) - Math.max(6, iw / pts.length / 2)} y={mt} width={Math.max(12, iw / pts.length)} height={ih} className="tip-cursor" /> : null}
             {avg ? <path d={avg} className="tip-l2" pathLength="1" /> : null}
-            <path d={line} className="tip-l1" pathLength="1" />
-            {pts.map((d, i) => <circle key={i} cx={X(i)} cy={Y(d.v)} r={hov === i ? 5 : 3} className={"tip-dot1" + (hov === i ? " on" : "")} style={{ animationDelay: (0.3 + i * 0.02) + "s" }} />)}
+            {multi ? series.map(S => S.d ? <path key={"l" + S.g + off.length} d={S.d} className="tip-l1" pathLength="1" style={{ stroke: colOf(S.g) }} /> : null) : <path d={line} className="tip-l1" pathLength="1" />}
+            {pts.map((d, i) => <circle key={i + "-" + off.length} cx={X(i)} cy={Y(d.v)} r={hov === i ? 5 : 3} className={"tip-dot1" + (hov === i ? " on" : "")}
+              style={{ animationDelay: (0.3 + i * 0.02) + "s", ...(multi ? { stroke: colOf(d.g), fill: hov === i ? colOf(d.g) : undefined } : {}) }} />)}
           </svg>
           {hp ? (
             <div className="tip-tip" style={{ left: tipLeft, top: 6, width: TW }}>
               <div className="tip-tip-h">{(oneDay ? "Session " + (hov + 1) + " · " : "") + fmtWhen(hp.ts) + (hp.note ? " · " + hp.note : "")}</div>
-              <div className="tip-tip-r"><i className="c1"></i>{label || "Value"}: <b>{f(hp.v)}</b></div>
+              <div className="tip-tip-r"><i className="c1" style={multi ? { background: colOf(hp.g) } : undefined}></i>{multi ? hp.g + " · " : ""}{label || "Value"}: <b>{f(hp.v)}</b></div>
               {avg ? <div className="tip-tip-r"><i className="c2"></i>{avgLabel || "5-session avg"}: <b>{f(roll[hov])}</b></div> : null}
             </div>
           ) : null}
         </div>
         {avg ? <div className="tip-legend"><span><i className="c1"></i>per session</span><span><i className="c2 dash"></i>{avgLabel || "5-session avg"}</span></div> : null}
+        {legendM}
       </div>
     );
   }
@@ -251,6 +266,7 @@ var TIP = (function () {
     const [ask, setAsk] = useState(null);   /* {all:true} | {play} */
     const [showAll, setShowAll] = useState(false);
     const vals = plays.map(valOf).filter(v => typeof v === "number");
+    const diffAt = useMemo(() => Object.fromEntries(plays.map(p => [p.ts, p.diff || "Other"])), [plays]);
     const best = vals.length ? Math.max(...vals) : null;
     const latest = vals.length ? vals[vals.length - 1] : null;
     const top = plays.filter(p => typeof valOf(p) === "number").slice().sort((a, b) => valOf(b) - valOf(a)).slice(0, 5);
@@ -372,14 +388,14 @@ var TIP = (function () {
                 <div className="tip-stat"><span>Latest</span><b className={metric === "pnl" ? Xe(latest || 0) : ""}>{fmtVal(latest)}</b></div>
               </div>
               <LineChart title={metric === "pnl" ? "P&L per session" : "Score progression"} sub={metric === "pnl" ? "dollars" : "points per session"} label={metric === "pnl" ? "P&L" : "Score"} zero={metric === "pnl"}
-                data={plays.map(p => ({ ts: p.ts, v: valOf(p), note: [p.diff, p.modeLabel].filter(Boolean).join(" \u00b7 ") }))}
+                data={plays.map(p => ({ ts: p.ts, v: valOf(p), note: [p.diff, p.modeLabel].filter(Boolean).join(" \u00b7 "), g: game.fixed ? undefined : p.diff || "Other" }))}
                 fmt={game.fmtVal ? (v => game.fmtVal(v, clean)) : metric === "pnl" ? ((v, d) => Be(v, d == null ? 0 : d)) : ((v, d) => ie(v, d != null ? d : Number.isInteger(v) ? 0 : 1))} />
               {game.extraStats ? game.extraStats(plays, clean) : null}
             </section>
             {game.charts && plays.length && game.charts(plays, clean).length ? (
               <section className="card tip-panel">
                 <h3 className="tip-h">Progress</h3>
-                {game.charts(plays, clean).map(c => <LineChart key={c.title} {...c} />)}
+                {game.charts(plays, clean).map(c => <LineChart key={c.title} {...c} data={game.fixed ? c.data : c.data.map(d => d.g != null ? d : { ...d, g: diffAt[d.ts] })} />)}
               </section>
             ) : null}
             <section className="card tip-panel">

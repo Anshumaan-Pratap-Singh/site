@@ -169,16 +169,16 @@ var TIP_MMT = (function () {
     note: c => c.mode === "untimed" ? "Sprint score is questions a minute, so a faster finish scores higher." : c.hard ? "Hard: press Enter to submit; +1 right, −1 wrong, Tab skips for 0." : "A right answer moves on as you type it. Enter skips.",
     extraStats: plays => {
       if (!plays.length) return null;
-      const tot = plays.reduce((a, p) => a + (p.total || 0), 0), c = plays.reduce((a, p) => a + (p.correct || 0), 0), qpm = plays.slice(-5).reduce((a, p) => a + (p.qpm || 0), 0) / Math.min(5, plays.length);
+      const tot = plays.reduce((a, p) => a + (p.total || 0), 0), c = plays.reduce((a, p) => a + (p.correct || 0), 0);
+      const accs = plays.filter(p => p.total).map(p => Math.round(100 * p.correct / p.total)), best = accs.length ? Math.max(...accs) : null;
       return <div className="tip-stats tip-stats4">
         <div className="tip-stat"><span>Accuracy</span><b>{tot ? Math.round(100 * c / tot) + "%" : "—"}</b><em>{c}/{tot} questions</em></div>
-        <div className="tip-stat"><span>Last 5 sessions</span><b>{qpm.toFixed(1)}</b><em>questions a minute</em></div>
+        <div className="tip-stat"><span>Best accuracy</span><b>{best == null ? "—" : best + "%"}</b><em>in one session</em></div>
         <div className="tip-stat"><span>Questions answered</span><b>{tot}</b><em>all sessions</em></div>
         <div className="tip-stat"><span>Imported</span><b>{plays.filter(p => p.imported).length}</b><em>from the old trainer</em></div>
       </div>;
     },
     charts: plays => [
-      { title: "Speed", sub: "questions a minute", label: "Q/min", data: plays.filter(p => p.qpm != null).map(p => ({ ts: p.ts, v: p.qpm, note: p.setting })), fmt: v => v.toFixed(1) },
       { title: "Accuracy", sub: "% answered right", label: "Accuracy", data: plays.filter(p => p.total).map(p => ({ ts: p.ts, v: 100 * p.correct / p.total, note: p.setting })), fmt: v => Math.round(v) + "%" },
     ],
     component: Game,
