@@ -1,0 +1,41 @@
+/* Pincode Game: digit span as in game-based memory tests. Digits flash one at a time; type them back in order,
+   reversed or sorted. The length adapts (one longer after a success, one shorter after a miss), so the result is
+   your span. */
+(function () {
+  const { TH, TF } = TIP;
+  const { trainer } = TIP_DRILL;
+  const K = TIP_KIT;
+  function lenOf(s, hist) { let L = s.start; hist.forEach(h => { L = Math.max(3, Math.min(14, L + (h.ok ? 1 : -1))); }); return L; }
+  function gen(r, s, i, hist) {
+    const L = lenOf(s, hist), mode = s.mode === "mix" ? r.pick(["order", "reverse", "sorted"]) : s.mode;
+    const d = []; while (d.length < L) { const x = r.int(0, 9); if (!d.length || d[d.length - 1] !== x) d.push(x); }
+    const ans = mode === "reverse" ? d.slice().reverse() : mode === "sorted" ? d.slice().sort((a, b) => a - b) : d;
+    const ms = s.speed * 1000;
+    return {
+      kind: "len" + L, text: `${L} digits, ${mode === "order" ? "in order" : mode}: ${d.join(" ")}`, answer: ans.join(""), len: L,
+      memo: <div className="pc-flash"><div className="oa-lbl">Remember {L} digits</div><div className="pc-slot">{d.map((x, j) => <b key={j} style={{ animationDelay: (j * ms) + "ms", animationDuration: ms + "ms" }}>{x}</b>)}</div>
+        <div className="pc-dots">{d.map((x, j) => <i key={j} style={{ animationDelay: (j * ms) + "ms" }} />)}</div></div>,
+      memoMs: L * ms + 250,
+      prompt: <div className="col" style={{ alignItems: "center", gap: 8 }}><div className="oa-lbl">Type the digits {mode === "order" ? "in the order shown" : mode === "reverse" ? "in REVERSE order" : "from SMALLEST to largest"}</div><div className="oa-mid">{L} digits</div></div>,
+      input: "num", placeholder: "Digits", check: v => String(v).replace(/\D/g, "") === ans.join(""),
+      explain: `Shown: ${d.join(" ")}.`,
+    };
+  }
+  function summary(hist) {
+    const best = Math.max(0, ...hist.filter(h => h.ok).map(h => parseInt(String(h.kind).slice(3), 10) || 0));
+    return [{ label: "Digit span", value: String(best || "—"), key: "span", raw: best, sub: "longest recalled" }];
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "pincode", name: "Pincode Game", version: 2, metric: "score",
+    blurb: "Digit span as in game-based memory tests: digits flash one at a time, then you type them back in order, reversed or sorted. The length grows after every success and shrinks after a miss, so your score is your span.",
+    fields: [
+      { key: "count", label: "Trials", type: "num", min: 6, max: 30 },
+      { key: "start", label: "Starting length", type: "num", min: 3, max: 9 },
+      { key: "speed", label: "Seconds per digit", type: "sel", choices: [{ value: 1, label: "1.0s" }, { value: 0.75, label: "0.75s" }, { value: 0.5, label: "0.5s" }] },
+      { key: "mode", label: "Recall", type: "sel", choices: [{ value: "order", label: "In order" }, { value: "reverse", label: "Reversed" }, { value: "sorted", label: "Sorted" }, { value: "mix", label: "Mixed" }] },
+      { key: "time", label: "Time to answer", type: "num", min: 5, max: 40, unit: "s" },
+    ],
+    presets: { Easy: { count: 10, start: 4, speed: 1, mode: "order", time: 20 }, Medium: { count: 14, start: 5, speed: 0.75, mode: "mix", time: 15 }, Hard: { count: 18, start: 6, speed: 0.5, mode: "mix", time: 12 } },
+    note: "Typical adults hold about 7 digits forwards and 5 backwards.",
+  }, { gen, count: s => s.count, perQSecs: s => s.time, summary }));
+})();

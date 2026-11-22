@@ -1,0 +1,55 @@
+/* Build the Pattern: a constructive reasoning task like the build-the-next-frame games in Arctic Shores-style
+   assessments. Three frames follow rules in shape count, rotation and shading; build the fourth yourself. */
+(function () {
+  const { TH, TF, R } = TIP;
+  const { useState } = R;
+  const { trainer } = TIP_DRILL;
+  const K = TIP_KIT;
+  const FILLS = ["none", "half", "solid"], KINDS = ["arrow", "triangle", "star", "cross"];
+  function Frame({ f, big }) {
+    const n = f.count, pos = Array.from({ length: n }, (_, i) => { const c = Math.min(3, n), row = Math.floor(i / 3), col = i % 3, inRow = Math.min(3, n - row * 3); return [50 + (col - (inRow - 1) / 2) * 30, 50 + (row - (Math.ceil(n / 3) - 1) / 2) * 30]; });
+    return <K.Art w={100} h={100}><rect x="2" y="2" width="96" height="96" rx="12" className="tile" />{pos.map((p, i) => <K.Shape key={i} kind={f.kind} x={p[0]} y={p[1]} r={11} rot={f.rot} fill={f.fill} tone={f.tone} />)}</K.Art>;
+  }
+  function Builder({ base, submit, running }) {
+    const [f, setF] = useState({ ...base, count: 1, rot: 0, fill: "none" });
+    const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+    return <div className="pt-build">
+      <div className="pt-prev"><Frame f={f} /></div>
+      <div className="pt-ctl">
+        <div><span className="oa-lbl">Shapes</span><div className="row"><button className="btn sm" onClick={() => set("count", Math.max(1, f.count - 1))}>−</button><b>{f.count}</b><button className="btn sm" onClick={() => set("count", Math.min(6, f.count + 1))}>+</button></div></div>
+        <div><span className="oa-lbl">Rotation</span><div className="row"><button className="btn sm" onClick={() => set("rot", f.rot - 45)}>⟲ 45°</button><b>{((f.rot % 360) + 360) % 360}°</b><button className="btn sm" onClick={() => set("rot", f.rot + 45)}>⟳ 45°</button></div></div>
+        <div><span className="oa-lbl">Shading</span><div className="row">{FILLS.map(x => <button key={x} className={"btn sm" + (f.fill === x ? " primary" : "")} onClick={() => set("fill", x)}>{x === "none" ? "Empty" : x === "half" ? "Half" : "Solid"}</button>)}</div></div>
+        <button className="start" disabled={!running} onClick={() => submit(f)}>Submit frame</button>
+      </div>
+    </div>;
+  }
+  const SYM = { arrow: 360, triangle: 120, star: 72, cross: 90 };
+  const eqF = (a, b) => a.count === b.count && a.fill === b.fill && ((a.rot - b.rot) % SYM[a.kind] + SYM[a.kind]) % SYM[a.kind] === 0;
+  function gen(r, s) {
+    const kind = r.pick(KINDS), tone = r.pick([1, 3, 5]);
+    const n = s.level === 1 ? 2 : 3, ch = r.shuffle(["count", "rot", "fill"]).slice(0, n);
+    const c0 = r.int(1, 2), cs = r.pick([1, 1, 2]), r0 = r.pick([0, 45, 90]), rs = r.pick(kind === "cross" ? [45] : [45, 90, -45, -90]), f0 = r.int(0, 2), fs = r.pick([1, 2]);
+    const at = i => ({ kind, tone, count: ch.includes("count") ? Math.min(6, c0 + cs * i) : c0 + 1, rot: ch.includes("rot") ? r0 + rs * i : r0, fill: FILLS[ch.includes("fill") ? (f0 + fs * i) % 3 : f0] });
+    if (at(3).count > 6) return gen(r, s);
+    const ans = at(3);
+    const words = ch.map(c => ({ count: `${cs} more shape${cs > 1 ? "s" : ""} each frame`, rot: `turns ${Math.abs(rs)}° ${rs > 0 ? "clockwise" : "anticlockwise"} each frame`, fill: fs === 1 ? "shading cycles empty → half → solid" : "shading cycles empty → solid → half" })[c]);
+    return {
+      text: "Build the fourth frame", answer: `${ans.count} × ${kind}, ${((ans.rot % 360) + 360) % 360}°, ${ans.fill === "none" ? "empty" : ans.fill}`, explain: "Rules: " + words.join("; ") + ".", kind: ch.sort().join("+"),
+      prompt: <div className="col" style={{ alignItems: "center", gap: 8 }}><div className="oa-lbl">Build the frame that comes next</div>
+        <div className="ir-row">{[0, 1, 2].map(i => <div key={i} className="ir-cell" style={{ animationDelay: i * 0.06 + "s" }}><Frame f={at(i)} /></div>)}<div className="ir-cell q">?</div></div></div>,
+      input: "custom", render: ({ submit, running }) => <Builder base={{ kind, tone }} submit={submit} running={running} />,
+      check: f => f && typeof f === "object" && eqF(f, ans), givenText: f => f && typeof f === "object" ? `${f.count} × ${kind}, ${((f.rot % 360) + 360) % 360}°, ${f.fill === "none" ? "empty" : f.fill}` : "no answer",
+    };
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "pattern", name: "Build the Pattern", version: 2,
+    blurb: "A constructive reasoning task like the build-the-next-frame games in Arctic Shores-style assessments: three frames change by rules in shape count, rotation and shading, and you build the fourth frame yourself instead of picking it.",
+    fields: [
+      { key: "count", label: "Puzzles", type: "num", min: 4, max: 20 },
+      { key: "time", label: "Time per puzzle", type: "num", min: 15, max: 180, unit: "s" },
+      { key: "level", label: "Rules at once", type: "sel", choices: [{ value: 1, label: "Two" }, { value: 2, label: "Three" }] },
+    ],
+    presets: { Easy: { count: 6, time: 90, level: 1 }, Medium: { count: 10, time: 60, level: 2 }, Hard: { count: 14, time: 40, level: 2 } },
+    note: "Shapes with rotational symmetry count as the same at equivalent angles.",
+  }, { gen, count: s => s.count, perQSecs: s => s.time, always: true }));
+})();

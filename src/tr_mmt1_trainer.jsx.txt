@@ -1,0 +1,232 @@
+/* Mental Math Trainer, moved in from the standalone artifact (22 Nov 2026) and redrawn on the shared trainer screen.
+   Same engine (MMT_ENGINE), same three modes (Timed, Sprint to a target, Tricks), same typing rules:
+   a right answer moves on as soon as it is typed; in Hard mode you press Enter to submit and a wrong answer costs a point.
+   Runs from the standalone trainer are copied into this app's database once (doc data/users/<id>/mmtImport)
+   and merged into the trainer's history the first time the app opens (TIP_MMT.Migrate, rendered next to TIP_LEARN.Host). */
+var TIP_MMT = (function () {
+  const { TH, TF, R, typing } = TIP;
+  const { useState, useEffect, useMemo, useRef, useCallback } = R;
+  const K = TIP_KIT, E = MMT_ENGINE;
+  const ch = (o, short) => Object.keys(o).map(k => ({ value: k, label: o[k], short: short ? short[k] : undefined }));
+  const OPS = [{ value: "add", label: "+ Add" }, { value: "sub", label: "− Subtract" }, { value: "mul", label: "× Multiply" }, { value: "div", label: "÷ Divide" }];
+  const ALL_OPS = ["add", "sub", "mul", "div"], ALL_PCT = ["easy", "comp", "what", "rev"], ALL_TR = Object.keys(E.TRICK_NAMES);
+  const MODE = { normal: "Timed", untimed: "Sprint", tricks: "Tricks" };
+  const notTricks = s => s.mode !== "tricks";
+  const has = (s, t) => (s.types || []).includes(t);
+  const num = (key, label, min, max, extra) => ({ key, label, type: "num", min, max, ...(extra || {}) });
+
+  /* flat settings (as the shared screen keeps them) -> the engine's nested settings */
+  function toEngine(s) {
+    const o = a => Object.fromEntries(a.map(k => [k, true]));
+    const set = (all, on) => Object.fromEntries(all.map(k => [k, (on || []).includes(k)]));
+    return {
+      mode: s.mode, hard: !!s.hard, duration: s.duration, target: s.target,
+      types: set(["int", "pct", "frac", "dec"], s.types), intOps: set(ALL_OPS, s.intOps), pctOps: set(ALL_PCT, s.pctOps), fracOps: set(ALL_OPS, s.fracOps), decOps: set(ALL_OPS, s.decOps),
+      tricks: set(ALL_TR, s.tricks), ranges: { addA: [s.addA1, s.addA2], addB: [s.addB1, s.addB2], mulA: [s.mulA1, s.mulA2], mulB: [s.mulB1, s.mulB2] },
+    };
+  }
+  const label = s => (s.mode === "untimed" ? s.target + "Q" : s.duration + "s") + (s.hard ? " Hard" : "");
+
+  /* ---------------- the game ---------------- */
+  const KEYS_N = ["7", "8", "9", "back", "4", "5", "6", "/", "1", "2", "3", ".", "0", "-", "clear", "skip"];
+  const KEYS_H = ["7", "8", "9", "back", "4", "5", "6", "/", "1", "2", "3", ".", "0", "-", "skip", "enter"];
+  const KLAB = { back: "⌫", skip: "Skip", clear: "Clear", enter: "⏎" };
+  let touchSeen = false;
+  try { window.addEventListener("pointerdown", e => { if (e.pointerType === "touch") touchSeen = true; }, true); } catch (e) {}
+  const isTouch = () => { if (touchSeen) return true; try { return matchMedia("(pointer: coarse)").matches; } catch (e) { return false; } };
+  const fmtClock = (ms, tenths) => { ms = Math.max(0, ms); const t = Math.floor(ms / 100), m = Math.floor(t / 600), s = Math.floor(t % 600 / 10); return m + ":" + String(s).padStart(2, "0") + (tenths ? "." + (t % 10) : ""); };
+
+  function Game({ settings: s, onFinish, onRestart }) {
+    const es = useMemo(() => toEngine(s), []);
+    const gen = useMemo(() => E.makeGenerator(es), []);
+    const timed = s.mode !== "untimed", hard = !!s.hard, durMs = s.duration * 1000;
+    const [q, setQ] = useState(() => gen());
+    const [inp, setInp] = useState(""), [bad, setBad] = useState(false), [qi, setQi] = useState(0), [count, setCount] = useState(0), [flash, setFlash] = useState(null);
+    const [done, setDone] = useState(null);
+    const st = useRef({ start: performance.now(), qStart: performance.now(), mk: 0, log: [], correct: 0, wrong: 0, skipped: 0, input: "", bad: false, q: null, done: false, streak: 0 });
+    st.current.q = q;
+    const [touch] = useState(isTouch);
+    const tick = TIP.useNow(!done, 100), now = performance.now();   /* useNow only re-renders; times use performance.now() */
+    const finish = useCallback(() => {
+      const p = st.current; if (p.done) return; p.done = true;
+      const totalMs = timed ? durMs : performance.now() - p.start, log = p.log, ok = log.filter(x => !x.sk && !x.wr);
+      const avgMs = ok.length ? ok.reduce((a, x) => a + x.ms, 0) / ok.length : null, qpm = totalMs > 0 ? ok.length / (totalMs / 60000) : 0;
+      const ft = log.length ? log.filter(x => !x.sk && !x.wr && x.mk === 0).length / log.length : 0;
+      const score = s.mode === "untimed" ? Math.round(qpm * 10) / 10 : hard ? p.correct - p.wrong : p.correct;
+      setDone({ log, totalMs, res: { score, correct: p.correct, wrong: p.wrong, skipped: p.skipped, total: log.length, acc: log.length ? p.correct / log.length : 0, avgMs, qpm: Math.round(qpm * 10) / 10, ft: Math.round(ft * 1000) / 1000, mode: s.mode, hard, setting: label(s), modeLabel: MODE[s.mode] + (hard ? " · Hard" : "") } });
+    }, []);
+    useEffect(() => { if (timed && !done && performance.now() - st.current.start >= durMs) finish(); }, [tick]);
+    const next = useCallback(kind => {
+      const p = st.current; if (p.done) return;
+      const t = performance.now(), Q = p.q;
+      const row = { t: Q.text, a: E.ansStr(Q.ans), ms: Math.round(t - p.qStart), mk: p.mk + (kind === "wrong" ? 1 : 0), sk: kind === "skip", sub: Q.sub };
+      if (kind === "wrong") { row.wr = true; row.g = p.input; }
+      p.log.push(row);
+      if (kind === "ok") { p.correct++; p.streak++; } else if (kind === "wrong") { p.wrong++; p.streak = 0; } else { p.skipped++; p.streak = 0; }
+      p.qStart = t; p.mk = 0; p.input = ""; p.bad = false; setInp(""); setBad(false); setFlash(kind);
+      if (!timed) { const n = hard ? p.log.length : p.correct; setCount(n); if (n >= s.target) { finish(); return; } }
+      setQ(gen()); setQi(i => i + 1);
+    }, []);
+    const type = useCallback(v => {
+      const p = st.current; if (p.done || v.length > 14) return;
+      if (v.length < p.input.length && !p.bad) p.mk++;
+      const r = E.check(v, p.q.ans);
+      if (r === "correct" && !hard) { next("ok"); return; }
+      if (r === "impossible" && v.length > p.input.length && !p.bad) p.mk++;
+      p.input = v; p.bad = r === "impossible"; setInp(v); setBad(p.bad);
+    }, []);
+    const press = useCallback(k => {
+      const p = st.current; if (p.done) return;
+      if (k === "skip") return next("skip");
+      if (k === "enter") { if (p.input) next(E.check(p.input, p.q.ans) === "correct" ? "ok" : "wrong"); return; }
+      if (k === "back") return type(p.input.slice(0, -1));
+      if (k === "clear") { if (p.input) { if (!p.bad) p.mk++; p.input = ""; p.bad = false; setInp(""); setBad(false); } return; }
+      type(p.input + k);
+    }, []);
+    useEffect(() => {
+      if (done) return;
+      const h = e => {
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        if (e.key === "Enter") { e.preventDefault(); press(hard ? "enter" : "skip"); }
+        else if (e.key === "Tab") { e.preventDefault(); if (hard) press("skip"); }
+        else if (e.key === "Backspace") { e.preventDefault(); press("back"); }
+        else if (e.key === "Delete") { e.preventDefault(); press("clear"); }
+        else if (/^[0-9.\-/]$/.test(e.key)) { e.preventDefault(); press(e.key); }
+      };
+      window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
+    }, [done]);
+    useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(null), 260); return () => clearTimeout(t); }, [flash, qi]);
+    const hist = done ? done.log.map(x => ({ ok: !x.sk && !x.wr, skipped: x.sk, given: x.g, answer: x.a, text: x.t })) : [];
+    const errIds = TIP_READY.useErrLog(!!done, hist, "mmt");
+    Jt(!!done, done && done.res, onFinish);
+
+    if (done) {
+      const r = done.res, log = done.log, sprint = s.mode === "untimed";
+      const slow = log.map((x, i) => ({ ...x, i })).filter(x => !x.sk && !x.wr).sort((a, b) => b.ms - a.ms).slice(0, 5);
+      const rev = [...log.map((x, i) => ({ ...x, i })).filter(x => x.wr || x.sk), ...slow];
+      return <K.Result headline={sprint ? `${s.target} in ${fmtClock(done.totalMs, true)}` : hard ? `${r.score > 0 ? "+" : ""}${r.score} net` : `${r.correct} correct`}
+        sub={`${MODE[s.mode]} · ${label(s)} · ${r.correct} right, ${r.wrong} wrong, ${r.skipped} skipped`}
+        ring={r.acc} ringLabel={Math.round(r.acc * 100) + "%"} onRestart={onRestart}
+        metrics={[
+          { label: "Questions a minute", value: r.qpm.toFixed(1), tone: "up" },
+          { label: "Avg time", value: r.avgMs == null ? "—" : (r.avgMs / 1000).toFixed(1) + "s", sub: "per correct answer" },
+          { label: "First try", value: Math.round(r.ft * 100) + "%", sub: "right with no backspace" },
+          { label: "Accuracy", value: Math.round(r.acc * 100) + "%", sub: `${r.correct}/${r.total}` },
+        ]}
+        notes={hard ? "Hard mode marks like the 80-in-8: +1 right, −1 wrong, 0 skipped. Skip anything that would take more than about 10 seconds." : "Below: every wrong or skipped question, then your five slowest. Slow ones are the patterns worth a lesson."}
+        review={rev.map(x => ({ tag: errIds[x.i], ok: x.wr ? false : x.sk ? null : true, text: x.t, shown: x.sk ? "skipped" : x.wr ? x.g : x.a, answer: x.a, explain: x.sub, ms: x.ms }))} />;
+    }
+    const el = now - st.current.start, frac = timed ? Math.max(0, 1 - el / durMs) : Math.min(1, count / s.target);
+    const keys = hard ? KEYS_H : KEYS_N;
+    return (
+      <K.Stage title="Mental Math Trainer" sub={MODE[s.mode] + (hard ? " · Hard" : "") + " · " + label(s).replace(" Hard", "")}
+        clock={timed ? (durMs - el) / 1000 : null} clockFrac={timed ? frac : null}
+        stats={timed ? [{ label: hard ? "Net" : "Score", value: hard ? st.current.correct - st.current.wrong : st.current.correct, pop: true }, { label: "Streak", value: st.current.streak, tone: st.current.streak >= 5 ? "hot" : "", pop: true }]
+          : [{ label: "Time", value: fmtClock(el, true) }, { label: hard ? "Answered" : "Solved", value: count + "/" + s.target, pop: true }]} cls="mt-stage">
+        {!timed ? <div className="tip-wbar mt-prog"><i style={{ width: frac * 100 + "%" }}></i></div> : null}
+        <div className={"mt-q" + (flash ? " " + flash : "")} key={qi}>
+          <div className="mt-text">{TIP.FT(q.text)}</div>
+          <div className={"mt-ans" + (bad ? " bad" : "")}><span className="mt-eq">=</span><span className="mt-typed">{inp}<i className="mt-caret"></i></span></div>
+          <div className="mt-sub">{q.sub}</div>
+        </div>
+        {touch ? <div className="mt-pad">{keys.map((k, i) => <button key={k + i} type="button" className={"mt-key" + (k === "skip" || k === "enter" || k === "clear" ? " w" : "")} onPointerDown={e => { e.preventDefault(); press(k); }}>{KLAB[k] || k}</button>)}</div>
+          : <div className="mt-help">{hard ? <TF><span><kbd>Enter</kbd> submit</span><span><kbd>Tab</kbd> skip</span></TF> : <span><kbd>Enter</kbd> skip</span>}<span><kbd>Backspace</kbd> fix</span><span><kbd>Delete</kbd> clear</span><span>Fractions as <b>3/4</b></span></div>}
+      </K.Stage>
+    );
+  }
+
+  /* ---------------- definition ---------------- */
+  const BASE = { types: ["int"], intOps: ALL_OPS, pctOps: ALL_PCT, fracOps: ALL_OPS, decOps: ALL_OPS, tricks: ALL_TR, target: 25 };
+  const def = {
+    id: "mmt", name: "Mental Math Trainer", metric: "score", unit: " pts", version: 1, playFilter: p => (p.v || 1) === 1,
+    blurb: "Zetamac-style speed arithmetic: integers, percentages, fractions and decimals, a sprint mode and drills on nine shortcuts. Answers go through the moment they are right; Hard mode adds 80-in-8 negative marking.",
+    splitBy: "mode",
+    fmtVal: (v, c) => c && c.mode === "untimed" ? Number(v).toFixed(1) + "/min" : (v > 0 && c && c.hard ? "+" : "") + Math.round(v) + (Math.abs(v) === 1 ? " pt" : " pts"),
+    check: c => E.validate(toEngine(c)),
+    fields: [
+      { key: "mode", label: "Mode", type: "sel", wide: true, always: true, choices: [{ value: "normal", label: "Timed: as many as you can" }, { value: "untimed", label: "Sprint: race to a target" }, { value: "tricks", label: "Tricks: drill the nine shortcuts" }] },
+      { key: "types", label: "Number types", type: "multi", wide: true, always: true, choices: ch(E.TYPE_NAMES) },
+      { key: "tricks", label: "Tricks", type: "multi", wide: true, always: true, showIf: c => c.mode === "tricks", choices: ch(E.TRICK_NAMES, E.TRICK_SHORT) },
+      { key: "intOps", label: "Integer operations", type: "multi", wide: true, always: true, showIf: c => notTricks(c) && has(c, "int"), choices: OPS },
+      { key: "pctOps", label: "Percentage questions", type: "multi", wide: true, always: true, showIf: c => notTricks(c) && has(c, "pct"), choices: ch(E.PCT_NAMES) },
+      { key: "fracOps", label: "Fraction operations", type: "multi", wide: true, always: true, showIf: c => notTricks(c) && has(c, "frac"), choices: OPS },
+      { key: "decOps", label: "Decimal operations", type: "multi", wide: true, always: true, showIf: c => notTricks(c) && has(c, "dec"), choices: OPS },
+      { key: "duration", label: "Duration", type: "sel", showIf: c => c.mode !== "untimed", choices: [60, 120, 180, 360, 600].map(v => ({ value: v, label: v < 120 ? v + "s" : v / 60 + " min" })) },
+      { key: "target", label: "Target", type: "sel", showIf: c => c.mode === "untimed", choices: [25, 50, 100].map(v => ({ value: v, label: v + " questions" })) },
+      { key: "hard", label: "Negative marking", type: "bool" },
+      { key: "addRange", label: "Addition numbers", type: "info", presetOnly: true, showIf: c => notTricks(c) && has(c, "int"), text: c => `${c.addA1}\u2013${c.addA2} + ${c.addB1}\u2013${c.addB2}` },
+      { key: "mulRange", label: "Multiplication numbers", type: "info", presetOnly: true, showIf: c => notTricks(c) && has(c, "int"), text: c => `${c.mulA1}\u2013${c.mulA2} \u00d7 ${c.mulB1}\u2013${c.mulB2}` },
+      num("addA1", "Add: first from", 1, 9999, { showIf: c => notTricks(c) && has(c, "int"), customOnly: true }), num("addA2", "Add: first to", 1, 9999, { showIf: c => notTricks(c) && has(c, "int"), customOnly: true }),
+      num("addB1", "Add: second from", 1, 9999, { showIf: c => notTricks(c) && has(c, "int"), customOnly: true }), num("addB2", "Add: second to", 1, 9999, { showIf: c => notTricks(c) && has(c, "int"), customOnly: true }),
+      num("mulA1", "Multiply: first from", 1, 999, { showIf: c => notTricks(c) && has(c, "int"), customOnly: true }), num("mulA2", "Multiply: first to", 1, 999, { showIf: c => notTricks(c) && has(c, "int"), customOnly: true }),
+      num("mulB1", "Multiply: second from", 1, 9999, { showIf: c => notTricks(c) && has(c, "int"), customOnly: true }), num("mulB2", "Multiply: second to", 1, 9999, { showIf: c => notTricks(c) && has(c, "int"), customOnly: true }),
+    ],
+    presets: {
+      Easy: { ...BASE, mode: "normal", duration: 120, hard: false, addA1: 2, addA2: 50, addB1: 2, addB2: 50, mulA1: 2, mulA2: 10, mulB1: 2, mulB2: 20 },
+      Medium: { ...BASE, mode: "normal", duration: 120, hard: false, addA1: 2, addA2: 100, addB1: 2, addB2: 100, mulA1: 2, mulA2: 12, mulB1: 2, mulB2: 100 },
+      Hard: { ...BASE, mode: "normal", duration: 120, hard: true, addA1: 10, addA2: 1000, addB1: 10, addB2: 1000, mulA1: 2, mulA2: 20, mulB1: 10, mulB2: 100 },
+    },
+    note: c => c.mode === "untimed" ? "Sprint score is questions a minute, so a faster finish scores higher." : c.hard ? "Hard: press Enter to submit; +1 right, −1 wrong, Tab skips for 0." : "A right answer moves on as you type it. Enter skips.",
+    extraStats: plays => {
+      if (!plays.length) return null;
+      const tot = plays.reduce((a, p) => a + (p.total || 0), 0), c = plays.reduce((a, p) => a + (p.correct || 0), 0), qpm = plays.slice(-5).reduce((a, p) => a + (p.qpm || 0), 0) / Math.min(5, plays.length);
+      return <div className="tip-stats tip-stats4">
+        <div className="tip-stat"><span>Accuracy</span><b>{tot ? Math.round(100 * c / tot) + "%" : "—"}</b><em>{c}/{tot} questions</em></div>
+        <div className="tip-stat"><span>Last 5 sessions</span><b>{qpm.toFixed(1)}</b><em>questions a minute</em></div>
+        <div className="tip-stat"><span>Questions answered</span><b>{tot}</b><em>all sessions</em></div>
+        <div className="tip-stat"><span>Imported</span><b>{plays.filter(p => p.imported).length}</b><em>from the old trainer</em></div>
+      </div>;
+    },
+    charts: plays => [
+      { title: "Speed", sub: "questions a minute", label: "Q/min", data: plays.filter(p => p.qpm != null).map(p => ({ ts: p.ts, v: p.qpm, note: p.setting })), fmt: v => v.toFixed(1) },
+      { title: "Accuracy", sub: "% answered right", label: "Accuracy", data: plays.filter(p => p.total).map(p => ({ ts: p.ts, v: 100 * p.correct / p.total, note: p.setting })), fmt: v => Math.round(v) + "%" },
+    ],
+    component: Game,
+  };
+  TIP_TRAINERS.register(def);
+
+  /* ---------------- lessons hand a config to the trainer ---------------- */
+  function drill(d) {
+    const base = { ...def.presets.Medium };
+    TIP.pending = { id: "mmt", cfg: { ...base, ...d } };
+    location.hash = "trainers-mmt";
+  }
+
+  /* ---------------- one-time copy of the old trainer's runs ---------------- */
+  function fromOld(x) {
+    const qs = x.qs || [], ok = qs.filter(q => !q.sk && !q.wr), totalMs = x.totalMs || 0;
+    const qpm = totalMs > 0 ? ok.length / (totalMs / 60000) : 0, avgMs = ok.length ? ok.reduce((a, q) => a + q.ms, 0) / ok.length : null;
+    const hard = !!x.hard, mode = x.mode || "normal";
+    return { ts: Date.parse(x.date) || Date.now(), diff: "Custom", v: 1, imported: true, mode, hard, setting: x.setting,
+      score: mode === "untimed" ? Math.round(qpm * 10) / 10 : x.score, correct: x.correct != null ? x.correct : ok.length, wrong: x.wrong != null ? x.wrong : qs.filter(q => q.wr).length,
+      skipped: x.skipped != null ? x.skipped : qs.filter(q => q.sk).length, total: qs.length, acc: qs.length ? ok.length / qs.length : 0, avgMs, qpm: Math.round(qpm * 10) / 10,
+      ft: qs.length ? qs.filter(q => !q.sk && !q.wr && !q.mk).length / qs.length : 0, modeLabel: (MODE[mode] || "Timed") + (hard ? " · Hard" : "") + " · imported" };
+  }
+  function Migrate() {
+    const ctx = Lt(), tried = useRef(false);
+    useEffect(() => {
+      if (tried.current || ctx.progress.mmtImported) return; tried.current = true;
+      (async () => {
+        try {
+          if (!window.claude || typeof window.claude.use !== "function") return;
+          const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+          if (!db || !user) return;
+          const id = await user.id(); if (!id) return;
+          const snap = await db.doc("data/users/" + id + "/mmtImport").get();
+          if (!snap || !snap.exists) return;
+          const runs = (snap.data() || {}).runs || [];
+          ctx.tipUpdate(G => {
+            if (G.mmtImported) return;
+            G.games = G.games || {}; const g = G.games.mmt || { plays: [] };
+            const have = new Set(g.plays.map(p => p.ts));
+            const add = runs.map(x => x.qs ? fromOld(x) : { ...x, v: 1, imported: true }).filter(p => !have.has(p.ts));
+            g.plays = [...g.plays, ...add].sort((a, b) => a.ts - b.ts); G.games.mmt = g; G.mmtImported = true;
+          });
+        } catch (e) {}
+      })();
+    }, [ctx.progress.mmtImported]);
+    return null;
+  }
+
+  return { def, toEngine, drill, fromOld, Migrate };
+})();

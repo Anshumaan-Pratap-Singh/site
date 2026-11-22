@@ -1,0 +1,158 @@
+/* Trainers tab: sections, cards (art from TIP_ART), and routing into the shared trainer screen. */
+var TIP_TRAINERS = (function () {
+  const { TH, TF, still } = TIP;
+
+  /* card art lives in tip_art.jsx (TIP_ART): one animation system for lessons, trainers and games */
+
+  const GAME_SECTIONS = [
+    { id: "make", title: "Market making", blurb: "Interview and assessment-day market making: quote or take two-way prices as information arrives.", ids: ["trading", "dice", "events"] },
+    { id: "arb", title: "Arbitrage and mispricing", blurb: "Find the quote that is off fair value and trade it before it closes.", ids: ["etf", "cards", "board"] },
+    { id: "size", title: "Estimation and sizing", blurb: "Calibrated estimates and bet sizing under uncertainty.", ids: ["fermi", "hilo", "oddsbet"] },
+    { id: "sim", title: "Simulations", blurb: "Multi-player and multi-round exercises like the ones on assessment days and Superdays.", ids: ["cardmarket", "superday"] },
+  ];
+
+  const SECTIONS = [
+    { id: "mental", title: "Mental Maths", blurb: "Speed arithmetic and number series in the format of the Optiver, IMC and Flow Traders numerical tests." },
+    { id: "trading", title: "Trading", blurb: "Timed drills, then live market-making cases run like Optiver, IMC and SIG interviews." },
+    { id: "prob", title: "Probability and Statistics", blurb: "Rapid probability and expected value in the style of Beat the Odds and trading phone screens." },
+    { id: "reason", title: "Reasoning tests", blurb: "The SHL and Saville style aptitude sections: numerical tables, diagram rules and abstract series under a clock." },
+    { id: "cog", title: "Cognitive", blurb: "The game-based assessment tasks (Pymetrics, Arctic Shores, Cappfinity, SHL styles): memory, attention, inhibition, planning, spatial and inductive reasoning." },
+  ];
+
+  const LIST = [
+    ["mmt", "mental", "Mental Math Trainer", ""],
+    ["seq", "mental", "Sequence Trainer", "Spot the rule and give the next number, as in the number-series sections of trading aptitude tests."],
+    ["frac", "mental", "80-in-8 Mental Maths", "Convert fractions to decimals and percentages until you no longer have to think about it."],
+    ["scale", "mental", "Scale Weights", "Read balanced scales of shapes with unknown weights, then solve for a weight or the heavier pan before the clock runs out."],
+    ["options", "trading", "Options Market Making", "From payoffs and put–call parity to the Greeks: short lessons, timed drills, then a live options quoting case."],
+    ["futures", "trading", "Futures & Basis", "Cost-of-carry fair value, basis and convergence: lessons, drills, then a live futures and basis case."],
+    ["pred", "trading", "Prediction Markets", "Prices as probabilities, overround and arbitrage across outcomes: lessons, drills, then a live case."],
+    ["orderbook", "trading", "Orderbooks", ""],
+    ["bto", "prob", "Beat the Odds", ""],
+    ["likelihood", "prob", "Likelihood List", ""],
+    ["intervals", "prob", "Intervals", ""],
+    ["prob", "prob", "Probability Trainer", "Timed probability and expected-value questions that build the quick intuition interviews test for."],
+    ["taskswitch", "cog", "Task Switch", "Each stimulus comes with one of two rules. Classify it by the rule shown, as the rules switch at random."],
+    ["conflict", "cog", "Response Conflict", "Flanker and Simon tasks. Respond to the feature that matters and ignore the one that pulls you the other way."],
+    ["pincode", "cog", "Pincode Game", "A digit sequence flashes once. Type it back in order, reversed or sorted."],
+    ["cube", "cog", "Cube Folding", "Pick the cube that a flat net folds into. A mental-rotation task used in online trading assessments."],
+    ["codematch", "cog", "Code Match", "Find the exact copy of a code among near-identical decoys with swapped or lookalike characters, on a shrinking clock."],
+    ["gridrecall", "cog", "Grid Recall", "Cells light up on a grid. Rebuild the pattern from memory while decoy cells try to distract you."],
+    ["intercept", "cog", "Intercept", "Balls fall down four lanes and your shots take time to travel, so you have to aim ahead of the target."],
+    ["holdfire", "cog", "Hold Fire", "Tap fast for targets and hold back for everything else, while the rule changes and the window shrinks."],
+    ["signal", "cog", "Signal Odds", "Forecast Sun or Rain from symbols with fixed hidden odds. You are scored on the forecast, not on luck."],
+    ["boxsearch", "cog", "Box Search", "Find a token in every box without reopening a box that has already given one up."],
+    ["dial", "cog", "Dial Lock", "Stop a needle that speeds up, slows down and reverses on each digit of a code. Miss and you start again."],
+    ["trust", "cog", "Trust Game", "You and a rival seller price High or Low each round. Cooperation pays, betrayal pays once, and the rival remembers."],
+    ["hidden", "cog", "Hidden Rules", "Four generators change an energy meter by rules you can't see. Hit the target in as few clicks as you can, then name each rule."],
+    ["pattern", "cog", "Build the Pattern", "Three frames follow a rule. Build the fourth by setting the count, shading and rotation of its shapes."],
+    ["target", "cog", "Target Number", "Combine four numbers with + − × ÷ to hit a target, working back from the goal before the round ends."],
+    ["pump", "cog", "Pump", "Pump a balloon for money and bank it before it pops. Learn the pop distribution and how you react to losses."],
+    ["skyline", "cog", "Skyline", "Rearrange block towers into a target in the fewest moves. No clock: planning before the first move is the skill."],
+    ["mystery", "cog", "Mystery Figure", "Find a hidden figure from count-only feedback. Only the number of attempts counts, compared with the most efficient play."],
+    ["sweet", "cog", "Sweet Spot", "Dials appear and expire around the screen. Each one scores only if you tap while its needle is inside the target arc."],
+    ["shapeshift", "cog", "Shapeshift", ""],
+    ["keypress", "cog", "Keypresses", ""],
+    ["easyhard", "cog", "Easy or Hard", ""],
+    ["decks", "cog", "Four Decks", ""],
+    ["lengths", "cog", "Lengths", ""],
+    ["change", "cog", "Change Detection", ""],
+    ["numreason", "reason", "Numerical Reasoning", ""],
+    ["diagram", "reason", "Diagrammatic Reasoning", ""],
+    ["inductive", "reason", "Inductive Reasoning Test", "Series and matrices of abstract shapes. Find the rule and pick the panel that fits, with a clock on every question."],
+  ].map(([id, sec, name, blurb]) => ({ id, sec, name, blurb }));
+
+  /* trainer definitions register here in later batches: { id, ...gameDef } */
+  const DEFS = {};
+  /* the card on the Trainers tab always shows the registered name and description */
+  const register = def => { DEFS[def.id] = def; const li = LIST.find(t => t.id === def.id); if (li) { li.name = def.name; li.blurb = def.blurb; } };
+
+
+  function Card({ name, blurb, art, ready, meta, onOpen, btn, rich, done }) {
+    return (
+      <article className={"card tcard" + (ready ? "" : " soon") + (done ? " done" : "")} onClick={() => ready && onOpen()}>
+        <div className="tart">{TH(TIP_ART.Art, { id: art })}</div>
+        <div className="tbody">
+          <h3>{name}</h3>
+          {rich ? TH(Rt, { text: blurb, as: "p" }) : <p>{blurb}</p>}
+          <div className="tfoot">
+            {ready ? <span className="tmeta">{meta}</span> : <span className="tag dim">Coming soon</span>}
+            <button className="start sm" disabled={!ready} onClick={e => { e.stopPropagation(); onOpen(); }}>{btn || "Start"}</button>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
+  /* ---------- search, filters and sort shared by both lists ---------- */
+  const SORTS = [{ value: "sec", label: "By section" }, { value: "az", label: "A\u2013Z" }, { value: "most", label: "Most played" }, { value: "recent", label: "Recently played" }];
+  const PLAYED = ["All", "Played", "Not played"];
+  const DEF_F = { q: "", sec: [], played: "All", sort: "sec" };
+  /* items: { id, sec, name, blurb, plays, last } */
+  function applyFilters(items, f) {
+    let out = items.filter(t => TIP.inSel(f.sec, t.sec) && (f.played === "All" || (f.played === "Played") === t.plays > 0)
+      && TIP.matches(f.q, t.name, t.blurb, t.secTitle));
+    if (f.sort === "az") out = out.slice().sort((a, b) => a.name.localeCompare(b.name));
+    if (f.sort === "most") out = out.slice().sort((a, b) => b.plays - a.plays || a.name.localeCompare(b.name));
+    if (f.sort === "recent") out = out.slice().sort((a, b) => (b.last || 0) - (a.last || 0) || a.name.localeCompare(b.name));
+    return out;
+  }
+  function ListView({ fkey, cls, sections, items, card, noun, placeholder }) {
+    const [f, set, reset, active] = TIP.useFilters(fkey, DEF_F);
+    const shown = applyFilters(items, f);
+    const bar = <TIP.FilterBar q={f.q} onQ={v => set("q", v)} placeholder={placeholder} count={shown.length} noun={noun} active={active} onReset={reset}
+      rows={[
+        { label: "Section", multi: true, options: [{ value: "all", label: "All" }, ...sections.map(x => ({ value: x.id, label: x.title }))], value: f.sec, onChange: v => set("sec", v) },
+        { label: "Status", options: PLAYED, value: f.played, onChange: v => set("played", v) },
+        { label: "Sort", options: SORTS, value: f.sort, onChange: v => set("sort", v) },
+      ]} />;
+    const empty = <div className="card empty tip-fempty">Nothing matches these filters.<div><button className="btn sm" onClick={reset}>Clear filters</button></div></div>;
+    return (
+      <div className={"view tip-trainers " + cls}>
+        {bar}
+        {!shown.length ? empty : f.sort !== "sec" ? <div className="tgrid">{shown.map(card)}</div> :
+          sections.map(sec => { const ls = shown.filter(t => t.sec === sec.id); if (!ls.length) return null; return (
+            <section key={sec.id} className="tsec">
+              <div className="tsec-h"><h2>{sec.title}</h2><p>{sec.blurb}</p></div>
+              <div className="tgrid">{ls.map(card)}</div>
+            </section>); })}
+      </div>
+    );
+  }
+  const playsOf = (progress, id, keep) => ((progress.games[id] && progress.games[id].plays) || []).filter(keep || (() => true));
+  const lastTs = pl => pl.reduce((m, p) => Math.max(m, p.ts || 0), 0);
+
+  function GamesView({ go }) {
+    const { progress } = Lt();
+    const items = [];
+    GAME_SECTIONS.forEach(sec => sec.ids.forEach(id => { const g = _n.find(x => x.id === id); if (!g) return;
+      const st = Er(progress, id), pl = playsOf(progress, id, g.playFilter);
+      items.push({ id, sec: sec.id, secTitle: sec.title, name: g.name, blurb: g.blurb, plays: st.plays || 0, last: lastTs(pl), g, st }); }));
+    const card = t => <Card key={t.id} name={t.name} blurb={t.blurb} art={t.id} ready={true}
+      meta={t.st.plays ? `Best ${Nr(t.g, t.st.best)} \u00b7 Played ${t.st.plays}` : "Not played yet"} onOpen={() => go("games", t.id)} />;
+    return <ListView fkey="games" cls="tip-gamesview" sections={GAME_SECTIONS} items={items} card={card} noun="game" placeholder="Search games by name or description…" />;
+  }
+
+  function View({ sub, go }) {
+    const { progress } = Lt();
+    const def = sub && DEFS[sub];
+    TIP.R.useEffect(() => { const t = document.querySelector(".tabs .tab.on"); if (t && t.scrollIntoView) t.scrollIntoView({ inline: "center", block: "nearest" }); }, []);
+    if (def) return TH(TIP.Setup, { key: def.id, game: def, go, back: "trainers", backLabel: "All trainers" });
+    const statFor = id => {
+      const d = DEFS[id];
+      const plays = playsOf(progress, id, p => !(d && d.splitBy) || p.part !== "case");
+      const last = lastTs(playsOf(progress, id));
+      if (!d || !plays.length) return { plays: plays.length, last };
+      const vals = plays.map(p => d.metric === "pnl" ? p.pnl : p.score).filter(v => typeof v === "number");
+      const b = vals.length ? Math.max(...vals) : null;
+      return { plays: plays.length, last, best: b == null ? "\u2014" : d.fmtVal ? d.fmtVal(b) : d.metric === "pnl" ? Be(b, 0) : ie(b, 0) + (d.unit || " pts") };
+    };
+    const items = LIST.map(t => { const st = statFor(t.id), sec = SECTIONS.find(x => x.id === t.sec);
+      return { ...t, secTitle: sec ? sec.title : "", plays: st.plays, last: st.last, st }; });
+    const card = t => <Card key={t.id} name={t.name} blurb={t.blurb} art={t.id} ready={!!DEFS[t.id]}
+      meta={t.st.plays ? `Best ${t.st.best} \u00b7 Played ${t.st.plays}` : "Not played yet"} onOpen={() => go("trainers", t.id)} />;
+    return <ListView fkey="trainers" cls="" sections={SECTIONS} items={items} card={card} noun="trainer" placeholder="Search trainers by name or description…" />;
+  }
+
+  return { View, GamesView, register, LIST, DEFS, Card, SECTIONS, GAME_SECTIONS };
+})();

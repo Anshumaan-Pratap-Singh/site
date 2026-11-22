@@ -1,0 +1,236 @@
+/* Optiver online-assessment modules (2026/27 invites): Beat the Odds, Likelihood List, Intervals and Orderbooks.
+   Formats follow candidate reports (TraderMaths and QuantVault, Nov 2026): Beat the Odds is about 90 s per question
+   with a closest-answer format, Likelihood List about 90 s per ranking, Intervals 40 to 60 s with tight ranges
+   scoring best, Orderbooks 20 questions in 8 minutes. Optiver does not publish its scoring, so ours is stated in each note. */
+(function () {
+  const { TH, TF } = TIP;
+  const { trainer, options } = TIP_DRILL;
+  const K = TIP_KIT;
+  const C = (n, k) => { if (k < 0 || k > n) return 0; let r = 1; for (let i = 1; i <= k; i++) r = r * (n - k + i) / i; return r; };
+  const r3 = v => Math.round(v * 1000) / 1000;
+  const sig = v => { const a = Math.abs(v); return a >= 100 ? (Number.isInteger(Math.round(v * 2) / 2) ? String(Math.round(v)) : (Math.round(v * 2) / 2).toFixed(1)) : a >= 10 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : v.toFixed(3); };
+  const pct = v => (v * 100).toFixed(v < 0.01 ? 2 : 1) + "%";
+
+  /* ---------- question families with exact answers (shared by Beat the Odds and Intervals) ---------- */
+  /* each returns { q, a, p (true if a probability), why, k (kind) } */
+  const FAM = [
+    r => { const n = r.int(2, 6); return { k: "atleast6", q: `You roll a fair die ${n} times. What is the probability of at least one six?`, a: 1 - Math.pow(5 / 6, n), p: 1, why: `1 − (5/6)^${n}.` }; },
+    r => { const t = r.pick([4, 5, 6, 8, 9, 10]); const w = 6 - Math.abs(7 - t); return { k: "sum2", q: `Two fair dice are rolled. What is the probability that they sum to ${t}?`, a: w / 36, p: 1, why: `${w} of the 36 outcomes sum to ${t}.` }; },
+    r => { const n = r.int(4, 10), k = r.int(1, n - 1); return { k: "binom", q: `A fair coin is flipped ${n} times. What is the probability of exactly ${k} heads?`, a: C(n, k) / Math.pow(2, n), p: 1, why: `C(${n},${k}) / 2^${n} = ${C(n, k)}/${Math.pow(2, n)}.` }; },
+    r => { const pat = r.pick(["HH", "HT", "HHH", "HTH"]); const a = { HH: 6, HT: 4, HHH: 14, HTH: 10 }[pat]; return { k: "pattern", q: `How many flips of a fair coin do you expect to need until you first see ${pat}?`, a, why: `Set up first-step equations on the prefix you have matched; ${pat} needs ${a} flips on average.` }; },
+    r => { const n = r.int(4, 9); return { k: "cycle", q: `A token walks on a cycle of ${n} nodes, moving to either neighbour with probability 1/2 each step. Starting from node A, what is the expected number of steps until it first returns to A?`, a: n, why: `The stationary distribution is uniform (1/${n} each), and the expected return time is 1/π(A) = ${n}.` }; },
+    r => { const k = r.int(1, 6), N = k + r.int(2, 8); return { k: "ruin", q: `You start with $${k} and bet $1 on fair coin flips until you reach $${N} or go broke. What is the probability you reach $${N}?`, a: k / N, p: 1, why: `For a fair game the chance of reaching N from k is k/N = ${k}/${N}.` }; },
+    r => { const prev = r.pick([0.01, 0.02, 0.05, 0.1]), sens = r.pick([0.9, 0.95, 0.99]), fp = r.pick([0.05, 0.1, 0.02]); const a = prev * sens / (prev * sens + (1 - prev) * fp);
+      return { k: "bayes", q: `A condition affects ${pct(prev)} of people. A test detects it ${pct(sens)} of the time and gives a false positive ${pct(fp)} of the time. Given a positive test, what is the probability of having the condition?`, a, p: 1, why: `${prev}·${sens} / (${prev}·${sens} + ${r3(1 - prev)}·${fp}).` }; },
+    r => { const n = r.int(2, 8); return { k: "distinct", q: `You roll a fair die ${n} times. What is the expected number of different faces you see?`, a: 6 * (1 - Math.pow(5 / 6, n)), why: `By linearity, each face is seen with probability 1 − (5/6)^${n}; multiply by 6.` }; },
+    r => { const mx = r() < 0.5; return { k: "maxmin", q: `Two fair dice are rolled. What is the expected value of the ${mx ? "larger" : "smaller"} number?`, a: mx ? 161 / 36 : 91 / 36, why: mx ? `Σ k·(2k−1)/36 = 161/36.` : `7 − 161/36 = 91/36.` }; },
+    r => { const v = r.pick([["same suit", 12 / 51, "12 of the 51 remaining cards match the first card's suit."], ["a pair", 3 / 51, "3 of the 51 remaining cards match the first card's rank."], ["both red", 25 / 102, "26/52 · 25/51."], ["both aces", 1 / 221, "4/52 · 3/51."]]);
+      return { k: "cards2", q: `Two cards are drawn from a shuffled 52-card deck. What is the probability they are ${v[0]}?`, a: v[1], p: 1, why: v[2] }; },
+    r => { const n = r.int(10, 40); let p = 1; for (let i = 0; i < n; i++) p *= (365 - i) / 365; return { k: "bday", q: `In a room of ${n} people, what is the probability that at least two share a birthday (365 equally likely days)?`, a: 1 - p, p: 1, why: `1 − Π (365−i)/365 for i < ${n}.` }; },
+    r => { const p = r.pick([0.2, 0.25, 0.3, 0.4, 0.6]); return { k: "geom", q: `Each attempt succeeds independently with probability ${p}. What is the expected number of attempts up to and including the first success?`, a: 1 / p, why: `Geometric: 1/p = ${sig(1 / p)}.` }; },
+    r => { const n = r.int(2, 6); return { k: "var", q: `What is the variance of the sum of ${n} fair dice?`, a: 35 * n / 12, why: `Each die has variance 35/12; independent variances add.` }; },
+    r => { const v = r.pick([["all different", 120 / 216, "6·5·4 / 216."], ["strictly increasing in the order rolled", 20 / 216, "C(6,3) = 20 increasing triples out of 216."], ["all the same", 6 / 216, "6 of 216."]]);
+      return { k: "dice3", q: `Three fair dice are rolled. What is the probability that the numbers are ${v[0]}?`, a: v[1], p: 1, why: v[2] }; },
+    r => { const cost = r.int(2, 5), pay = r.int(6, 15); const ev = pay / 6 + 3.5 * 0 - cost; const a = (pay - cost * 6) / 6;
+      return { k: "game", q: `A game costs $${cost} to play. A die is rolled and you win $${pay} if it shows a six, nothing otherwise. What is your expected profit per game?`, a, why: `${pay}/6 − ${cost} = ${sig(a)}.` }; },
+    r => { const n = r.int(3, 6); return { k: "allfaces", q: `How many rolls of a fair ${n}-sided die do you expect to need to see every face at least once?`, a: n * Array.from({ length: n }, (_, i) => 1 / (i + 1)).reduce((x, y) => x + y, 0), why: `Coupon collector: ${n}·(1 + 1/2 + … + 1/${n}).` }; },
+    r => { const k = r.int(2, 5); return { k: "bag", q: `A bag holds ${k} red and ${k + 2} blue balls. You draw two without replacement. What is the probability both are red?`, a: (k / (2 * k + 2)) * ((k - 1) / (2 * k + 1)), p: 1, why: `${k}/${2 * k + 2} · ${k - 1}/${2 * k + 1}.` }; },
+    r => { const n = r.int(3, 7); return { k: "derange", q: `${n} people put their hats in a box and each takes one at random. What is the expected number who get their own hat back?`, a: 1, why: `By linearity each person has a 1/${n} chance, so the expectation is ${n} · 1/${n} = 1.` }; },
+  ];
+  const draw = (r, avoidKind) => { let f; for (let t = 0; t < 8; t++) { f = r.pick(FAM)(r); if (f.k !== avoidKind) break; } return f; };
+
+  /* five options, the answer is the closest one: spaced at least 20% apart so "closest" is never ambiguous */
+  function closest(r, a, isP) {
+    const fs = r.shuffle([0.45, 0.6, 0.75, 1.3, 1.55, 1.9, 2.4]);
+    const out = [a];
+    for (const f of fs) { let v = a * f; if (isP && v >= 1) continue; if (out.every(x => Math.abs(Math.log(Math.abs(v) / Math.abs(x || 1e-9))) > 0.18)) out.push(v); if (out.length === 5) break; }
+    while (out.length < 5) out.push(a + out.length * (Math.abs(a) || 1) * 0.5);
+    return r.shuffle(out).map(v => ({ value: String(v), label: isP ? pct(v) : sig(v) }));
+  }
+
+  /* ============ Beat the Odds ============ */
+  function genBto(r, s, i, hist) {
+    const f = draw(r, hist.length ? String(hist[hist.length - 1].kind) : null);
+    const ch = closest(r, f.a, f.p);
+    const ans = ch.find(c => Number(c.value) === f.a);
+    return { text: f.q, kind: f.k, prompt: <div className="oa-big-q"><K.T>{f.q}</K.T><div className="oa-lbl">Pick the closest answer</div></div>,
+      input: "choice", cols: 1, choices: ch, check: v => Number(v) === f.a, answer: ans.label, explain: f.why };
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "bto", name: "Beat the Odds",
+    blurb: "Optiver's probability module: dice, coins, cards, expected value and conditional probability against a clock of about 90 seconds a question. Five options, pick the closest, so a quick estimate is often enough.",
+    fields: [
+      { key: "count", label: "Questions", type: "num", min: 5, max: 40 },
+      { key: "time", label: "Time per question", type: "num", min: 20, max: 180, unit: "s" },
+      { key: "pen", label: "Wrong answers", type: "sel", choices: [{ value: 0, label: "No penalty" }, { value: 1, label: "−1 each" }] },
+    ],
+    presets: { Easy: { count: 10, time: 120, pen: 0 }, Medium: { count: 20, time: 90, pen: 0 }, Hard: { count: 30, time: 60, pen: 1 } },
+    note: "The real module is about 25 minutes. Estimate first, then compute only if two options are close.",
+  }, { gen: genBto, count: s => s.count, perQSecs: s => s.time, penalty: s => s.pen, skipChoice: true }));
+
+  /* ============ Likelihood List: rank outcomes from most to least likely ============ */
+  const SCEN = [
+    () => { const ev = [["The sum is 7", (a, b) => a + b === 7], ["Both dice are even", (a, b) => a % 2 === 0 && b % 2 === 0], ["The sum is at least 10", (a, b) => a + b >= 10], ["A double", (a, b) => a === b], ["The product is above 20", (a, b) => a * b > 20],
+        ["At least one six", (a, b) => a === 6 || b === 6], ["The sum is prime", (a, b) => [2, 3, 5, 7, 11].includes(a + b)], ["The dice differ by exactly 1", (a, b) => Math.abs(a - b) === 1], ["The sum is 12", (a, b) => a + b === 12], ["Both dice show 4 or more", (a, b) => a >= 4 && b >= 4]];
+      return { title: "Two fair dice are rolled.", evs: ev.map(([t, f]) => { let n = 0; for (let a = 1; a <= 6; a++) for (let b = 1; b <= 6; b++) if (f(a, b)) n++; return [t, n / 36]; }) }; },
+    () => { const ev = [["Exactly 2 heads", 6 / 16], ["At least 3 heads", 5 / 16], ["All four the same", 2 / 16], ["Heads and tails alternate", 2 / 16 - 0.0001], ["The first two flips match", 0.5], ["More heads than tails", 5 / 16 - 0.0001], ["No two heads in a row", 8 / 16], ["Exactly one tail", 4 / 16]];
+      return { title: "A fair coin is flipped four times.", evs: ev }; },
+    () => { const ev = [["A red card", 26 / 52], ["A face card (J, Q, K)", 12 / 52], ["An ace", 4 / 52], ["A heart", 13 / 52], ["A card from 2 to 9", 32 / 52], ["The king of spades", 1 / 52], ["A black jack, queen or king", 6 / 52], ["An even number card (2–10)", 20 / 52]];
+      return { title: "One card is drawn from a shuffled 52-card deck.", evs: ev }; },
+    r => { /* a small sample of past results */
+      const names = ["North", "South", "East", "West", "Central"], n = 40, w = r.shuffle([14, 10, 7, 5, 4]), counts = names.map((x, i) => [x, w[i]]);
+      return { title: `A desk logged which of five venues filled ${n} orders: ${counts.map(([x, c]) => x + " " + c).join(", ")}. Assume the same mix tomorrow.`,
+        evs: [...counts.map(([x, c]) => ["The next order fills on " + x, c / n]), ["The next two both fill on " + counts[0][0], Math.pow(counts[0][1] / n, 2)]] };
+    },
+  ];
+  function genLike(r, s) {
+    let sc, evs;
+    for (let t = 0; t < 40; t++) {
+      sc = r.pick(SCEN)(r);
+      evs = r.shuffle(sc.evs).slice(0, s.items);
+      const ps = evs.map(e => e[1]).sort((a, b) => b - a);
+      if (ps.every((p, k) => k === 0 || ps[k - 1] - p >= 0.02)) break;
+    }
+    const order = evs.slice().sort((a, b) => b[1] - a[1]).map(e => e[0]);
+    const text = sc.title + " Rank: " + evs.map(e => e[0]).join("; ");
+    return {
+      text, kind: "like:" + sc.title.slice(0, 12), answer: order.join(" > "), explain: order.map(o => o + " (" + pct(evs.find(e => e[0] === o)[1]) + ")").join(" > "),
+      prompt: <div className="oa-big-q"><K.T>{sc.title}</K.T><div className="oa-lbl">Tap the outcomes from most to least likely</div></div>,
+      input: "custom", check: v => v === order.join("|"), givenText: v => String(v).split("|").join(" > "),
+      render: ({ submit, running }) => TH(Rank, { items: evs.map(e => e[0]), submit, running }),
+    };
+  }
+  function Rank({ items, submit, running }) {
+    const [pick, setPick] = TIP.R.useState([]);
+    const tap = t => { if (!running) return; setPick(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]); };
+    return (
+      <div className="ll-wrap">
+        <div className="ll-list">{items.map(t => { const k = pick.indexOf(t); return <button key={t} type="button" className={"ll-item" + (k >= 0 ? " on" : "")} disabled={!running} onClick={() => tap(t)}><span className="ll-n">{k >= 0 ? k + 1 : ""}</span><span>{t}</span></button>; })}</div>
+        <div className="row"><button className="ghost sm" disabled={!running || !pick.length} onClick={() => setPick([])}>Clear</button><span className="sp"></span>
+          <button className="start sm" disabled={!running || pick.length !== items.length} onClick={() => submit(pick.join("|"))}>Submit ranking</button></div>
+      </div>
+    );
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "likelihood", name: "Likelihood List",
+    blurb: "New in Optiver's 2026/27 assessment: rank a short list of outcomes from most to least likely, from dice, coins, cards or a small table of past results. Only the full order counts.",
+    fields: [
+      { key: "count", label: "Rankings", type: "num", min: 3, max: 20 },
+      { key: "time", label: "Time per ranking", type: "num", min: 30, max: 180, unit: "s" },
+      { key: "items", label: "Outcomes to rank", type: "sel", choices: [{ value: 3, label: "3" }, { value: 4, label: "4" }, { value: 5, label: "5" }] },
+    ],
+    presets: { Easy: { count: 6, time: 120, items: 3 }, Medium: { count: 10, time: 90, items: 4 }, Hard: { count: 15, time: 75, items: 5 } },
+    note: "Tap outcomes in order; tap again to take one back. Neighbouring outcomes always differ by at least 2 percentage points.",
+  }, { gen: genLike, count: s => s.count, perQSecs: s => s.time }));
+
+  /* ============ Intervals: a lower and upper bound; tight and right scores best ============ */
+  const ipts = (lo, hi, a, isP) => { if (!(lo <= a + 1e-12 && a <= hi + 1e-12)) return 0; const scale = isP ? 1 : Math.max(Math.abs(a), 1); return Math.max(1, Math.min(10, Math.round(10 * (1 - (hi - lo) / scale)))); };
+  function genInt(r, s, i, hist) {
+    const f = draw(r, hist.length ? String(hist[hist.length - 1].kind) : null);
+    const unit = f.p ? "as a decimal between 0 and 1" : "";
+    return { text: f.q, kind: f.k, answer: f.p ? r3(f.a) : sig(f.a), explain: f.why, givenText: v => v ? v.lo + " to " + v.hi : "",
+      prompt: <div className="oa-big-q"><K.T>{f.q}</K.T><div className="oa-lbl">Give a range that contains the answer{unit ? ", " + unit : ""}</div></div>,
+      input: "custom", check: v => !!v && ipts(v.lo, v.hi, f.a, f.p) > 0, pts: v => v ? ipts(v.lo, v.hi, f.a, f.p) : 0,
+      render: ({ submit, running }) => TH(Range, { submit, running, isP: f.p, a: f.a }) };
+  }
+  function Range({ submit, running, isP }) {
+    const [lo, setLo] = TIP.R.useState(""), [hi, setHi] = TIP.R.useState(""), [act, setAct] = TIP.R.useState("lo"), [touch] = TIP.R.useState(K.isTouch);
+    const hiRef = TIP.R.useRef(null);
+    const L = TIP_DRILL.num(lo), H = TIP_DRILL.num(hi), ok = isFinite(L) && isFinite(H) && H >= L && (!isP || (L >= 0 && H <= 1));
+    const go = () => ok && running && submit({ lo: L, hi: H });
+    const key = k => { if (k === "enter") { if (act === "lo") { setAct("hi"); if (hiRef.current) hiRef.current.focus(); } else go(); return; } (act === "lo" ? setLo : setHi)(x => K.padEdit(x, k)); };
+    const im = touch ? "none" : "decimal";
+    return (
+      <div className="col" style={{ gap: 8 }}>
+        <div className="quote-ui">
+          <label className={"fld" + (touch && act === "lo" ? " on" : "")}>Low<input className="inp num" inputMode={im} value={lo} disabled={!running} onFocus={() => setAct("lo")} onChange={e => setLo(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); setAct("hi"); if (hiRef.current) hiRef.current.focus(); } }} autoFocus /></label>
+          <label className={"fld" + (touch && act === "hi" ? " on" : "")}>High<input ref={hiRef} className="inp num" inputMode={im} value={hi} disabled={!running} onFocus={() => setAct("hi")} onChange={e => setHi(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); go(); } }} /></label>
+        </div>
+        {touch ? <K.Pad onKey={key} disabled={!running} /> : null}
+        <div className="row"><span className="small muted">{ok ? "Width " + sig(H - L) : lo && hi ? (isP ? "Use decimals from 0 to 1, low first" : "High must be at least low") : "Fractions like 5/36 work too"}</span><span className="sp"></span>
+          <button className="start sm" disabled={!running || !ok} onClick={go}>Submit range</button></div>
+      </div>
+    );
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "intervals", name: "Intervals",
+    blurb: "New in Optiver's 2026/27 assessment: bound a probability or expected value with a low and a high. Ranges that contain the answer score more the tighter they are; ranges that miss score nothing.",
+    fields: [
+      { key: "count", label: "Questions", type: "num", min: 5, max: 40 },
+      { key: "time", label: "Time per question", type: "num", min: 20, max: 120, unit: "s" },
+    ],
+    presets: { Easy: { count: 8, time: 75 }, Medium: { count: 15, time: 60 }, Hard: { count: 25, time: 40 } },
+    note: "Interval points: 10 × (1 − width / scale), at least 1 if the answer is inside, where the scale is 1 for probabilities and the answer's size otherwise. A miss scores 0.",
+  }, { gen: genInt, count: s => s.count, perQSecs: s => s.time, always: true,
+    summary: hist => { const p = hist.reduce((a, h) => a + (h.ipts || 0), 0); return [{ label: "Interval points", value: p + " / " + hist.length * 10, key: "ipts", raw: p, sub: "tight and right scores best" }]; },
+    onRecord: (q, raw) => ({ ipts: q.pts ? q.pts(raw) : 0 }) }));
+
+  /* ============ Orderbooks: read a book, pick the profitable trade ============ */
+  function book(r) {
+    const mid = r.int(40, 160) + (r() < 0.5 ? 0.5 : 0), tick = 0.5, gap = r.int(1, 2) * tick;
+    const asks = [], bids = [];
+    let a = mid + gap / 2 + (r() < 0.5 ? 0 : tick / 2), b = a - gap;
+    a = Math.round(a * 2) / 2; b = Math.round(b * 2) / 2; if (b >= a) b = a - tick;
+    for (let k = 0; k < 4; k++) { asks.push({ p: a + k * tick * r.int(1, 2), q: r.int(1, 8) * 5 }); bids.push({ p: b - k * tick * r.int(1, 2), q: r.int(1, 8) * 5 }); }
+    for (let k = 1; k < 4; k++) { if (asks[k].p <= asks[k - 1].p) asks[k].p = asks[k - 1].p + tick; if (bids[k].p >= bids[k - 1].p) bids[k].p = bids[k - 1].p - tick; }
+    return { asks, bids };
+  }
+  const walkBook = (levels, qty) => { let left = qty, cost = 0; for (const l of levels) { const t = Math.min(left, l.q); cost += t * l.p; left -= t; if (!left) break; } return left ? null : cost; };
+  function Book({ b }) {
+    return (
+      <table className="tbl ob-tbl"><thead><tr><th>Bid size</th><th>Bid</th><th>Ask</th><th>Ask size</th></tr></thead>
+        <tbody>{b.asks.map((_, k) => <tr key={k}><td>{b.bids[k].q}</td><td className="pos">{b.bids[k].p.toFixed(1)}</td><td className="neg">{b.asks[k].p.toFixed(1)}</td><td>{b.asks[k].q}</td></tr>)}</tbody></table>
+    );
+  }
+  function genOb(r) {
+    const b = book(r), kind = r.pick(["best", "cost", "proceeds", "count", "unwind", "mid"]);
+    let q, a, why, ch;
+    if (kind === "best") {
+      const F = Math.round(((b.asks[0].p + b.bids[0].p) / 2 + (r() < 0.5 ? -1 : 1) * r.int(3, 6) * 0.5) * 2) / 2;
+      const trades = [...b.asks.slice(0, 3).map(l => ({ t: `Buy ${l.q} at ${l.p.toFixed(1)}`, v: (F - l.p) * l.q })), ...b.bids.slice(0, 3).map(l => ({ t: `Sell ${l.q} at ${l.p.toFixed(1)}`, v: (l.p - F) * l.q }))];
+      const best = trades.reduce((x, y) => y.v > x.v ? y : x);
+      if (trades.filter(t => Math.abs(t.v - best.v) < 1e-9).length > 1) return genOb(r);
+      const pickd = r.shuffle(trades.filter(t => t !== best)).slice(0, 3);
+      ch = r.shuffle([best, ...pickd]).map(t => ({ value: t.t, label: t.t }));
+      q = `Fair value is ${F.toFixed(1)}. Which single trade against this book makes the most money?`; a = best.t; why = `Profit = size × distance from fair: ${trades.map(t => t.t + " → " + sig(t.v)).join(", ")}.`;
+      return { b, q, a, why, ch, check: v => v === a, kind };
+    }
+    if (kind === "cost" || kind === "proceeds") {
+      const side = kind === "cost" ? b.asks : b.bids, tot = side.reduce((x, l) => x + l.q, 0), qty = Math.min(tot, (r.int(2, 6) * 5) + side[0].q);
+      const v = walkBook(side, qty); a = v;
+      q = kind === "cost" ? `You buy ${qty} lots at market. What is the total cost?` : `You sell ${qty} lots at market. What are the total proceeds?`;
+      why = `Walk the ${kind === "cost" ? "asks" : "bids"} from the best price until ${qty} lots are filled.`;
+    } else if (kind === "count") {
+      const F = b.asks[r.int(1, 3)].p + 0.25; a = b.asks.filter(l => l.p < F).reduce((x, l) => x + l.q, 0);
+      q = `Fair value is ${F.toFixed(2)}. How many lots can you buy from this book at a profit?`; why = `Add the sizes of every ask below ${F.toFixed(2)}.`;
+    } else if (kind === "unwind") {
+      const pos = b.bids[0].q + b.bids[1].q; const F = Math.round(((b.asks[0].p + b.bids[0].p) / 2) * 2) / 2;
+      a = walkBook(b.bids, pos) - pos * F;
+      q = `You are long ${pos} lots with fair value ${F.toFixed(1)}. You must sell them all to the bids now. What is your P&L against fair value?`; why = `Proceeds from the top two bid levels minus ${pos} × ${F.toFixed(1)}.`;
+    } else { a = (b.asks[0].p + b.bids[0].p) / 2; q = `What is the mid price of this book?`; why = `(best bid + best ask) / 2.`; }
+    /* near misses on the book's own grid: half-ticks for prices, a few lots' worth for totals */
+    const step = kind === "mid" ? 0.5 : kind === "count" ? 5 : Math.max(2.5, Math.round(Math.abs(a) * 0.004 / 2.5) * 2.5);
+    const lab = v => kind === "mid" ? v.toFixed(2) : kind === "unwind" ? v.toFixed(1) : sig(v);
+    ch = options(r, a, 4, (rr, x) => x + (rr() < 0.5 ? -1 : 1) * step * rr.int(1, 4)).map(v => ({ value: String(v), label: lab(v) }));
+    const A = a;
+    return { b, q, a: lab(A), why, ch, check: v => Math.abs(Number(v) - A) < 1e-9, kind };
+  }
+  function genObQ(r) {
+    const o = genOb(r);
+    return { text: o.q, kind: o.kind, answer: o.a, explain: o.why, input: "choice", cols: 2, choices: o.ch, check: o.check,
+      prompt: <div className="oa-big-q"><Book b={o.b} /><K.T>{o.q}</K.T></div> };
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "orderbook", name: "Orderbooks",
+    blurb: "New in Optiver's 2026/27 assessment: read a simplified bid and ask book and pick the profitable trade, the cost of sweeping the book or the P&L of clearing inventory. The real module is 20 questions in 8 minutes.",
+    fields: [
+      { key: "count", label: "Questions", type: "num", min: 5, max: 40 },
+      { key: "secs", label: "Session length", type: "num", min: 60, max: 900, unit: "s" },
+    ],
+    presets: { Easy: { count: 10, secs: 360 }, Medium: { count: 20, secs: 480 }, Hard: { count: 20, secs: 300 } },
+    note: "Buying lifts the asks (best first), selling hits the bids. Sizes are in lots.",
+  }, { gen: genObQ, count: s => s.count, sessionSecs: s => s.secs, fast: true, okMs: 500, badMs: 1400 }));
+
+  /* shared with the Daily Challenge */
+  window.__TIP_OA = { genBto, genObQ, genInt, FAM };
+})();

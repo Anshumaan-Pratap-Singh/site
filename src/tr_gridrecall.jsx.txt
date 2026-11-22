@@ -1,0 +1,74 @@
+/* Grid Recall: spatial sequence memory (Corsi blocks), as in game-based memory tasks. Blue cells light up one at
+   a time, sometimes with red decoys to ignore; tap the blue cells back in order. Length adapts, so you find your span. */
+(function () {
+  const { TH, TF, R } = TIP;
+  const { useState, useEffect, useMemo, useRef } = R;
+  const K = TIP_KIT;
+  function Game({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const N = s.grid;
+    const [trial, setTrial] = useState(0), [len, setLen] = useState(s.start);
+    const [seq, setSeq] = useState([]), [dec, setDec] = useState([]);
+    const [phase, setPhase] = useState("show");   /* show | input | fb | done */
+    const [lit, setLit] = useState(null), [taps, setTaps] = useState([]), [hist, setHist] = useState([]);
+    useEffect(() => {
+      if (phase !== "show") return;
+      const cells = rng.shuffle(Array.from({ length: N * N }, (_, i) => i));
+      const sq = cells.slice(0, len), d = s.decoys ? cells.slice(len, len + Math.max(1, Math.floor(len / 2))) : [];
+      setSeq(sq); setDec(d); setTaps([]);
+      /* interleave decoys between the real flashes */
+      const plan = []; sq.forEach((c, i) => { plan.push({ c, t: "b" }); if (d[i] != null && i < sq.length - 1 && rng() < 0.7) plan.push({ c: d[i], t: "r" }); });
+      const on = s.speed * 1000, gap = 200; let t = 600; const timers = [];
+      plan.forEach(p => { timers.push(setTimeout(() => setLit(p), t)); t += on; timers.push(setTimeout(() => setLit(null), t)); t += gap; });
+      timers.push(setTimeout(() => setPhase("input"), t + 150));
+      return () => timers.forEach(clearTimeout);
+    }, [phase, trial]);
+    function tap(c) {
+      if (phase !== "input") return;
+      const nt = [...taps, c]; setTaps(nt);
+      const k = nt.length - 1, ok = seq[k] === c;
+      if (!ok || nt.length === seq.length) {
+        const good = ok && nt.length === seq.length;
+        setHist(h => [...h, { ok: good, len: seq.length, text: `${seq.length} cells`, shown: good ? "recalled" : `missed at step ${k + 1}` }]);
+        setPhase("fb");
+        setTimeout(() => {
+          if (trial + 1 >= s.trials) { setPhase("done"); return; }
+          setLen(l => Math.max(2, Math.min(N * N - 2, l + (good ? 1 : -1)))); setTrial(t => t + 1); setPhase("show");
+        }, good ? 700 : 1400);
+      }
+    }
+    const res = useMemo(() => phase === "done" ? { score: hist.filter(h => h.ok).reduce((a, h) => a + h.len, 0), span: Math.max(0, ...hist.filter(h => h.ok).map(h => h.len)), correct: hist.filter(h => h.ok).length, total: hist.length } : null, [phase]);
+    Jt(phase === "done", res, onFinish);
+    if (phase === "done" && res) return <K.Result headline={`Span ${res.span || "—"}`} sub={`${res.correct} of ${res.total} sequences recalled · score ${res.score}`} ring={res.total ? res.correct / res.total : 0} onRestart={onRestart}
+      metrics={[{ label: "Best span", value: res.span || "—" }, { label: "Score", value: res.score, sub: "sum of lengths recalled" }]} review={hist}
+      notes="Chunk the path into shapes (an L, a diagonal) and rehearse it as you watch. Ignore red flashes completely." />;
+    return (
+      <K.Stage title="Grid Recall" sub={`Sequence ${trial + 1} of ${s.trials} · length ${len}`} stats={[{ label: "Span", value: Math.max(0, ...hist.filter(h => h.ok).map(h => h.len)) || "—", pop: true }]} total={s.trials} results={hist.map(h => h.ok)} at={trial}>
+        <div className="oa-q">
+          <div className="oa-lbl" style={{ textAlign: "center" }}>{phase === "show" ? "Watch the BLUE cells · ignore red" : phase === "input" ? `Tap the blue cells in order (${taps.length}/${seq.length})` : hist.length && hist[hist.length - 1].ok ? "Correct" : "Not quite"}</div>
+          <div className="gr-grid" style={{ gridTemplateColumns: `repeat(${N}, 1fr)` }}>
+            {Array.from({ length: N * N }, (_, c) => {
+              const on = lit && lit.c === c, tapped = taps.indexOf(c), show = phase === "fb" && seq.indexOf(c) >= 0;
+              return <button key={c} className={"gr-cell" + (on ? (lit.t === "b" ? " lit" : " dec") : "") + (tapped >= 0 ? (seq[tapped] === c ? " ok" : " bad") : "") + (show && tapped < 0 ? " miss" : "")} disabled={phase !== "input"} onClick={() => tap(c)}>
+                {show ? <i>{seq.indexOf(c) + 1}</i> : tapped >= 0 ? <i>{tapped + 1}</i> : null}</button>;
+            })}
+          </div>
+        </div>
+      </K.Stage>
+    );
+  }
+  TIP_TRAINERS.register({
+    id: "gridrecall", name: "Grid Recall", metric: "score", unit: " pts", version: 2, playFilter: K.versioned(2),
+    blurb: "Spatial sequence memory (Corsi blocks) as in game-based memory tasks: blue cells light up one at a time, red decoys flash in between, and you tap the blue ones back in order. The length adapts to find your span.",
+    fields: [
+      { key: "trials", label: "Sequences", type: "num", min: 4, max: 24 },
+      { key: "grid", label: "Grid size", type: "sel", choices: [{ value: 4, label: "4 × 4" }, { value: 5, label: "5 × 5" }] },
+      { key: "start", label: "Starting length", type: "num", min: 2, max: 8 },
+      { key: "speed", label: "Flash time", type: "sel", choices: [{ value: 0.8, label: "0.8s" }, { value: 0.6, label: "0.6s" }, { value: 0.45, label: "0.45s" }] },
+      { key: "decoys", label: "Red decoys", type: "bool" },
+    ],
+    presets: { Easy: { trials: 8, grid: 4, start: 3, speed: 0.8, decoys: false }, Medium: { trials: 12, grid: 4, start: 4, speed: 0.6, decoys: true }, Hard: { trials: 16, grid: 5, start: 5, speed: 0.45, decoys: true } },
+    note: "A right answer adds one cell to the next sequence; a miss takes one away.",
+    component: Game,
+  });
+})();

@@ -1,0 +1,63 @@
+/* Mystery Figure: a deduction game like Mastermind, as in the hypothesis-testing games of Arctic Shores-style
+   assessments. A hidden figure has a shape, a colour and a shading. Each guess tells you only how many of the three
+   you got right. Find it in as few guesses as possible; your count is compared with an efficient solver. */
+(function () {
+  const { TH, TF, R } = TIP;
+  const { useState, useMemo } = R;
+  const K = TIP_KIT;
+  const SH = ["circle", "square", "triangle", "star"], TO = [1, 2, 3, 5], FI = ["none", "half", "solid"];
+  const ALL = []; SH.forEach((a, i) => TO.forEach((b, j) => FI.forEach((c, k) => ALL.push([i, j, k]))));
+  const score = (g, h) => (g[0] === h[0]) + (g[1] === h[1]) + (g[2] === h[2]);
+  function solverPar(hidden) {
+    let cand = ALL.slice(), n = 0;
+    for (;;) {
+      n++;
+      let best = cand[0], bw = 1e9;
+      for (const g of (cand.length > 12 ? ALL : cand)) { const b = [0, 0, 0, 0]; cand.forEach(c => b[score(g, c)]++); const w = Math.max(...b) - (cand.includes(g) ? 0.5 : 0); if (w < bw) { bw = w; best = g; } }
+      const f = score(best, hidden); if (f === 3) return n;
+      cand = cand.filter(c => score(best, c) === f);
+    }
+  }
+  const Fig = ({ f, size }) => <K.Art w={size || 80} h={size || 80}><rect x="2" y="2" width={(size || 80) - 4} height={(size || 80) - 4} rx="12" className="tile" /><K.Shape kind={SH[f[0]]} x={(size || 80) / 2} y={(size || 80) / 2} r={(size || 80) * 0.28} tone={TO[f[1]]} fill={FI[f[2]]} /></K.Art>;
+  function Game({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const [hid, setHid] = useState(() => rng.pick(ALL)), [ri, setRi] = useState(0);
+    const [g, setG] = useState([0, 0, 0]), [tries, setTries] = useState([]), [hist, setHist] = useState([]), [won, setWon] = useState(false), [done, setDone] = useState(false);
+    const par = useMemo(() => solverPar(hid), [hid]);
+    const left = useMemo(() => ALL.filter(c => tries.every(t => score(t.g, c) === t.f)).length, [tries]);
+    function guess() {
+      if (won) return;
+      const f = score(g, hid), nt = [...tries, { g: g.slice(), f }]; setTries(nt);
+      if (f === 3) { const pts = Math.max(0, 6 + par - nt.length); setHist(h => [...h, { ok: nt.length <= par, text: `Figure ${ri + 1}`, shown: `${nt.length} guesses`, explain: `An efficient solver needs ${par}.`, pts }]); setWon(true); }
+    }
+    function next() { if (ri + 1 >= s.rounds) { setDone(true); return; } setHid(rng.pick(ALL)); setRi(ri + 1); setTries([]); setWon(false); setG([0, 0, 0]); }
+    const res = useMemo(() => done ? { score: hist.reduce((a, h) => a + h.pts, 0), correct: hist.filter(h => h.ok).length, total: hist.length } : null, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={`${res.score} points`} sub={`${res.correct} of ${res.total} found as fast as the solver`} ring={res.total ? res.correct / res.total : 0} onRestart={onRestart}
+      metrics={[{ label: "Score", value: res.score, sub: "6 − guesses beyond the solver's" }]} review={hist}
+      notes="Change one feature at a time only when you have to. A guess that changes two features at once and scores the same tells you less than you think." />;
+    const set = (k, v) => setG(x => { const n = x.slice(); n[k] = v; return n; });
+    return (
+      <K.Stage title="Mystery Figure" sub={`Figure ${ri + 1} of ${s.rounds}`} stats={[{ label: "Guesses", value: tries.length, pop: true }, s.hints ? { label: "Still possible", value: left } : { label: "Solver", value: "?" }]} total={s.rounds} results={hist.map(h => h.ok)} at={ri}>
+        <div className="oa-q">
+          <div className="my-grid">
+            <div className="my-build"><Fig f={g} size={110} />
+              <div className="my-ctl">{[[SH, "Shape"], [TO, "Colour"], [FI, "Shading"]].map(([arr, lbl], k) => <div key={k}><span className="oa-lbl">{lbl}</span><div className="row">{arr.map((x, v) => <button key={v} className={"btn sm" + (g[k] === v ? " primary" : "")} disabled={won} onClick={() => set(k, v)}>{k === 0 ? x : k === 1 ? ["Blue", "Amber", "Green", "Violet"][v] : ["Empty", "Half", "Solid"][v]}</button>)}</div></div>)}
+                <button className="start" disabled={won} onClick={guess}>Guess</button></div></div>
+            <div className="my-log">{tries.map((t, i) => <div key={i} className="my-try"><Fig f={t.g} size={46} /><div className="my-pips">{[0, 1, 2].map(k => <i key={k} className={k < t.f ? "on" : ""} />)}</div><b>{t.f}/3</b></div>)}
+              {!tries.length ? <div className="small muted">Each guess shows how many of shape, colour and shading are right, not which.</div> : null}</div>
+          </div>
+          {won ? <K.Banner ok={tries.length <= par} onNext={next} title={`Found in ${tries.length}.`}>An efficient solver needs {par} guesses for this figure.</K.Banner> : null}
+        </div>
+      </K.Stage>
+    );
+  }
+  TIP_TRAINERS.register({
+    id: "mystery", name: "Mystery Figure", metric: "score", unit: " pts", version: 2, playFilter: K.versioned(2),
+    blurb: "A Mastermind-style deduction game like the hypothesis-testing tasks in Arctic Shores-style assessments: each guess only tells you how many of shape, colour and shading are right. Find the figure in as few guesses as an efficient solver.",
+    fields: [{ key: "rounds", label: "Figures", type: "num", min: 2, max: 12 }, { key: "hints", label: "Show how many figures are still possible", type: "bool" }],
+    presets: { Easy: { rounds: 3, hints: true }, Medium: { rounds: 5, hints: false }, Hard: { rounds: 8, hints: false } },
+    note: "48 possible figures: 4 shapes × 4 colours × 3 shadings.",
+    component: Game,
+  });
+})();

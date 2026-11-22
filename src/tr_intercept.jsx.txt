@@ -1,0 +1,75 @@
+/* Intercept: a timing-and-anticipation game in the style of Arctic Shores / Cappfinity real-time tasks.
+   Targets fall down four lanes; your shots take time to climb, so you fire ahead of the target. */
+(function () {
+  const { TH, TF, R, typing, still } = TIP;
+  const { useState, useEffect, useMemo, useRef } = R;
+  const K = TIP_KIT;
+  const LANES = 4, H = 300, W = 280, LW = W / LANES;
+  function Game({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const st = useRef({ balls: [], shots: [], lane: 1, t: 0, next: 0.6, hits: 0, misses: 0, fired: 0, booms: [] });
+    const [, setF] = useState(0);
+    const [done, setDone] = useState(false);
+    useEffect(() => {
+      let raf, last = performance.now();
+      const step = now => {
+        const dt = Math.min(0.05, (now - last) / 1000); last = now;
+        const g = st.current; g.t += dt;
+        if (g.t >= s.secs) { setDone(true); return; }
+        const speed = s.fall * (1 + 0.5 * g.t / s.secs);
+        g.next -= dt;
+        if (g.next <= 0) { g.balls.push({ lane: rng.int(0, LANES - 1), y: -10, id: Math.random() }); g.next = s.every * (0.6 + rng() * 0.8); }
+        g.balls.forEach(b => b.y += speed * dt);
+        g.shots.forEach(p => p.y -= s.shot * dt);
+        for (const b of g.balls) for (const p of g.shots) if (!b.dead && !p.dead && b.lane === p.lane && Math.abs(b.y - p.y) < 14) { b.dead = p.dead = true; g.hits++; g.booms.push({ lane: b.lane, y: b.y, t: g.t }); }
+        g.balls.forEach(b => { if (!b.dead && b.y > H - 18) { b.dead = true; g.misses++; } });
+        g.balls = g.balls.filter(b => !b.dead); g.shots = g.shots.filter(p => !p.dead && p.y > -10); g.booms = g.booms.filter(x => g.t - x.t < 0.4);
+        setF(f => f + 1);
+        raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+      return () => cancelAnimationFrame(raf);
+    }, []);
+    const fire = () => { const g = st.current; if (done || g.shots.filter(p => p.lane === g.lane).length >= 2) return; g.shots.push({ lane: g.lane, y: H - 26 }); g.fired++; };
+    const move = d => { const g = st.current; g.lane = Math.max(0, Math.min(LANES - 1, g.lane + d)); };
+    useEffect(() => {
+      const h = e => { if (typing(e)) return; if (e.key === "ArrowLeft" || e.key === "a") { e.preventDefault(); move(-1); } else if (e.key === "ArrowRight" || e.key === "d") { e.preventDefault(); move(1); } else if (e.key === " " || e.key === "ArrowUp") { e.preventDefault(); fire(); } else if (/^[1-4]$/.test(e.key)) { st.current.lane = +e.key - 1; } };
+      window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
+    }, [done]);
+    const g = st.current;
+    const res = useMemo(() => done ? { score: g.hits - g.misses, hits: g.hits, misses: g.misses, shots: g.fired, acc: g.fired ? g.hits / g.fired : 0, correct: g.hits, total: g.hits + g.misses } : null, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={`${res.hits} intercepted`} sub={`${res.misses} got through · ${res.shots} shots fired`} ring={res.total ? res.hits / res.total : 0} onRestart={onRestart}
+      metrics={[{ label: "Score", value: res.score, sub: "hits − targets missed" }, { label: "Shot accuracy", value: K.pct(res.acc) }, { label: "Got through", value: res.misses, tone: res.misses ? "dn" : "" }]}
+      notes="A shot takes time to climb. Fire when the target is at the height where both will meet: the faster the fall, the earlier you fire." />;
+    return (
+      <K.Stage title="Intercept" sub="Move ← → (or 1–4), fire with Space" clock={Math.max(0, s.secs - g.t)} clockFrac={1 - g.t / s.secs}
+        stats={[{ label: "Hits", value: g.hits, pop: true, tone: "up" }, { label: "Missed", value: g.misses, tone: "dn" }]}>
+        <div className="ic-wrap">
+          <svg className="ic-field" viewBox={`0 0 ${W} ${H}`} onPointerDown={e => { const r = e.currentTarget.getBoundingClientRect(); const ln = Math.floor((e.clientX - r.left) / r.width * LANES); if (ln === g.lane) fire(); else st.current.lane = Math.max(0, Math.min(3, ln)); }}>
+            {Array.from({ length: LANES - 1 }, (_, i) => <path key={i} d={`M${(i + 1) * LW},0V${H}`} className="ic-lane" />)}
+            <path d={`M0,${H - 18}H${W}`} className="ic-line" />
+            {g.balls.map(b => <g key={b.id}><circle cx={b.lane * LW + LW / 2} cy={b.y} r="10" className="ic-ball" /><circle cx={b.lane * LW + LW / 2} cy={b.y - 12} r="5" className="ic-trail" /></g>)}
+            {g.shots.map((p, i) => <path key={i} d={`M${p.lane * LW + LW / 2},${p.y}v14`} className="ic-shot" />)}
+            {g.booms.map((x, i) => <circle key={i} cx={x.lane * LW + LW / 2} cy={x.y} r={10 + (g.t - x.t) * 60} className="ic-boom" style={{ opacity: 1 - (g.t - x.t) / 0.4 }} />)}
+            <g transform={`translate(${g.lane * LW + LW / 2} ${H - 8})`} className="ic-gun"><path d="M-16,8L0,-14L16,8z" /></g>
+          </svg>
+          <div className="ts-keys"><button className="btn" onClick={() => move(-1)}>◀</button><button className="start" onClick={fire}>Fire</button><button className="btn" onClick={() => move(1)}>▶</button></div>
+        </div>
+      </K.Stage>
+    );
+  }
+  TIP_TRAINERS.register({
+    id: "intercept", name: "Intercept", metric: "score", unit: " pts", version: 2, playFilter: K.versioned(2),
+    blurb: "A real-time anticipation game like the Arctic Shores and Cappfinity timing tasks: targets fall down four lanes and speed up, while your shots take time to climb. Move, lead the target and fire so they meet.",
+    fields: [
+      { key: "secs", label: "Duration", type: "num", min: 20, max: 180, unit: "s" },
+      { key: "fall", label: "Fall speed", type: "num", min: 30, max: 160, unit: " px/s" },
+      { key: "shot", label: "Shot speed", type: "num", min: 80, max: 400, unit: " px/s" },
+      { key: "every", label: "Seconds between targets", type: "num", min: 0.4, max: 3, unit: "s", step: 0.1 },
+    ],
+    presets: { Easy: { secs: 45, fall: 55, shot: 220, every: 1.6 }, Medium: { secs: 60, fall: 75, shot: 170, every: 1.1 }, Hard: { secs: 75, fall: 95, shot: 140, every: 0.8 } },
+    note: "Two shots at most can be in the air per lane. Tap a lane to move there; tap your own lane to fire.",
+    component: Game,
+  });
+})();

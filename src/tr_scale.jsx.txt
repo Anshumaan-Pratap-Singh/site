@@ -1,0 +1,90 @@
+/* Scale Weights: balanced scales of shapes with unknown weights, as in game-based numerical OAs.
+   Read two balanced scales, then say how many of one shape balance a third pan, or which side is heavier. */
+(function () {
+  const { TH, TF } = TIP;
+  const { trainer } = TIP_DRILL;
+  const K = TIP_KIT;
+  const SH = [{ k: "circle", t: 1 }, { k: "square", t: 2 }, { k: "triangle", t: 5 }, { k: "diamond", t: 3 }];
+  const sum = (m, w) => m.reduce((a, c, i) => a + c * w[i], 0);
+
+  /* one balance per picture: a 300 x 170 box with the pivot in the middle and a pan under each beam end.
+     Up to 3 shapes per row, at most 2 rows, so nothing touches the beam, the other pan or the next scale. */
+  function Pan({ m, x, y }) {
+    const items = []; m.forEach((c, i) => { for (let j = 0; j < c; j++) items.push(i); });
+    return <g>{items.map((sh, j) => { const row = Math.floor(j / 3), col = j % 3, n = Math.min(3, items.length - row * 3);
+      return <K.Shape key={j} kind={SH[sh].k} x={x + (col - (n - 1) / 2) * 24} y={y - 13 - row * 24} r={10} fill="half" tone={SH[sh].t} />; })}</g>;
+  }
+  function Scale({ L, R, q }) {
+    const P = 150, LX = 60, RX = 240, BY = 40, PY = 128;
+    const side = (x, m, isQ) => <g>
+      <path d={`M${x},${BY}V${BY + 12}M${x - 46},${BY + 12}H${x + 46}M${x - 46},${BY + 12}V${PY - 6}M${x + 46},${BY + 12}V${PY - 6}`} className="sc-cord" />
+      <path d={`M${x - 46},${PY - 6}Q${x},${PY + 12} ${x + 46},${PY - 6}Z`} className="sc-pan" />
+      {isQ ? <text x={x} y={PY - 18} textAnchor="middle" className="sc-q">?</text> : <Pan m={m} x={x} y={PY - 4} />}
+    </g>;
+    return <K.Art w={300} h={176}>
+      <path d={`M${P - 22},168H${P + 22}L${P + 6},${BY + 6}H${P - 6}Z`} className="sc-post" />
+      <path d={`M${LX},${BY}H${RX}`} className="sc-beam" />
+      <circle cx={P} cy={BY} r="6" className="sc-pivot" />
+      {side(LX, L)}{side(RX, R, q)}
+    </K.Art>;
+  }
+  const rank2 = (a, b) => { for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) if (a[i] * b[j] - a[j] * b[i] !== 0) return true; return false; };
+
+  function gen(r, s) {
+    for (let tries = 0; tries < 400; tries++) {
+      const w = [r.int(1, 6), r.int(1, 6), r.int(1, 6)];
+      if (new Set(w).size < 3) continue;
+      const eqs = [];
+      for (let t = 0; t < 60 && eqs.length < 2; t++) {
+        const L = [r.int(0, 3), r.int(0, 2), r.int(0, 2)], R = [r.int(0, 3), r.int(0, 3), r.int(0, 3)];
+        for (let i = 0; i < 3; i++) if (L[i] && R[i]) { const m = Math.min(L[i], R[i]); L[i] -= m; R[i] -= m; }
+        const nl = L.reduce((a, b) => a + b, 0), nr = R.reduce((a, b) => a + b, 0);
+        if (!nl || !nr || nl > 6 || nr > 6 || sum(L, w) !== sum(R, w)) continue; /* at most 6 per pan: 2 rows of 3 */
+        const v = L.map((c, i) => c - R[i]);
+        if (eqs.length && !rank2(eqs[0].v, v)) continue;
+        eqs.push({ L, R, v });
+      }
+      if (eqs.length < 2) continue;
+      if (s.mode === "heavier" || (s.mode === "mix" && r() < 0.4)) {
+        const L = [r.int(0, 3), r.int(0, 3), r.int(0, 2)], R = [r.int(0, 3), r.int(0, 3), r.int(0, 2)];
+        if (!L.some(Boolean) || !R.some(Boolean) || L.reduce((x, y) => x + y, 0) > 6 || R.reduce((x, y) => x + y, 0) > 6) continue;
+        const d = sum(L, w) - sum(R, w), ans = d > 0 ? "left" : d < 0 ? "right" : "even";
+        return build(eqs, { L, R }, ans, [{ value: "left", label: "Left is heavier" }, { value: "right", label: "Right is heavier" }, { value: "even", label: "They balance" }],
+          `Weights in proportion ${w.join(" : ")} (${SH.slice(0, 3).map(x => x.k).join(", ")}). Left ${sum(L, w)}, right ${sum(R, w)}.`, "heavier");
+      }
+      const tgt = r.int(0, 2), Q = [r.int(0, 3), r.int(0, 3), r.int(0, 3)]; Q[tgt] = 0;
+      if (!Q.some(Boolean)) continue;
+      const tot = sum(Q, w); if (tot % w[tgt]) continue;
+      const ans = tot / w[tgt]; if (ans < 1 || ans > 12) continue;
+      const opts = r.shuffle([...new Set([ans, ans + 1, Math.max(1, ans - 1), ans + 2, ans * 2].filter(v => v > 0))].slice(0, 4));
+      return build(eqs, { L: Q, R: [0, 0, 0], tgt }, ans, opts.map(v => ({ value: v, label: v + " × " + SH[tgt].k })),
+        `With weights in proportion ${w.join(" : ")} (circle : square : triangle), the left pan weighs ${tot}, which is ${ans} × ${w[tgt]}.`, "count");
+    }
+    return gen(r, { ...s, mode: "count" });
+  }
+  function build(eqs, q, ans, choices, explain, kind) {
+    return {
+      kind, text: kind === "heavier" ? "Which pan is heavier?" : `How many ${SH[q.tgt].k}s balance the pan?`, answer: typeof ans === "string" ? ({ left: "left", right: "right", even: "they balance" })[ans] : `${ans} ${SH[q.tgt].k}s`,
+      explain,
+      prompt: <div className="sc-wrap">
+        <div className="oa-lbl">These scales balance</div>
+        <div className="sc-row"><div className="sc-cell"><Scale L={eqs[0].L} R={eqs[0].R} /></div><div className="sc-cell"><Scale L={eqs[1].L} R={eqs[1].R} /></div></div>
+        <div className="oa-lbl">{kind === "heavier" ? "Which side of this scale is heavier?" : `How many ${SH[q.tgt].k}s go on the right to balance?`}</div>
+        <div className="sc-row"><div className="sc-cell q"><Scale L={q.L} R={kind === "heavier" ? q.R : [0, 0, 0]} q={kind !== "heavier"} /></div></div>
+      </div>,
+      input: "choice", cols: choices.length, choices, check: v => v === ans,
+    };
+  }
+
+  TIP_TRAINERS.register(trainer({
+    id: "scale", name: "Scale Weights", version: 2,
+    blurb: "Two balanced scales of shapes with unknown weights, as in game-based numerical assessments. Work out the ratios, then say how many of a shape balance a new pan, or which side is heavier, against the clock.",
+    fields: [
+      { key: "count", label: "Questions", type: "num", min: 5, max: 30 },
+      { key: "time", label: "Time per question", type: "num", min: 8, max: 90, unit: "s" },
+      { key: "mode", label: "Question type", type: "sel", choices: [{ value: "count", label: "How many balance?" }, { value: "heavier", label: "Which is heavier?" }, { value: "mix", label: "Both" }] },
+    ],
+    presets: { Easy: { count: 8, time: 60, mode: "count" }, Medium: { count: 12, time: 35, mode: "mix" }, Hard: { count: 16, time: 22, mode: "mix" } },
+    note: "Tip: turn each balanced scale into an equation and eliminate one shape.",
+  }, { gen, count: s => s.count, perQSecs: s => s.time, always: true }));
+})();

@@ -1,0 +1,139 @@
+/* Options Market Making: lessons, timed drills and a live quoting case. */
+(function () {
+  const { TH, R } = TIP;
+  const { useState, useMemo } = R;
+  const { course, PART, num, bs } = TIP_DRILL;
+  const r2 = v => Math.round(v * 100) / 100;
+  const f2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  const S_ = String.raw;
+
+  /* lessons now live in the Lessons tab (learn_p3) */
+
+
+  /* ---------- drills ---------- */
+  const Q = {
+    payoff: r => {
+      const K = r.int(4, 24) * 5, S = K + r.int(-12, 12), kind = r.pick(["long call", "short call", "long put", "short put", "long straddle", "call spread"]);
+      let v, how;
+      if (kind === "long call") { v = Math.max(S - K, 0); how = S_`$\max(${S}-${K},0) = ${v}$`; }
+      if (kind === "short call") { v = -Math.max(S - K, 0); how = S_`$-\max(${S}-${K},0) = ${v}$`; }
+      if (kind === "long put") { v = Math.max(K - S, 0); how = S_`$\max(${K}-${S},0) = ${v}$`; }
+      if (kind === "short put") { v = -Math.max(K - S, 0); how = S_`$-\max(${K}-${S},0) = ${v}$`; }
+      if (kind === "long straddle") { v = Math.abs(S - K); how = S_`call + put $= |${S}-${K}| = ${v}$`; }
+      if (kind === "call spread") { const K2 = K + 10; v = Math.min(Math.max(S - K, 0), 10); return { q: S_`You are long the ${K}/${K2} call spread (long the ${K} call, short the ${K2} call). The stock finishes at ${S}. What is the payoff per share?`, v, a: String(v), x: S_`$\max(${S}-${K},0) - \max(${S}-${K2},0) = ${v}$; a call spread is capped at the strike gap.` }; }
+      return { q: S_`You hold a **${kind}** struck at ${K}. The stock finishes at ${S}. What is the payoff per share?`, v, a: String(v), x: how + "." };
+    },
+    intrinsic: r => {
+      const put = r() < 0.5, K = r.int(6, 30) * 5, S = K + r.int(put ? -9 : -3, put ? 3 : 9), iv = Math.max(put ? K - S : S - K, 0), tv = r2(0.3 + r() * 3);
+      const p = r2(iv + tv);
+      return { q: S_`Stock ${S}. The ${K} ${put ? "put" : "call"} trades at ${f2(p)}. What is its time value?`, v: tv, a: f2(tv), tol: 0.006, x: S_`Intrinsic is ${iv}, so time value is ${f2(p)} − ${iv} = ${f2(tv)}.` };
+    },
+    parity: r => {
+      const K = r.int(8, 30) * 5, S = K + r.int(-8, 8), C = r2(Math.max(S - K, 0) + 1 + r() * 4), P = r2(C - S + K);
+      return r() < 0.5
+        ? { q: S_`Zero rates. Stock ${S}, the ${K} call is ${f2(C)}. What should the ${K} put be worth?`, v: P, a: f2(P), tol: 0.006, x: S_`$P = C - S + K = ${f2(C)} - ${S} + ${K} = ${f2(P)}$.` }
+        : { q: S_`Zero rates. Stock ${S}, the ${K} put is ${f2(P)}. What should the ${K} call be worth?`, v: C, a: f2(C), tol: 0.006, x: S_`$C = P + S - K = ${f2(P)} + ${S} - ${K} = ${f2(C)}$.` };
+    },
+    parityArb: r => {
+      const K = r.int(8, 30) * 5, S = K, C = r2(2 + r() * 4), off = r.pick([-0.6, -0.4, 0.4, 0.6, 0]), P = r2(C + off);
+      const ans = off > 0 ? "Sell put, buy call, short stock" : off < 0 ? "Sell call, buy put, buy stock" : "No arbitrage";
+      return { q: S_`Zero rates. Stock ${S}, the ${K} call is ${f2(C)} and the ${K} put is ${f2(P)}. What locks in a profit?`, choices: ["Sell call, buy put, buy stock", "Sell put, buy call, short stock", "No arbitrage"], v: ans, a: ans, x: S_`At the money parity needs $C = P$. ${off === 0 ? "They are equal, so there is nothing to lock in." : off > 0 ? `The put is ${f2(off)} rich: sell it, buy the call and short stock.` : `The call is ${f2(-off)} rich: sell it, buy the put and buy stock.`}` };
+    },
+    hedge: r => {
+      const n = r.int(2, 30), put = r() < 0.5, d = r2(put ? -(0.15 + r() * 0.7) : 0.15 + r() * 0.7), side = r.pick(["buy", "sell"]);
+      const pos = (side === "buy" ? 1 : -1) * n * 100 * d, sh = Math.round(-pos);
+      return { q: S_`You **${side}** ${n} ${put ? "puts" : "calls"} (100 shares each) with delta ${d.toFixed(2)}. How many shares do you buy to be delta-neutral? (Negative = sell.)`, v: sh, a: String(sh), tol: 0.6, x: S_`Position delta is ${side === "buy" ? "+" : "−"}${n} × 100 × ${d.toFixed(2)} = ${Math.round(pos)}, so trade ${sh} shares.` };
+    },
+    atm: r => {
+      const S = r.int(4, 40) * 5, vol = r.pick([15, 20, 25, 30, 40]), m = r.pick([1, 3, 6, 12]), T = m / 12, strad = r() < 0.4;
+      const v = (strad ? 0.8 : 0.4) * vol / 100 * S * Math.sqrt(T);
+      return { q: S_`Stock ${S}, implied vol ${vol}%, ${m} month${m > 1 ? "s" : ""} to expiry. Roughly what is the at-the-money ${strad ? "straddle" : "call"} worth?`, v: r2(v), a: f2(v), tol: Math.max(0.05, v * 0.03), x: S_`Rule of thumb: ${strad ? "straddle" : "call"} $\approx ${strad ? "0.8" : "0.4"}\,\sigma S\sqrt{T} = ${strad ? "0.8" : "0.4"} \times ${vol / 100} \times ${S} \times \sqrt{${m}/12} \approx ${f2(v)}$.` };
+    },
+    vega: r => {
+      const vg = r2(0.05 + r() * 0.25), d = r.pick([-4, -3, -2, 2, 3, 5]), p = r2(1 + r() * 6), np = r2(p + vg * d);
+      return { q: S_`An option is ${f2(p)} with vega ${f2(vg)}. Implied vol moves ${d > 0 ? "up" : "down"} ${Math.abs(d)} points. Roughly what is the new price?`, v: np, a: f2(np), tol: 0.011, x: S_`${f2(p)} ${d > 0 ? "+" : "−"} ${Math.abs(d)} × ${f2(vg)} = ${f2(np)}.` };
+    },
+    gamma: r => {
+      const g = r.pick([0.02, 0.03, 0.04, 0.05, 0.08]), dS = r.pick([2, 3, 4, 5, 6]), n = r.int(1, 10);
+      const v = r2(0.5 * g * dS * dS * n * 100);
+      return { q: S_`You are long ${n} delta-hedged calls (100 shares each) with gamma ${g}. The stock jumps ${dS}. Roughly what is your gamma P&L?`, v, a: f2(v), tol: Math.max(0.5, v * 0.02), x: S_`$\tfrac12 \Gamma (\Delta S)^2 \times$ shares $= 0.5 \times ${g} \times ${dS}^2 \times ${n * 100} = ${f2(v)}$.` };
+    },
+    theta: r => {
+      const th = r2(0.02 + r() * 0.08), d = r.int(2, 7), p = r2(2 + r() * 5), np = r2(p - th * d);
+      return { q: S_`An option is ${f2(p)} with theta −${f2(th)} per day. All else equal, what is it worth in ${d} days?`, v: np, a: f2(np), tol: 0.011, x: S_`${f2(p)} − ${d} × ${f2(th)} = ${f2(np)}.` };
+    },
+  };
+  /* ---------- more drill types (19 Nov) ---------- */
+  Object.assign(Q, {
+    breakeven: r => { const put = r() < 0.5, K = r.int(6, 30) * 5, c = r2(0.5 + r() * 6), v = r2(put ? K - c : K + c);
+      return { q: S_`You buy the ${K} ${put ? "put" : "call"} for ${f2(c)}. At what stock price at expiry do you break even?`, v, a: f2(v), tol: 0.006, x: S_`${put ? "Strike minus premium" : "Strike plus premium"}: ${K} ${put ? "−" : "+"} ${f2(c)} = ${f2(v)}.` }; },
+    straddleBE: r => { const K = r.int(6, 30) * 5, c = r2(2 + r() * 8), up = r() < 0.5, v = r2(up ? K + c : K - c);
+      return { q: S_`You buy the ${K} straddle for ${f2(c)}. What is the ${up ? "upper" : "lower"} break-even stock price at expiry?`, v, a: f2(v), tol: 0.006, x: S_`The stock must move by the premium either way: ${K} ${up ? "+" : "−"} ${f2(c)} = ${f2(v)}.` }; },
+    spreadMax: r => { const K = r.int(6, 30) * 5, w = r.pick([5, 10]), d = r2(0.5 + r() * (w - 1.5)), bull = r() < 0.5, prof = r() < 0.5;
+      const v = r2(prof ? w - d : d), leg = bull ? `buy the ${K} call and sell the ${K + w} call` : `buy the ${K + w} put and sell the ${K} put`;
+      return { q: S_`You ${leg} for a net debit of ${f2(d)}. What is your maximum ${prof ? "profit" : "loss"}?`, v, a: f2(v), tol: 0.006, x: prof ? S_`The spread pays at most the strike gap ${w}, so max profit is ${w} − ${f2(d)} = ${f2(v)}.` : S_`The worst case is the spread expiring worthless: you lose the debit, ${f2(d)}.` }; },
+    fly: r => { const K = r.int(6, 30) * 5, w = r.pick([5, 10]), S = K + r.int(-w - 3, w + 3); const v = Math.max(w - Math.abs(S - K), 0);
+      return { q: S_`You are long the ${K - w}/${K}/${K + w} call butterfly (long one ${K - w} call, short two ${K} calls, long one ${K + w} call). The stock finishes at ${S}. What is the payoff?`, v, a: String(v), x: S_`A butterfly pays $\max(${w} - |S - ${K}|, 0) = \max(${w} - ${Math.abs(S - K)}, 0) = ${v}$.` }; },
+    box: r => { const K1 = r.int(6, 20) * 5, w = r.pick([5, 10, 20]), rr = r.pick([0, 0, 2, 4, 5]) / 100, T = r.pick([0.25, 0.5, 1]); const v = r2(w / (1 + rr * T));
+      return { q: S_`What is a ${K1}/${K1 + w} box spread (long the call spread and long the put spread on the same strikes) worth with ${T * 12} months to expiry and rates of ${rr * 100}% (simple interest)?`, v, a: f2(v), tol: 0.011, x: S_`A box always pays the strike gap ${w} at expiry, so it is worth ${w}/(1 + ${rr} × ${T}) = ${f2(v)}.` }; },
+    parityRates: r => { const K = r.int(8, 30) * 5, S = K + r.int(-6, 6), rr = r.pick([2, 4, 5, 6]) / 100, T = r.pick([0.25, 0.5, 1]), PVK = K / (1 + rr * T), C = r2(Math.max(S - PVK, 0) + 1 + r() * 4), P = r2(C - S + PVK);
+      return { q: S_`Stock ${S}, rates ${rr * 100}% (simple), ${T * 12} months to expiry. The ${K} call is ${f2(C)}. What should the ${K} put be worth?`, v: P, a: f2(P), tol: 0.02, x: S_`$P = C - S + K/(1 + rT) = ${f2(C)} - ${S} + ${f2(PVK)} = ${f2(P)}$.` }; },
+    deltaMove: r => { const p = r2(1 + r() * 8), d = r2(0.2 + r() * 0.6) * (r() < 0.3 ? -1 : 1), dS = r.pick([-3, -2, -1.5, -1, 1, 1.5, 2, 3]), v = r2(p + d * dS);
+      return { q: S_`An option is ${f2(p)} with delta ${d.toFixed(2)}. The stock moves ${dS > 0 ? "up" : "down"} ${Math.abs(dS)}. Roughly what is the option worth now (ignore gamma)?`, v, a: f2(v), tol: 0.011, x: S_`${f2(p)} + ${d.toFixed(2)} × ${dS} = ${f2(v)}.` }; },
+    newDelta: r => { const d = r2(0.3 + r() * 0.4), g = r.pick([0.02, 0.03, 0.04, 0.05, 0.06, 0.08]), dS = r.pick([-4, -3, -2, 2, 3, 4, 5]), v = r2(d + g * dS);
+      return { q: S_`A call has delta ${d.toFixed(2)} and gamma ${g}. The stock ${dS > 0 ? "rises" : "falls"} ${Math.abs(dS)}. Roughly what is the new delta?`, v, a: v.toFixed(2), tol: 0.006, x: S_`$\Delta_{new} \approx ${d.toFixed(2)} + ${g} \times ${dS} = ${v.toFixed(2)}$.` }; },
+    bookDelta: r => { const n1 = r.int(1, 20), d1 = r2(0.2 + r() * 0.6), n2 = r.int(1, 20), d2 = -r2(0.2 + r() * 0.6), sh = r.int(-20, 20) * 100; const v = Math.round(n1 * 100 * d1 - n2 * 100 * d2 + sh);
+      return { q: S_`Your book: long ${n1} calls (delta ${d1.toFixed(2)}), short ${n2} puts (delta ${d2.toFixed(2)}), and ${sh >= 0 ? "long" : "short"} ${Math.abs(sh)} shares. Each option is on 100 shares. What is your total delta in shares?`, v, a: String(v), tol: 0.6, x: S_`${n1} × 100 × ${d1.toFixed(2)} − ${n2} × 100 × (${d2.toFixed(2)}) ${sh >= 0 ? "+" : "−"} ${Math.abs(sh)} = ${v}.` }; },
+    vegaBook: r => { const n = r.int(2, 50), vg = r2(0.05 + r() * 0.3), dv = r.pick([-3, -2, -1, 1, 2, 3]), long = r() < 0.5, v = r2((long ? 1 : -1) * n * 100 * vg * dv);
+      return { q: S_`You are ${long ? "long" : "short"} ${n} options (100 shares each) with vega ${f2(vg)} per point. Implied vol moves ${dv > 0 ? "up" : "down"} ${Math.abs(dv)} point${Math.abs(dv) > 1 ? "s" : ""}. What is your P&L?`, v, a: f2(v), tol: 0.6, x: S_`${long ? "+" : "−"}${n} × 100 × ${f2(vg)} × ${dv} = ${f2(v)}.` }; },
+    thetaGamma: r => { const g = r.pick([0.02, 0.04, 0.05, 0.08, 0.1]), th = r.pick([0.01, 0.02, 0.04, 0.05, 0.08]), v = Math.sqrt(2 * th / g);
+      return { q: S_`A delta-hedged long option has gamma ${g} and loses ${th} a day to theta. How big a daily stock move breaks even?`, v: r2(v), a: f2(v), tol: 0.02, x: S_`Break even when $\tfrac12 \Gamma (\Delta S)^2 = \theta$: $\Delta S = \sqrt{2 \times ${th}/${g}} = ${f2(v)}$.` }; },
+    dailyMove: r => { const S = r.int(4, 60) * 5, vol = r.pick([16, 20, 24, 32, 40, 48]), v = S * vol / 100 / 16;
+      return { q: S_`Stock ${S}, implied vol ${vol}%. Roughly what one-day move (one standard deviation) does that imply? Use 256 trading days.`, v: r2(v), a: f2(v), tol: Math.max(0.02, v * 0.02), x: S_`Daily vol = ${vol}% / √256 = ${vol / 16}%, so ${S} × ${vol / 1600} = ${f2(v)}.` }; },
+    impliedVol: r => { const S = r.int(4, 40) * 5, vol = r.pick([15, 20, 25, 30, 40, 50]), m = r.pick([1, 3, 12]), strad = r2(0.8 * vol / 100 * S * Math.sqrt(m / 12)), v = strad / (0.8 * S * Math.sqrt(m / 12)) * 100;
+      return { q: S_`Stock ${S}, the at-the-money straddle with ${m} month${m > 1 ? "s" : ""} to go is ${f2(strad)}. Roughly what implied vol is that, in %?`, v, a: v.toFixed(1) + "%", tol: 0.6, x: S_`$\sigma \approx \text{straddle}/(0.8\,S\sqrt{T}) = ${f2(strad)}/(0.8 \times ${S} \times \sqrt{${m}/12}) \approx ${v.toFixed(1)}\%$.` }; },
+    synthetic: r => { const k = r.pick(["lcsp", "lpsc", "lcss", "lsbp"]); const M_ = { lcsp: ["Long a call and short a put (same strike and expiry)", "Long forward"], lpsc: ["Long a put and short a call (same strike and expiry)", "Short forward"], lcss: ["Long a call and short the stock", "Long put"], lsbp: ["Long the stock and long a put", "Long call"] }[k];
+      return { q: S_`${M_[0]} is the same as which position?`, choices: ["Long forward", "Short forward", "Long put", "Long call"], v: M_[1], a: M_[1], x: S_`Put–call parity, $C - P = S - K$ (zero rates), rearranged: ${M_[0].toLowerCase()} = ${M_[1].toLowerCase()}.` }; },
+    earlyEx: r => { const k = r.pick(["call0", "putdeep", "calldiv"]); const M_ = { call0: ["an American call on a stock that pays no dividends", "Never"], putdeep: ["a deep in-the-money American put when rates are positive", "Sometimes"], calldiv: ["an American call just before a large dividend", "Sometimes"] }[k];
+      return { q: S_`Is it ever optimal to exercise ${M_[0]} early?`, choices: ["Never", "Sometimes", "Always"], v: M_[1], a: M_[1], x: k === "call0" ? S_`The call is worth more alive than its intrinsic value (time value ≥ 0 and you keep the strike's interest), so never.` : k === "putdeep" ? S_`Receiving the strike now earns interest; when the put is deep enough that its time value is smaller than that, exercise.` : S_`Exercising just before the ex-date captures the dividend, which can be worth more than the remaining time value.` }; },
+    callBounds: r => { const K = r.int(8, 30) * 5, S = K + r.int(-10, 15), lower = r() < 0.5, v = lower ? Math.max(S - K, 0) : S;
+      return { q: S_`Zero rates. Stock ${S}, European call struck at ${K}. What is the ${lower ? "lowest" : "highest"} price the call can trade at without arbitrage?`, v, a: String(v), x: lower ? S_`A call is worth at least its intrinsic value $\max(S - K, 0) = ${v}$ (with zero rates).` : S_`A call can never be worth more than the stock itself: ${S}.` }; },
+  });
+  const TOPICS = { basics: ["payoff", "intrinsic", "parity", "hedge", "breakeven", "straddleBE", "spreadMax", "fly", "box", "parityRates", "synthetic", "earlyEx", "callBounds", "parityArb"], greeks: ["hedge", "atm", "vega", "gamma", "theta", "deltaMove", "newDelta", "bookDelta", "vegaBook", "thetaGamma", "dailyMove", "impliedVol"], all: Object.keys(Q) };
+  function gen(r, s, i, hist) {
+    const list = TOPICS[s.topics] || TOPICS.all;
+    let k, t = 0; do { k = r.pick(list); t++; } while (hist.length && hist[hist.length - 1].kind === k && t < 6);
+    const g = Q[k](r);
+    const base = { kind: k, text: g.q.replace(/\*\*/g, ""), prompt: <div className="tip-prob">{TH(Rt, { text: g.q, as: "p", className: "tip-prob-q" })}</div>, answer: g.a, explain: TH(Rt, { text: g.x, as: "span" }) };
+    if (g.choices) return { ...base, input: "choice", choices: g.choices.map(c => ({ value: c, label: c })), check: v => v === g.v };
+    return { ...base, input: "num", placeholder: "Number", check: raw => { const x = num(String(raw).replace(/[$%,]/g, "")); return isFinite(x) && Math.abs(x - g.v) <= (g.tol != null ? g.tol : 1e-6); } };
+  }
+
+  /* ---------- live case: the shared market-making interview engine ---------- */
+  const Case = props => TH(TIP_MM.Game, { ...props, inst: "option", mode: "make", title: "Options Market Making · live case", settings: { ...props.settings, news: props.settings.moves, n: props.settings.moves, story: "rates", size: 1 } });
+
+  TIP_TRAINERS.register(course({
+    version: 2, caseStats: TIP_MM.stats, caseCharts: TIP_MM.charts,
+    id: "options", name: "Options Market Making", icon: "chart",
+    blurb: "Drills on payoffs, parity and the Greeks, then the options market-making interview as Optiver, IMC and SIG run it: quote a call or put inside a maximum width, get traded on by customers who may know more, delta-hedge with the stock and requote as it moves.",
+    fields: [
+      PART,
+      { key: "count", label: "Questions", type: "num", min: 3, max: 40, showIf: c => c.part === "drill" },
+      { key: "qtime", label: "Time per question", type: "num", min: 10, max: 180, unit: "s", showIf: c => c.part === "drill" },
+      { key: "topics", label: "Topics", type: "sel", showIf: c => c.part === "drill", choices: [{ value: "basics", label: "Payoffs and parity" }, { value: "greeks", label: "Greeks and hedging" }, { value: "all", label: "Everything" }] },
+      { key: "rounds", label: "Rounds", type: "num", min: 1, max: 10, showIf: c => c.part === "case" },
+      { key: "moves", label: "Updates per round", type: "num", min: 2, max: 8, showIf: c => c.part === "case" },
+      { key: "width", label: "Max width", type: "num", min: 0.1, max: 2, step: 0.05, unit: "", showIf: c => c.part === "case" },
+      { key: "time", label: "Time per quote", type: "num", min: 6, max: 90, unit: "s", showIf: c => c.part === "case" },
+      { key: "sharp", label: "Sharp customers", type: "sel", showIf: c => c.part === "case", choices: [{ value: 0, label: "None" }, { value: 0.25, label: "Some" }, { value: 0.45, label: "Many" }] },
+      { key: "showFair", label: "Show fair value", type: "bool", showIf: c => c.part === "case" },
+      { key: "hedge", label: "Delta hedging", type: "bool", showIf: c => c.part === "case" },
+    ],
+    presets: {
+      Easy: { part: "drill", count: 8, qtime: 90, topics: "basics", rounds: 3, moves: 3, width: 0.6, time: 40, sharp: 0, tighten: 0, showFair: true, hedge: true },
+      Medium: { part: "drill", count: 10, qtime: 60, topics: "all", rounds: 4, moves: 4, width: 0.4, time: 25, sharp: 0.25, tighten: 0.2, showFair: false, hedge: true },
+      Hard: { part: "drill", count: 12, qtime: 45, topics: "all", rounds: 5, moves: 5, width: 0.25, time: 15, sharp: 0.45, tighten: 0.35, showFair: false, hedge: true },
+    },
+    note: "Drill answers can be fractions or decimals; zero rates unless stated. In the case, quote option prices (Black–Scholes theo shown on Easy) and press Hedge delta after a fill.",
+  }, { gen, variety: true, count: s => s.count, perQSecs: s => s.qtime }, Case));
+})();

@@ -1,0 +1,67 @@
+/* Skyline: the Tower of London planning task used in game-based assessments. Move blocks between three columns
+   (capacities 3, 2 and 1) to match the target skyline in as few moves as possible. Planning before moving is the skill. */
+(function () {
+  const { TH, TF, R } = TIP;
+  const { useState, useMemo, useRef } = R;
+  const K = TIP_KIT;
+  const CAP = [3, 2, 1], TONES = [1, 2, 5];
+  const key = st => st.map(c => c.join("")).join("|");
+  function moves(st) { const out = []; st.forEach((a, i) => { if (!a.length) return; st.forEach((b, j) => { if (i !== j && b.length < CAP[j]) { const n = st.map(c => c.slice()); n[j].push(n[i].pop()); out.push(n); } }); }); return out; }
+  function dist(a, b) { const seen = new Map([[key(a), 0]]), q = [a]; while (q.length) { const s = q.shift(), d = seen.get(key(s)); if (key(s) === key(b)) return d; moves(s).forEach(n => { const k = key(n); if (!seen.has(k)) { seen.set(k, d + 1); q.push(n); } }); } return 99; }
+  function randState(rng) { for (;;) { const st = [[], [], []]; rng.shuffle([0, 1, 2]).forEach(b => { const opts = [0, 1, 2].filter(j => st[j].length < CAP[j]); st[rng.pick(opts)].push(b); }); return st; } }
+  function puzzle(rng, lo, hi) { for (let t = 0; t < 400; t++) { const a = randState(rng), b = randState(rng), d = dist(a, b); if (d >= lo && d <= hi) return { a, b, d }; } return puzzle(rng, 2, 7); }
+  function Towers({ st, sel, onCol, small }) {
+    const W = small ? 150 : 300, H = small ? 80 : 160, cw = W / 3, bh = small ? 20 : 38, bw = small ? 34 : 70;
+    return <K.Art w={W} h={H}><path d={`M6,${H - 6}H${W - 6}`} className="ax" style={{ strokeWidth: 3, opacity: .7 }} />
+      {[0, 1, 2].map(j => <g key={j} onClick={onCol ? () => onCol(j) : undefined} style={{ cursor: onCol ? "pointer" : "default" }}>
+        <rect x={j * cw + 4} y="2" width={cw - 8} height={H - 8} rx="8" className={sel === j ? "t1" : "sl-hit"} />
+        <path d={`M${j * cw + cw / 2},${H - 6 - CAP[j] * bh - 6}V${H - 6}`} className="ax" style={{ strokeWidth: 3 }} />
+        {st[j].map((b, k) => <rect key={b} x={j * cw + cw / 2 - bw / 2} y={H - 8 - (k + 1) * bh + 2} width={bw} height={bh - 4} rx="6" className={"t" + TONES[b] + (sel === j && k === st[j].length - 1 ? " sl-lift" : "")} />)}
+      </g>)}</K.Art>;
+  }
+  function Game({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const [pz, setPz] = useState(() => puzzle(rng, s.lo, s.hi)), [n, setN] = useState(0);
+    const [st, setSt] = useState(pz.a), [sel, setSel] = useState(null), [mv, setMv] = useState(0), [hist, setHist] = useState([]), [solved, setSolved] = useState(false), [done, setDone] = useState(false);
+    const t0 = useRef(Date.now()), first = useRef(null);
+    function col(j) {
+      if (solved || done) return;
+      if (sel == null) { if (st[j].length) setSel(j); return; }
+      if (sel === j) { setSel(null); return; }
+      if (st[j].length >= CAP[j]) { setSel(null); return; }
+      const nst = st.map(c => c.slice()); nst[j].push(nst[sel].pop()); setSt(nst); setSel(null); setMv(m => m + 1);
+      if (first.current == null) first.current = Date.now();
+      if (key(nst) === key(pz.b)) {
+        const m = mv + 1, pts = Math.max(0, 3 - (m - pz.d));
+        setHist(h => [...h, { ok: m === pz.d, text: `Puzzle ${n + 1}: best ${pz.d} moves`, shown: `${m} moves`, explain: `Planning time ${((first.current - t0.current) / 1000).toFixed(1)}s before the first move.`, pts, plan: (first.current - t0.current) / 1000 }]);
+        setSolved(true);
+      }
+    }
+    function next() { if (n + 1 >= s.count) { setDone(true); return; } const p = puzzle(rng, s.lo, s.hi); setPz(p); setSt(p.a); setN(n + 1); setMv(0); setSolved(false); t0.current = Date.now(); first.current = null; }
+    function giveUp() { setHist(h => [...h, { ok: false, text: `Puzzle ${n + 1}: best ${pz.d} moves`, shown: "gave up", pts: 0 }]); setSolved(true); }
+    const res = useMemo(() => done ? { score: hist.reduce((a, h) => a + h.pts, 0), correct: hist.filter(h => h.ok).length, total: hist.length, plan: hist.filter(h => h.plan != null).reduce((a, h, _, A) => a + h.plan / A.length, 0) } : null, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={`${res.score} points`} sub={`${res.correct} of ${res.total} solved in the minimum number of moves`} ring={res.total ? res.correct / res.total : 0} onRestart={onRestart}
+      metrics={[{ label: "Score", value: res.score, sub: "3 per puzzle − 1 per extra move" }, { label: "Perfect solutions", value: `${res.correct}/${res.total}` }, { label: "Avg planning time", value: res.plan.toFixed(1) + "s" }]} review={hist}
+      notes="Work from the bottom of the target up: which block must end at the bottom of each column, and what has to move out of its way first?" />;
+    return (
+      <K.Stage title="Skyline" sub={`Puzzle ${n + 1} of ${s.count} · columns hold 3, 2 and 1`} stats={[{ label: "Moves", value: mv, pop: true }]} total={s.count} results={hist.map(h => h.ok)} at={n}>
+        <div className="oa-q">
+          <div className="sl-goal"><span className="oa-lbl">Target</span><Towers st={pz.b} small /></div>
+          <Towers st={st} sel={sel} onCol={col} />
+          <div className="small muted" style={{ textAlign: "center" }}>Click a column to lift its top block, then click where it goes.</div>
+          {solved ? <K.Banner ok={mv === pz.d} onNext={next} title={mv === pz.d ? "Perfect." : "Solved."}>{`${mv} moves; the minimum was ${pz.d}.`}</K.Banner> : <button className="ghost sm" style={{ alignSelf: "center" }} onClick={giveUp}>Give up this one</button>}
+        </div>
+      </K.Stage>
+    );
+  }
+  TIP_TRAINERS.register({
+    id: "skyline", name: "Skyline", metric: "score", unit: " pts", version: 2, playFilter: K.versioned(2),
+    blurb: "The Tower of London planning task from game-based assessments: move blocks between columns that hold 3, 2 and 1 to match the target in the fewest moves. No clock; planning before your first move is what is measured.",
+    fields: [{ key: "count", label: "Puzzles", type: "num", min: 3, max: 20 }, { key: "lo", label: "Minimum moves from", type: "num", min: 2, max: 7 }, { key: "hi", label: "to", type: "num", min: 2, max: 8 }],
+    fix: c => { if (c.hi < c.lo) c.hi = c.lo; },
+    presets: { Easy: { count: 6, lo: 2, hi: 3 }, Medium: { count: 8, lo: 3, hi: 5 }, Hard: { count: 10, lo: 5, hi: 7 } },
+    note: "Score 3 per puzzle solved in the minimum, minus 1 per extra move.",
+    component: Game,
+  });
+})();

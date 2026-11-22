@@ -1,0 +1,54 @@
+/* Response Conflict: flanker, Simon and Stroop trials, as used in attention games (Pymetrics-style).
+   Respond to the relevant feature and ignore the one that pulls the other way; interference cost is measured. */
+(function () {
+  const { TH, TF } = TIP;
+  const { trainer } = TIP_DRILL;
+  const K = TIP_KIT;
+  const COL = [["RED", 4], ["BLUE", 1], ["GREEN", 3], ["AMBER", 2]];
+  const arrow = (left, cls) => <svg viewBox="0 0 40 40" width="48" height="48" className={"cf-arrow " + (cls || "")}><path d={left ? "M32,20H10M18,11L9,20L18,29" : "M8,20H30M22,11L31,20L22,29"} /></svg>;
+
+  function gen(r, s) {
+    const mode = s.mode === "mix" ? r.pick(["flanker", "simon", "stroop"]) : s.mode;
+    const cong = r() < 0.5;
+    if (mode === "flanker") {
+      const left = r() < 0.5, fl = cong ? left : !left;
+      return { kind: cong ? "cong" : "incong", text: `Flanker: centre arrow points ${left ? "left" : "right"}${cong ? "" : " (flankers disagree)"}`, answer: left ? "Left" : "Right",
+        prompt: <div className="cf-box"><div className="oa-lbl">Which way does the MIDDLE arrow point?</div><div className="cf-row">{[0, 1, 2, 3, 4].map(i => <span key={i}>{arrow(i === 2 ? left : fl, "")}</span>)}</div></div>,
+        input: "custom", keys: { ArrowLeft: "L", ArrowRight: "R", f: "L", j: "R" }, check: v => v === (left ? "L" : "R"), timeoutAnswer: "x",
+        render: ({ submit, running }) => <div className="ts-keys"><button className="mm-px" disabled={!running} onClick={() => submit("L")}>◀ Left <kbd>F</kbd></button><button className="mm-px" disabled={!running} onClick={() => submit("R")}>Right ▶ <kbd>J</kbd></button></div> };
+    }
+    if (mode === "simon") {
+      const blue = r() < 0.5, side = cong ? (blue ? "L" : "R") : (blue ? "R" : "L");
+      return { kind: cong ? "cong" : "incong", text: `Simon: ${blue ? "blue" : "amber"} circle on the ${side === "L" ? "left" : "right"}`, answer: blue ? "Left (blue)" : "Right (amber)",
+        prompt: <div className="cf-box"><div className="oa-lbl">Blue → LEFT key · Amber → RIGHT key · ignore where it appears</div><div className="cf-simon"><span>{side === "L" ? <i className={blue ? "b" : "a"} /> : null}</span><span>{side === "R" ? <i className={blue ? "b" : "a"} /> : null}</span></div></div>,
+        input: "custom", keys: { ArrowLeft: "L", ArrowRight: "R", f: "L", j: "R" }, check: v => v === (blue ? "L" : "R"), timeoutAnswer: "x",
+        render: ({ submit, running }) => <div className="ts-keys"><button className="mm-px" disabled={!running} onClick={() => submit("L")}>◀ Blue <kbd>F</kbd></button><button className="mm-px" disabled={!running} onClick={() => submit("R")}>Amber ▶ <kbd>J</kbd></button></div> };
+    }
+    const word = r.pick(COL), ink = cong ? word : r.pick(COL.filter(c => c !== word));
+    const opts = r.shuffle(COL.slice());
+    return { kind: cong ? "cong" : "incong", text: `Stroop: the word ${word[0]} in ${ink[0].toLowerCase()} ink`, answer: ink[0][0] + ink[0].slice(1).toLowerCase(),
+      prompt: <div className="cf-box"><div className="oa-lbl">Pick the INK colour, not the word</div><div className={"cf-word k" + ink[1]}>{word[0]}</div></div>,
+      input: "choice", cols: 4, choices: opts.map(c => ({ value: c[0], label: c[0], node: <span className={"cf-sw k" + c[1]}>{c[0][0] + c[0].slice(1).toLowerCase()}</span> })), check: v => v === ink[0], timeoutAnswer: "x" };
+  }
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  function summary(hist) {
+    const c = avg(hist.filter(h => h.ok && h.kind === "cong").map(h => h.ms)), i = avg(hist.filter(h => h.ok && h.kind === "incong").map(h => h.ms));
+    const ci = hist.filter(h => h.kind === "incong"), acc = ci.length ? ci.filter(h => h.ok).length / ci.length : null;
+    return [
+      { label: "Congruent", value: c == null ? "—" : (c / 1000).toFixed(2) + "s" },
+      { label: "Incongruent", value: i == null ? "—" : (i / 1000).toFixed(2) + "s", sub: acc == null ? "" : Math.round(acc * 100) + "% right" },
+      { label: "Interference", value: c != null && i != null ? Math.round(i - c) + " ms" : "—", key: "interf", raw: c != null && i != null ? i - c : null, sub: "lower is better" },
+    ];
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "conflict", name: "Response Conflict", version: 2,
+    blurb: "Flanker, Simon and Stroop trials from attention games: answer on the feature that matters (middle arrow, colour, ink) and ignore the one pulling the other way. Accuracy and interference cost are scored.",
+    fields: [
+      { key: "count", label: "Trials", type: "num", min: 12, max: 90 },
+      { key: "time", label: "Time per trial", type: "num", min: 1, max: 5, unit: "s", step: 0.5 },
+      { key: "mode", label: "Task", type: "sel", choices: [{ value: "flanker", label: "Flanker" }, { value: "simon", label: "Simon" }, { value: "stroop", label: "Stroop" }, { value: "mix", label: "All three mixed" }] },
+    ],
+    presets: { Easy: { count: 24, time: 3, mode: "flanker" }, Medium: { count: 36, time: 2, mode: "mix" }, Hard: { count: 54, time: 1.5, mode: "mix" } },
+    note: "F / ← and J / → answer the two-key tasks; keys 1–4 pick a colour in Stroop.",
+  }, { gen, count: s => s.count, perQSecs: s => s.time, fast: true, okMs: 140, badMs: 420, summary }));
+})();

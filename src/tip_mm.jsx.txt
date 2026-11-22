@@ -1,0 +1,356 @@
+/* Market-making interview engine, shared by the Trading Game, Market Making Dice, Event Contracts and the live
+   cases of the Options, Futures & Basis and Prediction Markets trainers.
+
+   It runs the way the Optiver / SIG / IMC market-making interview runs:
+   - "make" mode: the interviewer names a contract, you quote a two-way price inside a maximum width, the
+     interviewer (sometimes informed, sometimes not) trades on your quote, new information arrives, you requote.
+     Sometimes the interviewer demands a tighter market. Everything settles at the true value.
+   - "take" mode (assessment-centre trading game): several traders show two-way prices; you hit or lift
+     whichever is wrong, within a position limit, before the next card or die is revealed.
+
+   instrument = { id, unit, tick, steps(s), start(rng, s) -> state, ev(st, k), sd(st, k), value(st),
+                  info(st, k, phase) -> node, reveal(st, k) -> text, hedge?: {...} } */
+var TIP_MM = (function () {
+  const { TH, TF, R, typing } = TIP;
+  const K = TIP_KIT;
+  const { useState, useEffect, useMemo, useRef } = R;
+  const rnd = (v, t) => Math.round(v / t) * t;
+  const fx = (v, t) => { const d = t < 1 ? String(t).split(".")[1].length : 0; return Number(v).toFixed(d); };
+  const NAMES = ["Ava", "Ben", "Cleo", "Dev", "Esme", "Finn", "Gus", "Hana"];
+
+  /* ---------- instruments ---------- */
+  const PIPS = 35 / 12;
+  const dice = {
+    id: "dice", unit: "", tick: 0.5, steps: s => s.n,
+    start: (r, s) => ({ d: Array.from({ length: s.n }, () => r.int(1, 6)), prod: s.target === "product" }),
+    ev: (st, k) => st.prod ? st.d.slice(0, k).reduce((a, b) => a * b, 1) * Math.pow(3.5, st.d.length - k) : st.d.slice(0, k).reduce((a, b) => a + b, 0) + 3.5 * (st.d.length - k),
+    sd: (st, k) => st.prod ? Math.max(1, 0.6 * dice.ev(st, k)) : Math.sqrt((st.d.length - k) * PIPS),
+    value: st => st.prod ? st.d.reduce((a, b) => a * b, 1) : st.d.reduce((a, b) => a + b, 0),
+    info: (st, k) => <div className="mm-info">
+      <div className="oa-lbl">{st.prod ? "Product" : "Sum"} of {st.d.length} dice</div>
+      <div className="mm-row">{st.d.map((v, i) => <K.Die key={i + (i < k ? "s" : "h")} n={v} hidden={i >= k} roll={i === k - 1} size={52} />)}</div>
+    </div>,
+    reveal: (st, k) => `Die ${k} shows ${st.d[k - 1]}.`,
+    explain: (st, k) => st.prod ? `Fair = product of shown dice × 3.5 for each hidden die.` : `Fair = shown dice + 3.5 for each hidden die = ${dice.ev(st, k)}.`,
+  };
+  /* a hand of cards from a fresh deck, values A=1 .. K=13 */
+  const cards = {
+    id: "cards", unit: "", tick: 0.5, steps: s => s.n,
+    start: (r, s) => { const deck = r.shuffle(Array.from({ length: 52 }, (_, i) => ({ v: i % 13 + 1, s: Math.floor(i / 13) }))); return { c: deck.slice(0, s.n) }; },
+    ev: (st, k) => { const seen = st.c.slice(0, k), sum = seen.reduce((a, c) => a + c.v, 0), left = 52 - k, rest = (364 - sum) / left; return sum + rest * (st.c.length - k); },
+    sd: (st, k) => Math.sqrt((st.c.length - k) * 14) * Math.sqrt(Math.max(0, (52 - st.c.length)) / Math.max(1, 52 - k)),
+    value: st => st.c.reduce((a, c) => a + c.v, 0),
+    info: (st, k) => <div className="mm-info">
+      <div className="oa-lbl">Sum of {st.c.length} cards · A=1, J=11, Q=12, K=13</div>
+      <div className="mm-row">{st.c.map((c, i) => <K.Card key={i + (i < k ? "u" : "d")} v={c.v} s={c.s} hidden={i >= k} flip={i === k - 1} size={50} />)}</div>
+    </div>,
+    reveal: (st, k) => { const c = st.c[k - 1]; return `Card ${k} is ${K.rankName(c.v)}${K.SUITS[c.s]} (${c.v}).`; },
+    explain: (st, k) => `Fair = shown cards + the average of the unseen deck for each face-down card (sampling without replacement).`,
+  };
+  /* binary event contract paying 100: true outcome drawn first, news generated from it, so Bayes is exact */
+  const binary = {
+    id: "binary", unit: "¢", tick: 1, steps: s => s.news,
+    start: (r, s) => {
+      const p0 = r.pick([0.2, 0.3, 0.4, 0.5, 0.6, 0.7]), y = r() < p0 ? 1 : 0;
+      const STORIES = s.story === "election"
+        ? [["Poll lead widens", "Poll lead narrows"], ["Endorsement secured", "Endorsement lost"], ["Debate win", "Debate stumble"], ["Turnout up in strongholds", "Turnout down in strongholds"], ["Momentum in late polls", "Late poll slump"], ["Rival scandal", "Own-camp scandal"]]
+        : [["Rate cut signalled", "Hawkish speech"], ["Inflation print soft", "Inflation print hot"], ["Jobs data weak", "Jobs data strong"], ["Minutes dovish", "Minutes hawkish"], ["Growth miss", "Growth beat"], ["Oil falls", "Oil spikes"]];
+      const ev = [], ps = [p0]; let odds = p0 / (1 - p0);
+      for (let i = 0; i < s.news; i++) {
+        const strong = r() < 0.4, a = strong ? 0.8 : 0.65, b = 1 - a;     /* P(good | Y=1), P(good | Y=0) */
+        const good = r() < (y ? a : b);
+        const L = good ? a / b : b / a;
+        odds *= L; const p = odds / (1 + odds); ps.push(p);
+        const st = STORIES[i % STORIES.length];
+        ev.push({ good, L, head: good ? st[0] : st[1], strong });
+      }
+      return { p0, y, ev, ps, story: s.story };
+    },
+    ev: (st, k) => 100 * st.ps[k], sd: (st, k) => 100 * Math.sqrt(st.ps[k] * (1 - st.ps[k])) * 0.6 + 4,
+    value: st => 100 * st.y,
+    info: (st, k) => <div className="mm-info">
+      <div className="oa-lbl">{st.story === "election" ? "Candidate A wins" : "Central bank cuts rates"} · pays 100¢ if YES</div>
+      <div className="mm-news">{st.ev.slice(0, k).map((e, i) => <div key={i} className={"mm-head " + (e.good ? "up" : "dn") + (i === k - 1 ? " new" : "")}>
+        <span>{e.good ? "▲" : "▼"}</span><b>{e.head}</b><em>{e.strong ? "strong signal" : "weak signal"} · ×{e.L.toFixed(2)} odds</em></div>)}
+        {!k ? <div className="mm-head none">Prior from the desk: {Math.round(st.p0 * 100)}%. No news yet.</div> : null}</div>
+    </div>,
+    reveal: (st, k) => { const e = st.ev[k - 1]; return `News: ${e.head} (likelihood ratio ${e.L.toFixed(2)}).`; },
+    explain: (st, k) => `Posterior odds = prior odds × likelihood ratios. Fair now ${Math.round(100 * st.ps[k])}¢.`,
+  };
+  /* European call; the stock moves each step; settles at payoff at expiry */
+  const option = {
+    id: "option", unit: "", tick: 0.05, steps: s => s.moves,
+    start: (r, s) => {
+      const S0 = 100, Kk = r.pick([95, 100, 105]), vol = r.pick([0.2, 0.25, 0.3]), T = r.pick([0.25, 0.5]);
+      const path = [S0]; const dt = T / s.moves;
+      for (let i = 0; i < s.moves; i++) path.push(path[i] * Math.exp(-vol * vol * dt / 2 + vol * Math.sqrt(dt) * r.normal()));
+      return { Kk, vol, T, path, dt, put: r() < 0.35 };
+    },
+    ev: (st, k) => TIP_DRILL.bs(st.path[k], st.Kk, st.T - k * st.dt, st.vol, st.put).price,
+    sd: (st, k) => Math.max(0.2, TIP_DRILL.bs(st.path[k], st.Kk, st.T - k * st.dt, st.vol, st.put).vega * 2),
+    value: st => st.put ? Math.max(st.Kk - st.path[st.path.length - 1], 0) : Math.max(st.path[st.path.length - 1] - st.Kk, 0),
+    delta: (st, k) => TIP_DRILL.bs(st.path[k], st.Kk, st.T - k * st.dt, st.vol, st.put).delta,
+    spot: (st, k) => st.path[k],
+    info: (st, k) => { const g = TIP_DRILL.bs(st.path[k], st.Kk, st.T - k * st.dt, st.vol, st.put); return <div className="mm-info">
+      <div className="oa-lbl">{st.put ? "Put" : "Call"}, strike {st.Kk}, vol {Math.round(st.vol * 100)}%, {Math.round((st.T - k * st.dt) * 365)} days left, zero rates</div>
+      <K.Spark data={st.path.slice(0, k + 1)} lo={Math.min(...st.path) - 2} hi={Math.max(...st.path) + 2} />
+      <div className="mm-kv"><span>Stock <b>{st.path[k].toFixed(2)}</b></span><span>Δ <b>{g.delta.toFixed(2)}</b></span><span>vega <b>{g.vega.toFixed(2)}</b></span></div>
+    </div>; },
+    reveal: (st, k) => `Stock moves to ${st.path[k].toFixed(2)}.`,
+    explain: (st, k) => `Black–Scholes theo with the stated vol (ATM rule: 0.4·S·σ·√T).`,
+  };
+  /* index future: spot moves, carry shrinks, settles at spot on expiry */
+  const future = {
+    id: "future", unit: "", tick: 0.25, steps: s => s.moves,
+    start: (r, s) => { const S0 = r.pick([2000, 3000, 4000, 5000]), rate = r.pick([0.0365, 0.0438, 0.05475]), days = r.pick([73, 91, 146]), div = r.pick([0, 5, 10]);
+      const path = [S0]; for (let i = 0; i < s.moves; i++) path.push(path[i] * (1 + 0.006 * r.normal())); return { path, rate, days, div }; },
+    left: (st, k) => Math.round(st.days * (1 - k / (st.path.length - 1))),
+    ev: (st, k) => { const d = future.left(st, k); return st.path[k] * (1 + st.rate * d / 365) - (k < st.path.length - 1 ? st.div * (d > st.days / 2 ? 1 : 0) : 0); },
+    sd: (st, k) => st.path[k] * 0.006 + 1, value: st => st.path[st.path.length - 1],
+    spot: (st, k) => st.path[k], delta: () => 1,
+    info: (st, k) => <div className="mm-info">
+      <div className="oa-lbl">Index future · rate {(st.rate * 100).toFixed(st.rate * 100 % 1 ? 3 : 0)}% · {future.left(st, k)} days left · dividend {st.div} (paid at half-way)</div>
+      <K.Spark data={st.path.slice(0, k + 1)} lo={Math.min(...st.path) * 0.998} hi={Math.max(...st.path) * 1.002} />
+      <div className="mm-kv"><span>Spot <b>{st.path[k].toFixed(2)}</b></span><span>Carry <b>{(st.path[k] * st.rate * future.left(st, k) / 365).toFixed(2)}</b></span></div>
+    </div>,
+    reveal: (st, k) => `Spot moves to ${st.path[k].toFixed(2)}; ${future.left(st, k)} days left.`,
+    explain: (st, k) => `Fair = spot × (1 + r·days/365) − dividends still to come.`,
+  };
+  const INST = { dice, cards, binary, option, future };
+
+  /* ---------- the game ---------- */
+  function Game({ settings: s, onFinish, onRestart, inst, title, mode }) {
+    const I = typeof inst === "string" ? INST[inst] : inst;
+    const take = (mode || s.mode) === "take";
+    const [rng] = useState(() => jt());
+    const [rounds] = useState(() => Array.from({ length: s.rounds }, () => I.start(rng, s)));
+    const [ri, setRi] = useState(0);
+    const [k, setK] = useState(0);
+    const [phase, setPhase] = useState("quote");     /* quote | fill | settle | done */
+    const [bid, setBid] = useState(""); const [ask, setAsk] = useState("");
+    const [maxW, setMaxW] = useState(() => s.width);
+    const [ask2, setAsk2] = useState(null);           /* interviewer request text */
+    const [pos, setPos] = useState(0), [cash, setCash] = useState(0), [hedge, setHedge] = useState(0);
+    const [tape, setTape] = useState([]);
+    const [rows, setRows] = useState([]);             /* per quote: {ev, mid, w, fill, ok} */
+    const [tot, setTot] = useState({ pnl: 0, rounds: [] });
+    const [err, setErr] = useState("");
+    const [quotes, setQuotes] = useState(null);       /* take mode: bot quotes */
+    const [took, setTook] = useState(0);
+    const steps = I.steps(s);
+    const st = rounds[ri];
+    const ev = I.ev(st, k), sd = I.sd(st, k);
+    const [qKey, setQKey] = useState(0);
+    const left = K.useCountdown(s.time, phase === "quote", qKey);
+    const bidRef = useRef(null);
+    const sizeOf = () => s.size || 1;
+    const hedgeable = !!I.delta && s.hedge;
+
+    /* new quote window */
+    function openQuote(nk, keep, stx) {
+      setPhase("quote"); setErr(""); setQKey(x => x + 1);
+      if (!keep) { setBid(""); setAsk(""); }
+      if (take) setQuotes(botQuotes(nk, stx || st));
+      setTook(0);
+      const tighten = !take && nk > 0 && rng() < (s.tighten || 0);
+      setMaxW(tighten ? Math.max(I.tick * 2, rnd(s.width * 0.6, I.tick)) : s.width);
+      setAsk2(tighten ? `"Tighter, please: max width ${fx(Math.max(I.tick * 2, rnd(s.width * 0.6, I.tick)), I.tick)}."` : null);
+    }
+    useEffect(() => { openQuote(0); }, []);
+    useEffect(() => { if (phase === "quote" && bidRef.current) bidRef.current.focus(); }, [phase, qKey]);
+
+    function botQuotes(nk, sx) {
+      const e = I.ev(sx, nk), d = I.sd(sx, nk);
+      return NAMES.slice(0, s.bots || 4).map((n, i) => {
+        const off = rng() < (s.misprice || 0.35) ? (rng() < 0.5 ? -1 : 1) * d * (0.6 + rng() * 0.7) : d * 0.25 * rng.normal();
+        const mid = rnd(e + off, I.tick), hw = Math.max(I.tick, rnd(d * (0.35 + rng() * 0.3), I.tick));
+        return { n, bid: mid - hw, ask: mid + hw, used: false };
+      });
+    }
+    /* counterparty: informed (knows the settlement, with a little noise) or noise trader */
+    function counter(b, a) {
+      const val = I.value(st), informed = rng() < (s.sharp || 0);
+      const est = informed ? val + rng.normal() * sd * 0.25 : ev + rng.normal() * sd * 0.9;
+      const edge = I.tick;
+      if (est > a + edge) return { side: "buy", px: a, informed };
+      if (est < b - edge) return { side: "sell", px: b, informed };
+      if (!informed && rng() < 0.18) return rng() < 0.5 ? { side: "buy", px: a, informed } : { side: "sell", px: b, informed };
+      return null;
+    }
+    function submitQuote(timeout) {
+      if (phase !== "quote") return;
+      const b = parseFloat(bid), a = parseFloat(ask);
+      if (timeout || !isFinite(b) || !isFinite(a)) {
+        setRows(r => [...r, { ev, mid: null, w: null, miss: true }]);
+        setTape(t => [{ txt: "No quote in time: the interviewer moves on.", tone: "bad" }, ...t].slice(0, 12));
+        return afterFill(null);
+      }
+      if (a <= b) { setErr("The ask must be above the bid."); return; }
+      if (a - b > maxW + 1e-9) { setErr(`Too wide: max width is ${fx(maxW, I.tick)}.`); return; }
+      const f = counter(b, a), q = sizeOf();
+      if (f) {
+        const sgn = f.side === "buy" ? -1 : 1;           /* they buy = you sell */
+        setPos(p => p + sgn * q); setCash(c => c - sgn * q * f.px);
+        setTape(t => [{ txt: `Interviewer ${f.side === "buy" ? "buys" : "sells"} ${q} at ${fx(f.px, I.tick)}${f.informed ? " (looked sharp)" : ""}`, tone: f.side === "buy" ? "dn" : "up" }, ...t].slice(0, 12));
+      } else setTape(t => [{ txt: `No trade at ${fx(b, I.tick)} / ${fx(a, I.tick)}.`, tone: "" }, ...t].slice(0, 12));
+      setRows(r => [...r, { ev, mid: (a + b) / 2, w: a - b, fill: f ? f.side : null, informed: f && f.informed, px: f && f.px }]);
+      afterFill(f);
+    }
+    function takeTrade(i, side) {
+      if (phase !== "quote" || !quotes || quotes[i].used) return;
+      const lim = s.limit || 10, q = sizeOf();
+      const np = pos + (side === "buy" ? q : -q);
+      if (Math.abs(np) > lim) { setErr(`Position limit is ${lim}.`); return; }
+      const px = side === "buy" ? quotes[i].ask : quotes[i].bid;
+      setPos(np); setCash(c => c + (side === "buy" ? -q * px : q * px));
+      setQuotes(qs => qs.map((x, j) => j === i ? { ...x, used: side } : x));
+      setTook(n => n + 1);
+      setRows(r => [...r, { ev, side, px, edge: side === "buy" ? ev - px : px - ev }]);
+      setTape(t => [{ txt: `You ${side === "buy" ? "lift" : "hit"} ${quotes[i].n}: ${side} ${q} at ${fx(px, I.tick)}`, tone: side === "buy" ? "up" : "dn" }, ...t].slice(0, 12));
+      setErr("");
+    }
+    function doHedge() {
+      if (!hedgeable || phase !== "quote") return;
+      const want = -Math.round(pos * I.delta(st, k) * 100) / 100 - hedge;
+      if (Math.abs(want) < 0.01) return;
+      const px = I.spot(st, k);
+      setHedge(h => h + want); setCash(c => c - want * px);
+      setTape(t => [{ txt: `Hedge: ${want > 0 ? "buy" : "sell"} ${Math.abs(want).toFixed(2)} underlying at ${px.toFixed(2)}`, tone: "" }, ...t].slice(0, 12));
+    }
+    function afterFill() {
+      setPhase("fill");
+      setTimeout(() => {
+        if (k < steps) {
+          const nk = k + 1;
+          setTape(t => [{ txt: I.reveal(st, nk), tone: "info" }, ...t].slice(0, 12));
+          setK(nk); openQuote(nk, true);
+        } else settle();
+      }, take ? 300 : 1100);
+    }
+    function settle() { setPhase("settle"); }
+    useEffect(() => { if (phase === "quote" && !take && left <= 0) submitQuote(true); }, [left <= 0, phase]);
+    useEffect(() => { if (phase === "quote" && take && left <= 0) afterFill(); }, [left <= 0, phase]);
+
+    const val = I.value(st);
+    const lastSpot = I.spot ? I.spot(st, steps) : 0;
+    const roundPnl = cash + pos * val + hedge * lastSpot;
+    function nextRound() {
+      const res = { pnl: roundPnl, val, pos };
+      const nt = { pnl: tot.pnl + roundPnl, rounds: [...tot.rounds, res] };
+      setTot(nt);
+      setPos(0); setCash(0); setHedge(0); setTape([]);
+      if (ri + 1 >= s.rounds) { setPhase("done"); return; }
+      setRi(ri + 1); setK(0);
+      openQuote(0, false, rounds[ri + 1]);
+    }
+    useEffect(() => {
+      if (phase !== "settle") return;
+      const h = e => { if (e.key === "Enter") { e.preventDefault(); nextRound(); } };
+      const t = setTimeout(() => window.addEventListener("keydown", h), 200);
+      return () => { clearTimeout(t); window.removeEventListener("keydown", h); };
+    }, [phase]);
+
+    const res = useMemo(() => {
+      if (phase !== "done") return null;
+      const q = rows.filter(r => r.mid != null), miss = rows.filter(r => r.miss).length;
+      const err = q.length ? q.reduce((a, r) => a + Math.abs(r.mid - r.ev), 0) / q.length : null;
+      const fills = rows.filter(r => r.fill), sharp = fills.filter(r => r.informed).length;
+      const takes = rows.filter(r => r.side), edge = takes.reduce((a, r) => a + r.edge, 0);
+      return { pnl: Math.round(tot.pnl * 100) / 100, score: Math.round(tot.pnl * 100) / 100, quoteErr: err, fills: fills.length, sharp, miss, quotes: q.length + miss, trades: takes.length, edge, rounds: tot.rounds.length };
+    }, [phase]);
+    Jt(phase === "done", res, onFinish);
+
+    if (phase === "done" && res) {
+      return <K.Result headline={K.money(res.pnl, I.tick < 1 ? 2 : 0) + " P&L"} sub={`${res.rounds} round${res.rounds === 1 ? "" : "s"} · ${take ? res.trades + " trades" : res.quotes + " quotes, " + res.fills + " filled"}`}
+        onRestart={onRestart}
+        metrics={take ? [
+          { label: "P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" },
+          { label: "Trades", value: res.trades },
+          { label: "Edge at trade", value: K.signed(res.edge, 2), sub: "vs fair at the time", tone: res.edge >= 0 ? "up" : "dn" },
+          { label: "Per trade", value: res.trades ? K.signed(res.edge / res.trades, 2) : "—" },
+        ] : [
+          { label: "P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" },
+          { label: "Quote error", value: res.quoteErr == null ? "—" : res.quoteErr.toFixed(2), sub: "avg |mid − fair|" },
+          { label: "Fills", value: res.fills, sub: res.sharp + " from sharp side" },
+          { label: "Missed quotes", value: res.miss, tone: res.miss ? "dn" : "" },
+        ]}
+        notes={take ? "A good trading-game session buys below fair and sells above it, keeps inside the position limit, and doesn't chase noise." : "A good market maker centres on fair, stays inside the width, earns spread from noise traders and skews after being hit by sharp flow."}
+        review={tot.rounds.map((r, i) => ({ ok: r.pnl >= 0, text: `Round ${i + 1}: settled at ${fx(r.val, I.tick)}`, shown: K.money(r.pnl, 2) }))} />;
+    }
+
+    /* marking at fair would give the answer away, so the mark is shown only when fair value is shown */
+    const pnlNow = cash + pos * ev + (I.spot ? hedge * I.spot(st, k) : 0);
+    const quoting = phase === "quote";
+    return (
+      <K.Stage title={title} sub={`Round ${ri + 1} of ${s.rounds} · ${phase === "settle" ? "settlement" : k === 0 ? "opening market" : "update " + k + " of " + steps}`}
+        clock={quoting ? left : null} clockFrac={left / s.time}
+        stats={[{ label: "Position", value: (pos > 0 ? "+" : "") + pos, pop: true }, s.showFair ? { label: "P&L (mark)", value: K.signed(pnlNow, 2), tone: pnlNow >= 0 ? "up" : "dn" } : { label: "Cash", value: K.signed(cash, 2) }, { label: "Total", value: K.signed(tot.pnl, 2), tone: tot.pnl >= 0 ? "up" : "dn" }]}
+        cls="mm-stage">
+        <div className="mm-grid">
+          <div className="mm-left">
+            {I.info(st, phase === "settle" ? steps : k, phase)}
+            {s.showFair && phase !== "settle" ? <div className="mm-fair">Fair now: <b>{fx(rnd(ev, I.tick / 5), I.tick < 1 ? 0.01 : 0.1)}</b> (shown on Easy)</div> : null}
+          </div>
+          <div className="mm-right">
+            {phase === "settle" ? (
+              <div className="mm-settle">
+                <div className="oa-lbl">Settlement</div>
+                <div className="oa-big">{fx(val, I.tick < 1 ? 0.01 : 1)}</div>
+                <div className="mm-kv"><span>Position <b>{pos}</b></span><span>Round P&L <b className={roundPnl >= 0 ? "up" : "dn"}>{K.signed(roundPnl, 2)}</b></span></div>
+                <div className="small muted">{I.explain(st, steps)}</div>
+                <button className="start" onClick={nextRound} autoFocus>{ri + 1 >= s.rounds ? "See results" : "Next round"}</button>
+              </div>
+            ) : take ? (
+              <div className="mm-book">
+                <div className="oa-lbl">Traders' prices · size {sizeOf()} · limit ±{s.limit}</div>
+                {(quotes || []).map((q, i) => (
+                  <div key={i} className={"mm-bot" + (q.used ? " used" : "")} style={{ animationDelay: i * 0.05 + "s" }}>
+                    <span className="mm-bot-n">{q.n}</span>
+                    <button className="mm-px bid" disabled={!quoting || !!q.used} onClick={() => takeTrade(i, "sell")}>Sell <b>{fx(q.bid, I.tick)}</b></button>
+                    <button className="mm-px ask" disabled={!quoting || !!q.used} onClick={() => takeTrade(i, "buy")}>Buy <b>{fx(q.ask, I.tick)}</b></button>
+                  </div>
+                ))}
+                {err ? <div className="mm-err">{err}</div> : null}
+                <button className="ghost" disabled={!quoting} onClick={() => afterFill()}>{took ? "Done, reveal next" : "Pass, reveal next"}</button>
+              </div>
+            ) : (
+              <div className="mm-ticket">
+                <div className="oa-lbl">Your market · size {sizeOf()} · max width {fx(maxW, I.tick)}</div>
+                {ask2 ? <div className="mm-req">{ask2}</div> : null}
+                <div className="mm-quote">
+                  <label className="bid"><span>Bid</span><input ref={bidRef} inputMode="decimal" value={bid} disabled={!quoting} onChange={e => { setBid(e.target.value); setErr(""); }} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submitQuote(); } }} /></label>
+                  <label className="ask"><span>Ask</span><input inputMode="decimal" value={ask} disabled={!quoting} onChange={e => { setAsk(e.target.value); setErr(""); }} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submitQuote(); } }} /></label>
+                </div>
+                <div className="mm-steps">
+                  {[["−", -1], ["+", 1]].map(([l, d]) => <button key={l} className="btn sm" disabled={!quoting} onClick={() => { const b = parseFloat(bid), a = parseFloat(ask); if (isFinite(b) && isFinite(a)) { setBid(fx(b + d * I.tick, I.tick)); setAsk(fx(a + d * I.tick, I.tick)); } }}>{l === "−" ? "Skew down" : "Skew up"}</button>)}
+                  {hedgeable ? <button className="btn sm" disabled={!quoting || !pos} onClick={doHedge}>Hedge delta</button> : null}
+                </div>
+                {err ? <div className="mm-err">{err}</div> : null}
+                <button className="start" disabled={!quoting} onClick={() => submitQuote()}>Quote</button>
+              </div>
+            )}
+            <div className="mm-tape">{tape.map((t, i) => <div key={tape.length - i} className={"mm-tick " + (t.tone || "")}>{t.txt}</div>)}</div>
+          </div>
+        </div>
+      </K.Stage>
+    );
+  }
+
+  /* stats for the setup screen */
+  const stats = plays => {
+    if (!plays.length) return null;
+    const n = plays.length, avg = plays.reduce((a, p) => a + (p.pnl || 0), 0) / n, win = plays.filter(p => (p.pnl || 0) > 0).length;
+    const qe = plays.filter(p => p.quoteErr != null);
+    return (
+      <div className="tip-stats tip-stats4">
+        <div className="tip-stat"><span>Average P&L</span><b className={avg >= 0 ? "up" : "dn"}>{K.signed(avg, 2)}</b><em>per session</em></div>
+        <div className="tip-stat"><span>Winning sessions</span><b>{Math.round(win / n * 100)}%</b><em>{win}/{n}</em></div>
+        <div className="tip-stat"><span>Quote error</span><b>{qe.length ? (qe.reduce((a, p) => a + p.quoteErr, 0) / qe.length).toFixed(2) : "—"}</b><em>avg |mid − fair|</em></div>
+        <div className="tip-stat"><span>Sessions</span><b>{n}</b><em>played</em></div>
+      </div>
+    );
+  };
+  const charts = plays => [{ title: "Quote error", sub: "avg distance of your mid from fair · lower is better", label: "Error", data: plays.filter(p => p.quoteErr != null).map(p => ({ ts: p.ts, v: p.quoteErr, note: p.diff })), fmt: v => v.toFixed(2) }];
+
+  return { Game, INST, stats, charts };
+})();

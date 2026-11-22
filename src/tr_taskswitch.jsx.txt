@@ -1,0 +1,52 @@
+/* Task Switch: the number–letter switching task used in game-based assessments (Cappfinity, Pymetrics-style).
+   A pair like "7G" appears in the top or bottom half. Top: is the number even? Bottom: is the letter a vowel?
+   Answer Yes/No fast; the result splits your speed on switch and repeat trials (the switch cost). */
+(function () {
+  const { TH, TF } = TIP;
+  const { trainer } = TIP_DRILL;
+  const K = TIP_KIT;
+  const VOW = "AEIU", CON = "GKMRS";
+  function gen(r, s, i, hist) {
+    const prev = hist.length ? hist[hist.length - 1].pos : null;
+    const pos = prev && r() > s.switchP ? prev : prev ? (prev === "top" ? "bottom" : "top") : r.pick(["top", "bottom"]);
+    const n = r.int(2, 9), L = r() < 0.5 ? r.pick(VOW.split("")) : r.pick(CON.split(""));
+    const yes = pos === "top" ? n % 2 === 0 : VOW.includes(L);
+    const sw = prev != null && prev !== pos;
+    const ask = pos === "top" ? "Is the number even?" : "Is the letter a vowel?";
+    const cell = top => <div className={"ts-half" + (top ? " t" : " b") + ((pos === "top") === top ? " on" : "")}>
+      <span className="ts-rule">{top ? "NUMBER: even?" : "LETTER: vowel?"}</span>
+      {(pos === "top") === top ? <b className="ts-pair">{r() < 0.5 ? `${n}${L}` : `${L}${n}`}</b> : null}</div>;
+    return {
+      text: `${pos === "top" ? "Top" : "Bottom"}: ${ask}`, kind: sw ? "switch" : "repeat", pos,
+      answer: yes ? "Yes" : "No", explain: `${ask} ${pos === "top" ? n : L}: ${yes ? "yes" : "no"}.`,
+      prompt: <div className="ts-box">{cell(true)}{cell(false)}</div>,
+      input: "custom", keys: { ArrowLeft: "no", ArrowRight: "yes", f: "no", j: "yes" },
+      render: ({ submit, running }) => <div className="ts-keys"><button className="mm-px bid" disabled={!running} onClick={() => submit("no")}>No <kbd>F</kbd></button><button className="mm-px ask" disabled={!running} onClick={() => submit("yes")}>Yes <kbd>J</kbd></button></div>,
+      check: v => (v === "yes") === yes, timeoutAnswer: "timeout",
+    };
+  }
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  function summary(hist) {
+    const sw = avg(hist.filter(h => h.ok && h.kind === "switch").map(h => h.ms)), rp = avg(hist.filter(h => h.ok && h.kind === "repeat").map(h => h.ms));
+    const cost = sw != null && rp != null ? sw - rp : null;
+    return [
+      { label: "Switch trials", value: sw == null ? "—" : (sw / 1000).toFixed(2) + "s", sub: "avg correct" },
+      { label: "Repeat trials", value: rp == null ? "—" : (rp / 1000).toFixed(2) + "s", sub: "avg correct" },
+      { label: "Switch cost", value: cost == null ? "—" : Math.round(cost) + " ms", key: "switchCost", raw: cost, sub: "lower is better" },
+    ];
+  }
+  /* Drill keeps h.kind but not pos, so carry pos through the kind history */
+  const genP = (r, s, i, hist) => { const q = gen(r, s, i, hist.map(h => ({ ...h, pos: (h.text || "").startsWith("Top") ? "top" : "bottom" }))); return q; };
+
+  TIP_TRAINERS.register(trainer({
+    id: "taskswitch", name: "Task Switch", version: 2,
+    blurb: "The number–letter switching task from game-based assessments: a pair like 7G appears top or bottom. Top asks if the number is even, bottom if the letter is a vowel. Answer fast; your switch cost (extra time after a rule change) is measured.",
+    fields: [
+      { key: "count", label: "Trials", type: "num", min: 16, max: 96 },
+      { key: "time", label: "Time per trial", type: "num", min: 1, max: 6, unit: "s", step: 0.5 },
+      { key: "switchP", label: "Rule switches", type: "sel", choices: [{ value: 0.3, label: "Sometimes" }, { value: 0.5, label: "Half the time" }, { value: 0.7, label: "Often" }] },
+    ],
+    presets: { Easy: { count: 24, time: 4, switchP: 0.3 }, Medium: { count: 40, time: 2.5, switchP: 0.5 }, Hard: { count: 64, time: 1.6, switchP: 0.7 } },
+    note: "F or ← = No, J or → = Yes. Real tests are scored on accuracy and on how little you slow down after a switch.",
+  }, { gen: genP, count: s => s.count, perQSecs: s => s.time, fast: true, okMs: 150, badMs: 450, summary, cls: "ts-stage" }));
+})();

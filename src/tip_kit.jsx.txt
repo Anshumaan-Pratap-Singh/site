@@ -1,0 +1,247 @@
+/* In-game design system for every trainer and market game ("OA console").
+   One look everywhere: a stage card with a progress rail, a ring timer, score chips, sprite artwork drawn in
+   the same five colours as the card thumbnails (k1 blue, k2 amber, k3 green, k4 red, k5 violet), answer
+   tiles with key badges, a feedback banner, and a results screen with an accuracy ring and a review list. */
+var TIP_KIT = (function () {
+  const { TH, TF, R, still, Tex } = TIP;
+  const { useState, useEffect, useRef, useMemo } = R;
+  const cx = (...a) => a.filter(Boolean).join(" ");
+  const KEYS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+
+  /* ---------- timers ---------- */
+  function useTick(on, ms) {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => { if (!on) return; const t = setInterval(() => setNow(Date.now()), ms || 100); return () => clearInterval(t); }, [on, ms]);
+    return now;
+  }
+  /* a countdown that can pause; returns seconds left */
+  function useCountdown(secs, on, key) {
+    const [end, setEnd] = useState(() => Date.now() + secs * 1000);
+    const [left, setLeft] = useState(secs);
+    const pausedAt = useRef(null);
+    const kRef = useRef(key);
+    useEffect(() => { kRef.current = key; setEnd(Date.now() + secs * 1000); endRef.current = Date.now() + secs * 1000; setLeft(secs); pausedAt.current = null; }, [key]);
+    useEffect(() => {
+      if (!on) { pausedAt.current = Date.now(); return; }
+      if (pausedAt.current) { const d = Date.now() - pausedAt.current; pausedAt.current = null; setEnd(e => e + d); }
+      const t = setInterval(() => setLeft(Math.max(0, (endRef.current - Date.now()) / 1000)), 50);
+      return () => clearInterval(t);
+    }, [on]);
+    const endRef = useRef(end); endRef.current = end;
+    return kRef.current !== key ? secs : left;   /* a new countdown reads full until its effect has run */
+  }
+
+  /* ---------- HUD pieces ---------- */
+  function Ring({ frac, label, size, warn }) {
+    const s = size || 54, r = s / 2 - 4, C = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac == null ? 1 : frac));
+    const tone = f < 0.2 || warn ? "bad" : f < 0.45 ? "mid" : "ok";
+    return (
+      <div className={"oa-ring " + tone} style={{ width: s, height: s }}>
+        <svg viewBox={`0 0 ${s} ${s}`} width={s} height={s} aria-hidden="true">
+          <circle cx={s / 2} cy={s / 2} r={r} className="oa-ring-bg" />
+          <circle cx={s / 2} cy={s / 2} r={r} className="oa-ring-fg" strokeDasharray={C} strokeDashoffset={C * (1 - f)} transform={`rotate(-90 ${s / 2} ${s / 2})`} />
+        </svg>
+        <b>{label}</b>
+      </div>
+    );
+  }
+  const fmtClock = s => s >= 60 ? Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0") : s >= 10 ? Math.ceil(s) + "s" : s.toFixed(1) + "s";
+  function Stat({ label, value, tone, pop }) {
+    return <div className={cx("oa-stat", tone)}><span>{label}</span><b key={pop ? String(value) : undefined} className={pop ? "oa-pop" : ""}>{value}</b></div>;
+  }
+  /* progress rail: one pip per question, coloured by result */
+  function Rail({ total, results, at }) {
+    if (!total) return null;
+    const n = Math.min(total, 80);
+    return <div className="oa-rail" style={{ gridTemplateColumns: `repeat(${n}, 1fr)` }}>{Array.from({ length: n }, (_, i) => {
+      const r = results[i];
+      return <i key={i} className={r == null ? (i === at ? "on" : "") : r === true ? "ok" : r === false ? "bad" : "skip"} />;
+    })}</div>;
+  }
+  /* the frame every game draws inside */
+  function Stage({ title, sub, clock, clockFrac, stats, total, results, at, children, cls, tone }) {
+    return (
+      <div className={cx("oa-stage", cls, tone && "tone-" + tone)}>
+        <div className="oa-hud">
+          <div className="oa-hud-l">{title ? <div className="oa-title">{title}</div> : null}{sub ? <div className="oa-sub">{sub}</div> : null}</div>
+          {clock != null ? <Ring frac={clockFrac} label={fmtClock(clock)} /> : <span></span>}
+          <div className="oa-hud-r">{(stats || []).map((s, i) => <Stat key={i} {...s} />)}</div>
+        </div>
+        <Rail total={total} results={results || []} at={at} />
+        <div className="oa-body">{children}</div>
+      </div>
+    );
+  }
+  /* answer tiles: A-E badges, keys 1-9 or A-H */
+  function Choices({ items, onPick, disabled, picked, correct, cols, cls }) {
+    useEffect(() => {
+      if (disabled) return;
+      const h = e => {
+        if (TIP.typing(e) || e.metaKey || e.ctrlKey) return;
+        let k = parseInt(e.key, 10) - 1;
+        if (isNaN(k)) k = KEYS.indexOf(e.key.toUpperCase());
+        if (k >= 0 && k < items.length) { e.preventDefault(); onPick(items[k].value); }
+      };
+      window.addEventListener("keydown", h);
+      return () => window.removeEventListener("keydown", h);
+    }, [items, disabled]);
+    return (
+      <div className={cx("oa-choices", cls)} style={cols ? { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` } : undefined}>
+        {items.map((c, i) => {
+          const st = picked != null ? (c.value === correct ? "ok" : c.value === picked ? "bad" : "dim") : "";
+          return (
+            <button key={String(c.value) + i} type="button" className={cx("oa-choice", st)} disabled={disabled} onClick={() => onPick(c.value)} style={{ animationDelay: (i * 0.035) + "s" }}>
+              <kbd>{KEYS[i]}</kbd><span className="oa-choice-v">{c.node || c.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+  /* touch devices get an on-screen keypad (same as the Mental Math Trainer) instead of the phone keyboard */
+  let touchSeen = false;
+  try { window.addEventListener("pointerdown", e => { if (e.pointerType === "touch") touchSeen = true; }, true); } catch (e) {}
+  const isTouch = () => { if (touchSeen) return true; try { return matchMedia("(pointer: coarse)").matches; } catch (e) { return false; } };
+  const PAD_KEYS = ["7", "8", "9", "back", "4", "5", "6", "/", "1", "2", "3", ".", "0", "-", "clear", "enter"];
+  const PAD_LAB = { back: "\u232b", clear: "Clear", enter: "\u23ce", "-": "\u2212" };
+  const padEdit = (v, k) => k === "back" ? String(v).slice(0, -1) : k === "clear" ? "" : String(v) + k;
+  function Pad({ onKey, disabled }) {
+    return <div className="mt-pad oa-pad">{PAD_KEYS.map(k => <button key={k} type="button" disabled={disabled} aria-label={k === "back" ? "Backspace" : k === "enter" ? "Submit" : undefined}
+      className={"mt-key" + (k === "clear" || k === "enter" ? " w" : "")} onPointerDown={e => { e.preventDefault(); if (!disabled) onKey(k); }}
+      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!disabled) onKey(k); } }}>{PAD_LAB[k] || k}</button>)}</div>;
+  }
+  /* numeric answer box */
+  function NumIn({ onSubmit, disabled, placeholder, onSkip, autoFocus, unit }) {
+    const [v, setV] = useState("");
+    const [touch] = useState(isTouch);
+    const ref = useRef(null);
+    useEffect(() => { if (!disabled && ref.current && autoFocus !== false) ref.current.focus(); }, [disabled]);
+    const go = () => { if (String(v).trim() === "") return; onSubmit(v); setV(""); };
+    const key = k => k === "enter" ? go() : setV(x => padEdit(x, k));
+    return (
+      <TF>
+        <div className="oa-num">
+          <div className="oa-num-box"><input ref={ref} value={v} disabled={disabled} inputMode={touch ? "none" : "decimal"} autoComplete="off" placeholder={placeholder || "Your answer"}
+            onChange={e => setV(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); go(); } }} />{unit ? <span>{unit}</span> : null}</div>
+          <button className="start" disabled={disabled || String(v).trim() === ""} onClick={go}>Submit</button>
+          {onSkip ? <button className="ghost" disabled={disabled} onClick={onSkip}>Skip</button> : null}
+        </div>
+        {touch ? <Pad onKey={key} disabled={disabled} /> : null}
+      </TF>
+    );
+  }
+  /* feedback banner under the question */
+  function Banner({ ok, title, children, onNext, nextLabel }) {
+    useEffect(() => {
+      if (!onNext) return;
+      const h = e => { if (e.key === "Enter") { e.preventDefault(); onNext(); } };
+      const t = setTimeout(() => window.addEventListener("keydown", h), 150);
+      return () => { clearTimeout(t); window.removeEventListener("keydown", h); };
+    }, [onNext]);
+    return (
+      <div className={cx("oa-banner", ok === true ? "ok" : ok === false ? "bad" : "info")} role="status">
+        <span className="oa-banner-i">{ok === true ? "✓" : ok === false ? "✕" : "i"}</span>
+        <div className="oa-banner-t">{title ? <b>{title}</b> : null}{children ? <div>{children}</div> : null}</div>
+        {onNext ? <button className="start sm" onClick={onNext} autoFocus>{nextLabel || "Next"}</button> : null}
+      </div>
+    );
+  }
+  /* text with maths: $...$ goes through the shared KaTeX renderer, a/b becomes a stacked fraction */
+  const T = ({ children }) => typeof children === "string" && children.includes("$") ? TH(Rt, { text: children, as: "span" }) : TIP.FT(children);
+
+  /* ---------- results ---------- */
+  function Result({ headline, sub, ring, ringLabel, metrics, onRestart, notes, review, children }) {
+    return (
+      <div className="oa-result">
+        <div className="oa-result-top">
+          {ring != null ? <Ring frac={ring} label={ringLabel || Math.round(ring * 100) + "%"} size={96} /> : null}
+          <div className="oa-result-h"><div className="oa-sub">Session complete</div><h3>{headline}</h3>{sub ? <p>{sub}</p> : null}</div>
+          <span className="sp"></span>
+          {onRestart ? <button className="start" onClick={onRestart}>Play again</button> : null}
+        </div>
+        <div className="oa-metrics">{(metrics || []).map((m, i) => <div key={i} className={cx("oa-metric", m.tone)} style={{ animationDelay: (i * 0.04) + "s" }}><span>{m.label}</span><b>{m.value}</b>{m.sub ? <em>{m.sub}</em> : null}</div>)}</div>
+        {notes ? <div className="oa-notes">{notes}</div> : null}
+        {children}
+        {review && review.length ? (
+          <div className="oa-review">
+            <div className="oa-sub">Review</div>
+            {review.map((h, i) => (
+              <details key={i} className={cx("oa-rev", h.ok ? "ok" : h.ok === false ? "bad" : "")}>
+                <summary><span className="oa-rev-m">{h.ok ? "✓" : h.ok === false ? "✕" : "·"}</span><span className="oa-rev-q"><T>{h.text}</T></span><span className="oa-rev-a"><T>{h.shown != null ? h.shown : ""}</T></span>{h.ms != null ? <span className="oa-rev-t">{(h.ms / 1000).toFixed(1)}s</span> : null}{h.tag ? TH(TIP_READY.TagPick, { id: h.tag }) : null}</summary>
+                <div className="oa-rev-x">{h.answer != null ? <div>Answer: <b><T>{String(h.answer)}</T></b></div> : null}{h.explain ? <div><T>{h.explain}</T></div> : null}</div>
+              </details>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  /* ---------- sprites: all drawn in the shared palette ---------- */
+  const PIPS = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
+  function Die({ n, size, hidden, tone, roll }) {
+    const s = size || 56;
+    return (
+      <svg className={cx("oa-die", hidden && "hid", roll && "roll", tone)} viewBox="0 0 60 60" width={s} height={s} aria-label={hidden ? "hidden die" : "die showing " + n}>
+        <rect x="3" y="3" width="54" height="54" rx="12" className="oa-die-face" />
+        {hidden ? <text x="30" y="39" textAnchor="middle" className="oa-die-q">?</text> : (PIPS[n] || []).map(([i, j], k) => <circle key={k} cx={30 + i * 14} cy={30 + j * 14} r="5.2" className="oa-pip" />)}
+      </svg>
+    );
+  }
+  const SUITS = ["♠", "♥", "♦", "♣"];
+  const rankName = v => ({ 1: "A", 11: "J", 12: "Q", 13: "K", 14: "A" })[v] || String(v);
+  function Card({ v, s, hidden, size, flip }) {
+    const w = size || 62, red = s === 1 || s === 2;
+    return (
+      <div className={cx("oa-card", hidden && "back", red && "red", flip && "flip")} style={{ width: w, height: w * 1.4 }} aria-label={hidden ? "face-down card" : rankName(v) + SUITS[s || 0]}>
+        {hidden ? <i /> : <TF><span className="oa-card-c">{rankName(v)}<em>{SUITS[s || 0]}</em></span><span className="oa-card-m">{SUITS[s || 0]}</span><span className="oa-card-c r">{rankName(v)}<em>{SUITS[s || 0]}</em></span></TF>}
+      </div>
+    );
+  }
+  /* abstract shapes for the reasoning games */
+  function Shape({ kind, x, y, r, fill, rot, tone, stroke }) {
+    const c = tone || 1, cls = (fill === "solid" ? "f" : fill === "half" ? "t" : "s") + c + (stroke ? " w" : "");
+    const t = `translate(${x} ${y}) rotate(${rot || 0})`;
+    const P = {
+      circle: <circle r={r} />, square: <rect x={-r * .85} y={-r * .85} width={r * 1.7} height={r * 1.7} rx={r * .18} />,
+      triangle: <path d={`M0,${-r}L${r * .9},${r * .7}H${-r * .9}z`} />, diamond: <path d={`M0,${-r}L${r * .8},0L0,${r}L${-r * .8},0z`} />,
+      hexagon: <path d={Array.from({ length: 6 }, (_, i) => (i ? "L" : "M") + (r * Math.cos(i * Math.PI / 3)).toFixed(1) + "," + (r * Math.sin(i * Math.PI / 3)).toFixed(1)).join("") + "z"} />,
+      star: <path d={Array.from({ length: 10 }, (_, i) => { const a = i * Math.PI / 5 - Math.PI / 2, rr = i % 2 ? r * .45 : r; return (i ? "L" : "M") + (rr * Math.cos(a)).toFixed(1) + "," + (rr * Math.sin(a)).toFixed(1); }).join("") + "z"} />,
+      arrow: <path d={`M${-r},${-r * .25}H${r * .2}V${-r * .65}L${r},0L${r * .2},${r * .65}V${r * .25}H${-r}z`} />,
+      cross: <path d={`M${-r * .3},${-r}H${r * .3}V${-r * .3}H${r}V${r * .3}H${r * .3}V${r}H${-r * .3}V${r * .3}H${-r}V${-r * .3}H${-r * .3}z`} />,
+    };
+    return <g transform={t} className={"oa-shape " + cls}>{P[kind] || P.circle}</g>;
+  }
+  function Art({ w, h, children, cls, label }) {
+    return <svg className={cx("oa-art", cls)} viewBox={`0 0 ${w} ${h}`} width="100%" style={{ maxWidth: w, aspectRatio: `${w} / ${h}` }} role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : "true"}>{children}</svg>;
+  }
+  /* a horizontal meter */
+  function Meter({ v, max, tone, label, target }) {
+    const f = Math.max(0, Math.min(1, v / (max || 1)));
+    return <div className={cx("oa-meter", tone)}>{label ? <span>{label}</span> : null}<div className="oa-meter-t"><i style={{ width: (f * 100) + "%" }} />{target != null ? <u style={{ left: (target / max * 100) + "%" }} /> : null}</div></div>;
+  }
+  /* a small sparkline / price chart */
+  function Spark({ data, w, h, lo, hi, marks, tone }) {
+    w = w || 320; h = h || 90;
+    if (!data.length) return <svg className="oa-spark" viewBox={`0 0 ${w} ${h}`} />;
+    const a = lo != null ? lo : Math.min(...data), b = hi != null ? hi : Math.max(...data), sp = b - a || 1;
+    const X = i => 4 + i * (w - 8) / Math.max(1, data.length - 1), Y = v => h - 6 - (v - a) / sp * (h - 12);
+    const d = data.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1)).join("");
+    return (
+      <svg className={cx("oa-spark", tone)} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+        <path d={d + `L${X(data.length - 1)},${h}L${X(0)},${h}z`} className="oa-spark-a" />
+        <path d={d} className="oa-spark-l" />
+        {(marks || []).map((m, i) => <circle key={i} cx={X(m.i)} cy={Y(data[m.i])} r="3.5" className={"f" + (m.tone || 2)} />)}
+        <circle cx={X(data.length - 1)} cy={Y(data[data.length - 1])} r="4" className="oa-spark-d" />
+      </svg>
+    );
+  }
+
+  /* ---------- small shared helpers ---------- */
+  const money = (v, d) => (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString("en-GB", { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 });
+  const signed = (v, d) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toLocaleString("en-GB", { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 });
+  const pct = v => Math.round(v * 100) + "%";
+  const versioned = v => p => (p.v || 1) === v;
+
+  return { cx, useTick, useCountdown, Ring, Stat, Rail, Stage, Choices, NumIn, Pad, padEdit, isTouch, Banner, Result, Die, Card, SUITS, rankName, Shape, Art, Meter, Spark, T, money, signed, pct, versioned, fmtClock, KEYS };
+})();

@@ -1,0 +1,72 @@
+/* Hidden Rules: rule discovery against a target, like the experiment-and-infer games in Arctic Shores-style
+   assessments. Four generators change an energy meter by rules you can't see. Experiment, then hit the target in
+   as few clicks as possible, and finally name each generator's rule. */
+(function () {
+  const { TH, TF, R } = TIP;
+  const { useState, useMemo } = R;
+  const K = TIP_KIT;
+  const RULES = [
+    { id: "p5", t: "+5", f: v => v + 5 }, { id: "p8", t: "+8", f: v => v + 8 }, { id: "m3", t: "−3", f: v => v - 3 }, { id: "m7", t: "−7", f: v => v - 7 },
+    { id: "x2", t: "×2", f: v => v * 2 }, { id: "h2", t: "÷2 (rounded down)", f: v => Math.floor(v / 2) }, { id: "c50", t: "+10 below 50, −10 at 50 or more", f: v => v < 50 ? v + 10 : v - 10 },
+    { id: "r10", t: "round to nearest 10", f: v => Math.round(v / 10) * 10 },
+  ];
+  const clamp = v => Math.max(0, Math.min(100, v));
+  function bfs(start, target, gens) {
+    const seen = new Map([[start, 0]]), q = [start];
+    while (q.length) { const v = q.shift(), d = seen.get(v); if (v === target) return d; if (d >= 8) continue; gens.forEach(g => { const n = clamp(g.f(v)); if (!seen.has(n)) { seen.set(n, d + 1); q.push(n); } }); }
+    return null;
+  }
+  function mkRound(rng) {
+    for (let t = 0; t < 200; t++) {
+      const gens = rng.shuffle(RULES.slice()).slice(0, 4), start = rng.int(5, 60), target = rng.int(10, 95);
+      const d = bfs(start, target, gens); if (d != null && d >= 3 && d <= 6) return { gens, start, target, opt: d };
+    }
+    return mkRound(rng);
+  }
+  function Game({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const [rd, setRd] = useState(() => mkRound(rng)), [ri, setRi] = useState(0);
+    const [v, setV] = useState(rd.start), [clicks, setClicks] = useState(0), [trail, setTrail] = useState([]), [phase, setPhase] = useState("play");
+    const [guess, setGuess] = useState({}), [hist, setHist] = useState([]), [done, setDone] = useState(false);
+    function press(i) {
+      if (phase !== "play") return;
+      const n = clamp(rd.gens[i].f(v)); setTrail(t => [...t, { g: i, from: v, to: n }].slice(-8)); setV(n); setClicks(c => c + 1);
+      if (n === rd.target) setPhase(s.name ? "name" : "won");
+    }
+    function finish() {
+      const named = rd.gens.filter((g, i) => guess[i] === g.id).length;
+      const pts = Math.max(0, 10 - (clicks - rd.opt)) + (s.name ? named * 2 : 0);
+      setHist(h => [...h, { ok: clicks <= rd.opt + 2, text: `${rd.start} → ${rd.target}: ${clicks} clicks (best ${rd.opt})`, shown: `${pts} pts`, explain: "Rules: " + rd.gens.map((g, i) => `G${i + 1} ${g.t}`).join(", ") + (s.name ? `. You named ${named} of 4.` : ""), pts }]);
+      if (ri + 1 >= s.rounds) { setDone(true); return; }
+      const n = mkRound(rng); setRd(n); setRi(ri + 1); setV(n.start); setClicks(0); setTrail([]); setGuess({}); setPhase("play");
+    }
+    const res = useMemo(() => done ? { score: hist.reduce((a, h) => a + h.pts, 0), correct: hist.filter(h => h.ok).length, total: hist.length } : null, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={`${res.score} points`} sub={`${res.correct} of ${res.total} targets hit within two clicks of the best`} ring={res.total ? res.correct / res.total : 0} onRestart={onRestart}
+      metrics={[{ label: "Score", value: res.score, sub: "10 − extra clicks, +2 per rule named" }]} review={hist}
+      notes="Spend your first clicks as experiments that tell rules apart (try each generator once from the same value), then plan the shortest path to the target." />;
+    const TONES = [1, 5, 3, 4];
+    return (
+      <K.Stage title="Hidden Rules" sub={`Round ${ri + 1} of ${s.rounds} · fewest clicks wins`} stats={[{ label: "Clicks", value: clicks, pop: true }, { label: "Target", value: rd.target, tone: "hot" }]} total={s.rounds} results={hist.map(h => h.ok)} at={ri}>
+        <div className="oa-q">
+          <div className="hr-meter"><K.Meter v={v} max={100} target={rd.target} label={`Energy ${v} · target ${rd.target}`} tone={v === rd.target ? "k3" : ""} /></div>
+          <div className="hr-gens">{rd.gens.map((g, i) => <button key={i} className={"hr-gen k" + TONES[i]} disabled={phase !== "play"} onClick={() => press(i)}>
+            <svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="24" /><path d="M30,14L22,32H30L26,46L40,26H31L35,14z" /></svg><b>G{i + 1}</b></button>)}</div>
+          <div className="hr-trail">{trail.map((t, i) => <span key={i}><i className={"k" + TONES[t.g]}>G{t.g + 1}</i>{t.from}→{t.to}</span>)}</div>
+          {phase === "name" ? <div className="hr-name"><div className="oa-lbl">Target hit in {clicks} (best {rd.opt}). Name each rule for 2 points each:</div>
+            {rd.gens.map((g, i) => <label key={i} className="hr-row"><i className={"k" + TONES[i]}>G{i + 1}</i><select className="tip-sel" value={guess[i] || ""} onChange={e => setGuess(x => ({ ...x, [i]: e.target.value }))}><option value="">choose…</option>{RULES.map(r => <option key={r.id} value={r.id}>{r.t}</option>)}</select></label>)}
+            <button className="start" onClick={finish}>Done</button></div> : null}
+          {phase === "won" ? <K.Banner ok={clicks <= rd.opt + 2} onNext={finish} title={`Target hit in ${clicks} clicks.`}>The best possible was {rd.opt}.</K.Banner> : null}
+        </div>
+      </K.Stage>
+    );
+  }
+  TIP_TRAINERS.register({
+    id: "hidden", name: "Hidden Rules", metric: "score", unit: " pts", version: 2, playFilter: K.versioned(2),
+    blurb: "Rule discovery like the experiment-and-infer games in Arctic Shores-style assessments: four generators change an energy meter by rules you can't see. Experiment, hit the target in as few clicks as possible, then name each rule.",
+    fields: [{ key: "rounds", label: "Rounds", type: "num", min: 2, max: 10 }, { key: "name", label: "Name the rules afterwards", type: "bool" }],
+    presets: { Easy: { rounds: 3, name: false }, Medium: { rounds: 4, name: true }, Hard: { rounds: 6, name: true } },
+    note: "The meter stays between 0 and 100. Every target is reachable in 3 to 6 clicks.",
+    component: Game,
+  });
+})();

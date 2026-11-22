@@ -1,0 +1,68 @@
+/* Target Number: combine four numbers with + − × ÷ and brackets to hit a target, as in numerical game rounds
+   and the "make 24" interview warm-up. Every puzzle is checked solvable; type an expression using each number once. */
+(function () {
+  const { TH, TF } = TIP;
+  const { trainer } = TIP_DRILL;
+  const K = TIP_KIT;
+  function solve(nums, target) {
+    const go = items => {
+      if (items.length === 1) return Math.abs(items[0].v - target) < 1e-9 ? items[0].e : null;
+      for (let i = 0; i < items.length; i++) for (let j = 0; j < items.length; j++) {
+        if (i === j) continue;
+        const a = items[i], b = items[j], rest = items.filter((_, k) => k !== i && k !== j);
+        const c = [{ v: a.v + b.v, e: `(${a.e} + ${b.e})` }, { v: a.v - b.v, e: `(${a.e} − ${b.e})` }, { v: a.v * b.v, e: `${a.e} × ${b.e}` }];
+        if (Math.abs(b.v) > 1e-9) c.push({ v: a.v / b.v, e: `${a.e} ÷ ${b.e}` });
+        for (const x of c) { const r = go([...rest, x]); if (r) return r; }
+      }
+      return null;
+    };
+    return go(nums.map(n => ({ v: n, e: String(n) })));
+  }
+  function check(expr, nums, target) {
+    const t = String(expr).replace(/[×x*]/g, "*").replace(/[÷/]/g, "/").replace(/[−–]/g, "-").replace(/\s+/g, "");
+    if (!t || /[^0-9+\-*/()]/.test(t)) return { ok: false, why: "Use only the numbers, + − × ÷ and brackets." };
+    const used = (t.match(/\d+/g) || []).map(Number).sort((a, b) => a - b), want = nums.slice().sort((a, b) => a - b);
+    if (used.join(",") !== want.join(",")) return { ok: false, why: "Use each of the four numbers exactly once." };
+    let v; try { v = Function('"use strict";return (' + t + ")")(); } catch (e) { return { ok: false, why: "That expression doesn't parse." }; }
+    return Math.abs(v - target) < 1e-9 ? { ok: true } : { ok: false, why: `That makes ${Math.round(v * 1000) / 1000}, not ${target}.` };
+  }
+  function gen(r, s) {
+    for (let t = 0; t < 200; t++) {
+      const nums = [0, 1, 2, 3].map(() => r.int(1, s.max));
+      const target = s.target === "24" ? 24 : r.int(10, s.target === "big" ? 200 : 60);
+      const sol = solve(nums, target);
+      if (!sol) continue;
+      let lastErr = "";
+      return {
+        text: `Make ${target} from ${nums.join(", ")}`, answer: sol.replace(/^\((.*)\)$/, "$1") + " = " + target, explain: "One solution: " + sol.replace(/^\((.*)\)$/, "$1") + ".",
+        prompt: <div className="col" style={{ alignItems: "center", gap: 12 }}>
+          <div className="tg-target"><span>Target</span><b>{target}</b></div>
+          <div className="tg-nums">{nums.map((n, k) => <span key={k} style={{ animationDelay: k * 0.06 + "s" }}>{n}</span>)}</div></div>,
+        input: "custom",
+        render: ({ submit, running }) => <TgIn running={running} nums={nums} onDone={e => submit(e)} />,
+        check: e => check(e, nums, target).ok, givenText: e => String(e),
+      };
+    }
+  }
+  function TgIn({ running, nums, onDone }) {
+    const [v, setV] = TIP.R.useState("");
+    const ins = x => setV(t => t + x);
+    return <div className="col" style={{ gap: 8 }}>
+      <div className="oa-num"><div className="oa-num-box" style={{ minWidth: 260 }}><input value={v} disabled={!running} placeholder="e.g. (8 - 2) × 4 × 1" autoFocus onChange={e => setV(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && v.trim()) { e.preventDefault(); onDone(v); } }} /></div>
+        <button className="start" disabled={!running || !v.trim()} onClick={() => onDone(v)}>Submit</button></div>
+      <div className="tg-pad">{[...nums.map(String), "+", "−", "×", "÷", "(", ")"].map((x, k) => <button key={k} className="btn sm" disabled={!running} onClick={() => ins(x)}>{x}</button>)}<button className="btn sm" disabled={!running} onClick={() => setV(t => t.slice(0, -1))}>⌫</button></div>
+    </div>;
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "target", name: "Target Number", version: 2,
+    blurb: "Combine four numbers with + − × ÷ and brackets to hit the target, the arithmetic-agility round used in numerical games and as an interview warm-up. Every puzzle is checked solvable before you see it.",
+    fields: [
+      { key: "count", label: "Puzzles", type: "num", min: 3, max: 30 },
+      { key: "time", label: "Time per puzzle", type: "num", min: 15, max: 240, unit: "s" },
+      { key: "target", label: "Targets", type: "sel", choices: [{ value: "24", label: "Always 24" }, { value: "small", label: "10–60" }, { value: "big", label: "10–200" }] },
+      { key: "max", label: "Largest number", type: "sel", choices: [{ value: 9, label: "9" }, { value: 13, label: "13" }] },
+    ],
+    presets: { Easy: { count: 6, time: 120, target: "24", max: 9 }, Medium: { count: 10, time: 75, target: "small", max: 13 }, Hard: { count: 14, time: 45, target: "big", max: 13 } },
+    note: "Work backwards from the target: which factor pairs or near-misses can the four numbers make?",
+  }, { gen, count: s => s.count, perQSecs: s => s.time }));
+})();

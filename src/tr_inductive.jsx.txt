@@ -1,0 +1,56 @@
+/* Inductive Reasoning Test: SHL / Flow Traders-style abstract series. Four panels follow rules (rotation,
+   count, shading, a marker moving round the corners); pick the panel that comes next from five. */
+(function () {
+  const { TH } = TIP;
+  const { trainer } = TIP_DRILL;
+  const K = TIP_KIT;
+  const KINDS = ["arrow", "triangle", "square", "star", "diamond", "cross"];
+  const FILLS = ["none", "half", "solid"];
+  const CORN = [[16, 16], [64, 16], [64, 64], [16, 64]];
+  function Panel({ p, size }) {
+    return <K.Art w={80} h={80}><rect x="2" y="2" width="76" height="76" rx="10" className="tile" />
+      <K.Shape kind={p.kind} x={40} y={40} r={17} rot={p.rot} fill={p.fill} tone={p.tone} />
+      {Array.from({ length: p.count }, (_, i) => <circle key={i} cx={40 + (i - (p.count - 1) / 2) * 9} cy={70} r="3" className="f5" />)}
+      <circle cx={CORN[p.corner][0]} cy={CORN[p.corner][1]} r="4.5" className="f2" /></K.Art>;
+  }
+  /* two panels look the same if they match after the shape's own rotational symmetry */
+  const SYM = { square: 90, cross: 90, diamond: 180, star: 72, triangle: 120, arrow: 360 };
+  const same = (a, b) => a.kind === b.kind && ((a.rot - b.rot) % SYM[a.kind] + SYM[a.kind]) % SYM[a.kind] === 0 && a.fill === b.fill && a.count === b.count && a.corner === b.corner;
+  function gen(r, s) {
+    const n = s.level >= 3 ? 3 : s.level >= 2 ? r.int(2, 3) : 2;     /* number of changing attributes */
+    const attrs = r.shuffle(["rot", "count", "fill", "corner"]).slice(0, n);
+    const kind = r.pick(KINDS), tone = r.pick([1, 3, 5]);
+    const rs = r.pick(kind === "square" || kind === "cross" ? [45] : kind === "diamond" ? [45, 90] : [45, 90, -90, 135]);
+    const cs = r.pick([1, -1]), c0 = cs > 0 ? r.int(1, 2) : 5, f0 = r.int(0, 2), k0 = r.int(0, 3), ks = r.pick([1, -1, 2]);
+    const rot0 = r.pick([0, 45, 90]);
+    const at = i => ({ kind, tone,
+      rot: attrs.includes("rot") ? rot0 + rs * i : rot0,
+      count: attrs.includes("count") ? Math.max(1, Math.min(6, c0 + cs * i)) : c0 > 4 ? 3 : c0,
+      fill: FILLS[attrs.includes("fill") ? (f0 + i) % 3 : f0],
+      corner: attrs.includes("corner") ? ((k0 + ks * i) % 4 + 4) % 4 : k0 });
+    const ans = at(4);
+    const opts = [ans];
+    const tweak = [p => ({ ...p, rot: p.rot + 90 }), p => ({ ...p, rot: p.rot - 45 }), p => ({ ...p, count: p.count + 1 }), p => ({ ...p, count: Math.max(1, p.count - 1) }),
+      p => ({ ...p, fill: FILLS[(FILLS.indexOf(p.fill) + 1) % 3] }), p => ({ ...p, corner: (p.corner + 1) % 4 }), p => ({ ...p, corner: (p.corner + 2) % 4 }), () => at(3), p => ({ ...p, kind: r.pick(KINDS.filter(k => k !== kind)) })];
+    for (let t = 0; t < 60 && opts.length < 5; t++) { let c = r.pick(tweak)(ans); if (r() < 0.3) c = r.pick(tweak)(c); if (!opts.some(o => same(o, c))) opts.push(c); }
+    const sh = r.shuffle(opts.map((p, i) => ({ p, i })));
+    const desc = attrs.map(a => ({ rot: `rotates ${Math.abs(rs)}° ${rs > 0 ? "clockwise" : "anticlockwise"} each step`, count: `dots ${cs > 0 ? "increase" : "decrease"} by one`, fill: "shading cycles empty → half → solid", corner: `amber marker moves ${ks === 2 ? "two corners" : "one corner"} ${ks > 0 ? "clockwise" : "anticlockwise"}` })[a]);
+    return {
+      text: "Which panel comes next?", kind: attrs.sort().join("+"), answer: "the option shown in green", explain: "Rules: " + desc.join("; ") + ".",
+      prompt: <div className="col" style={{ alignItems: "center", gap: 8 }}><div className="oa-lbl">Which panel comes next?</div>
+        <div className="ir-row">{[0, 1, 2, 3].map(i => <div key={i} className="ir-cell" style={{ animationDelay: i * 0.06 + "s" }}><Panel p={at(i)} /></div>)}<div className="ir-cell q">?</div></div></div>,
+      input: "choice", cols: 5, choiceCls: "ir-opts", choices: sh.map(o => ({ value: o.i, label: "Option", node: <Panel p={o.p} /> })), check: v => v === 0,
+    };
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "inductive", name: "Inductive Reasoning Test", version: 2,
+    blurb: "SHL and Flow Traders-style abstract series: four panels change by rules (rotation, dot count, shading, a marker moving round the corners). Find every rule and pick the next panel from five, one clock per question.",
+    fields: [
+      { key: "count", label: "Questions", type: "num", min: 5, max: 30 },
+      { key: "time", label: "Time per question", type: "num", min: 10, max: 120, unit: "s" },
+      { key: "level", label: "Rules at once", type: "sel", choices: [{ value: 1, label: "Two" }, { value: 2, label: "Two or three" }, { value: 3, label: "Three" }] },
+    ],
+    presets: { Easy: { count: 8, time: 75, level: 1 }, Medium: { count: 15, time: 50, level: 2 }, Hard: { count: 20, time: 35, level: 3 } },
+    note: "Check one feature at a time: shape, rotation, shading, dots, then the marker. Most wrong options break exactly one rule.",
+  }, { gen, count: s => s.count, perQSecs: s => s.time, variety: true, always: true }));
+})();

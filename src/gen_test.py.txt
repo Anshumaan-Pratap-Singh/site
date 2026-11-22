@@ -1,0 +1,72 @@
+"""Sample-test the question generators of the drill trainers in the built app.
+
+  python3 src/gen_test.py [ARTIFACT_ROOT] [samples]
+
+For every trainer that opts in to variety (and each Easy/Medium/Hard preset, and each
+course topic set), draws many questions and checks: no exceptions; the stated answer is
+accepted by the question's own check(); numbers are finite; and for the Sequence Trainer,
+that no simpler rule (constant gap, constant ratio, constant second gap) fits the shown
+terms but gives a different next term. Prints kinds and distinct-question counts.
+"""
+import functools, http.server, json, pathlib, socketserver, sys, threading
+from playwright.sync_api import sync_playwright
+args = [a for a in sys.argv[1:]]
+ROOT = pathlib.Path(args[0]) if args else pathlib.Path(__file__).resolve().parent.parent
+N = int(args[1]) if len(args) > 1 else 3000
+JS = r"""
+([N]) => {
+  const T = window.__TIP, D = T.TIP_TRAINERS.DEFS, out = {};
+  const num = x => T.TIP_DRILL.num(String(x).replace(/[$%,\s]/g, '').replace('−', '-').replace(/≈.*$/, '').trim());
+  for (const id of Object.keys(D)) {
+    const def = D[id]; if (!def.spec || !def.spec.variety) continue;
+    const configs = [];
+    for (const p of ['Easy', 'Medium', 'Hard']) if (def.presets && def.presets[p]) configs.push([p, { ...def.presets[p] }]);
+    const tf = def.fields && def.fields.find(f => f.key === 'topics');
+    if (tf) for (const c of tf.choices) configs.push(['topics=' + c.value, { ...(def.presets.Medium || {}), topics: c.value }]);
+    const res = out[id] = { configs: {} };
+    for (const [name, s] of configs) {
+      const rng = T.jt(12345), kinds = {}, texts = new Set(), errs = [];
+      for (let i = 0; i < N; i++) {
+        let q; try { q = def.spec.gen(rng, s, i % 30, []); } catch (e) { errs.push('throw ' + e.message); continue; }
+        const k = String(q.kind); kinds[k] = (kinds[k] || 0) + 1; texts.add(q.text);
+        if (!q.text || /undefined|NaN|Infinity/.test(q.text + ' ' + q.answer)) errs.push('bad text: ' + k + ' | ' + q.text + ' | ' + q.answer);
+        if (q.input === 'choice') { const ok = q.choices.filter(c => q.check(c.value)); if (ok.length !== 1) errs.push('choices ' + k + ': ' + ok.length + ' correct | ' + q.text); continue; }
+        if (q.input !== 'num') continue;
+        const a = String(q.answer).split('≈')[0].split('(')[0].split(' or ')[0].trim();
+        const okA = q.check(a) || q.check(a.replace(/[^0-9.\-\/]/g, ''));
+        if (!okA) errs.push('answer rejected: ' + k + ' | ' + q.text + ' | ' + q.answer);
+        if (id === 'seq') {
+          const shown = q.text.replace(', ?', '').split(', ').map(Number), ans = Number(q.answer), n = shown.length;
+          const d = shown.slice(1).map((v, j) => v - shown[j]);
+          if (d.every(x => x === d[0]) && shown[n - 1] + d[0] !== ans) errs.push('ambiguous (arith) ' + k + ' | ' + q.text + ' ' + ans);
+          const rr = shown.slice(1).map((v, j) => v / shown[j]);
+          if (shown.every(v => v !== 0) && rr.every(x => Math.abs(x - rr[0]) < 1e-12) && Math.abs(shown[n - 1] * rr[0] - ans) > 1e-9) errs.push('ambiguous (geom) ' + k + ' | ' + q.text + ' ' + ans);
+          if (n >= 4) { const d2 = d.slice(1).map((v, j) => v - d[j]); if (d2.every(x => x === d2[0]) && shown[n - 1] + d[d.length - 1] + d2[0] !== ans) errs.push('ambiguous (quadratic) ' + k + ' | ' + q.text + ' ' + ans); }
+        }
+      }
+      res.configs[name] = { kinds: Object.keys(kinds).length, distinct: texts.size, errs: errs.length, sample: [...new Set(errs)].slice(0, 6), kindList: Object.keys(kinds).sort().join(' ') };
+    }
+  }
+  return out;
+}
+"""
+class Q(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *a): pass
+srv = socketserver.ThreadingTCPServer(('127.0.0.1', 0), functools.partial(Q, directory=str(ROOT)))
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+with sync_playwright() as pw:
+    b = pw.chromium.launch(); pg = b.new_page()
+    pg.goto(f'http://127.0.0.1:{srv.server_address[1]}/#trainers')
+    pg.wait_for_function('() => window.__TIP && window.__TIP.TIP_TRAINERS', timeout=20000)
+    res = pg.evaluate(JS, [N])
+bad = 0
+for id, r in res.items():
+    for name, c in r['configs'].items():
+        print(f"{id:9s} {name:16s} kinds {c['kinds']:3d}  distinct {c['distinct']:5d}  problems {c['errs']}")
+        for e in c['sample']: print('     ', e[:220])
+        bad += c['errs']
+if '--kinds' in sys.argv:
+    for id, r in res.items():
+        for name, c in r['configs'].items(): print(id, name, c['kindList'])
+print('PASS' if not bad else 'FAIL')
+sys.exit(1 if bad else 0)

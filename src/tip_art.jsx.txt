@@ -1,0 +1,1179 @@
+/* Card art for lessons, trainers and market games: one animation system for every card.
+   Rules every scene follows, so the cards read as one set:
+   - a fixed 320 x 110 stage, clipped to itself, so nothing ever leaves the card;
+   - one 6 s loop with one easing curve and the same phases:
+       build (0 to .15), act (.15 to .6), payoff (.6 to .85), fade and reset (.9 to 1);
+   - one colour code: 1 blue = the main object, 2 amber = the answer or result,
+     3 green = bid, profit or correct, 4 red = ask, loss or wrong, 5 violet = a second object;
+   - one set of moves: paths draw in, tokens travel with a comet trail, results land with a ripple and burst.
+   Topics that are the same thing (a game and its lesson, a course and its trainer) share one scene (SAME). */
+var TIP_ART = (function () {
+  const { TH, TF, still } = TIP;
+  const W = 320, H = 110, LOOP = 6, EASE = ".22 1 .36 1";
+  let UID = "ta0";
+  const n3 = v => Math.round(v * 1000) / 1000;
+  const n1 = v => Math.round(v * 10) / 10;
+
+  /* ---------- timing ---------- */
+  /* keyframes [[t, value], ...] on the shared loop: times are clamped to 0..1, kept strictly in order, padded to 0 and 1 */
+  function norm(kf) {
+    const out = [];
+    let last = -1;
+    kf.forEach(([t, v]) => {
+      t = Math.max(t, last + 0.002);
+      if (t > 1 || last >= 1) return;
+      out.push([n3(t), v]);
+      last = t;
+    });
+    if (out[0][0] > 0) out.unshift([0, out[0][1]]);
+    if (out[out.length - 1][0] < 1) out.push([1, out[out.length - 1][1]]);
+    return out;
+  }
+  const spl = k => ({ keyTimes: k.map(x => x[0]).join(";"), calcMode: "spline", keySplines: Array(k.length - 1).fill(EASE).join(";") });
+  const K = ({ a, kf }) => { if (still()) return null; const k = norm(kf); return <animate attributeName={a} values={k.map(x => x[1]).join(";")} {...spl(k)} dur={LOOP + "s"} repeatCount="indefinite" />; };
+  const KT = ({ type, kf }) => { if (still()) return null; const k = norm(kf); return <animateTransform attributeName="transform" type={type || "translate"} values={k.map(x => x[1]).join(";")} {...spl(k)} dur={LOOP + "s"} repeatCount="indefinite" />; };
+  const KM = ({ path, kf }) => { if (still()) return null; const k = norm(kf); return <animateMotion path={path} keyPoints={k.map(x => x[1]).join(";")} {...spl(k)} dur={LOOP + "s"} repeatCount="indefinite" />; };
+  /* visible from t0 to t1 */
+  const win = (t0, t1) => [[0, 0], [t0, 0], [t0 + .05, 1], [t1 == null ? .9 : t1, 1], [(t1 == null ? .9 : t1) + .05, 0]];
+
+  /* ---------- building blocks ---------- */
+  /* the whole moving layer fades in, holds, and fades out before the loop restarts */
+  const Act = ({ children }) => <g><K a="opacity" kf={[[0, 0], [.05, 1], [.9, 1], [.97, 0]]} />{children}</g>;
+  /* shown between t0 and t1; `pre` marks things that only exist before the result (hidden in the still picture) */
+  const Show = ({ t0, t1, pre, children }) => still() && pre ? null : <g><K a="opacity" kf={win(t0 || 0, t1)} />{children}</g>;
+  const Txt = ({ x, y, s, c, a, children, b }) => <text x={x} y={y} className={"tx" + (c ? " c" + c : "") + (b ? " b" : "")} style={{ fontSize: s || 11 }} textAnchor={a || "middle"}>{children}</text>;
+  const Tile = ({ x, y, w, h, r, c, solid, soft, dash, label, ls, lc }) => <g>
+    <rect x={x} y={y} width={w} height={h} rx={r == null ? 6 : r} className={solid ? "f" + c : soft ? "t" + c : dash ? "s" + c + " dash" : "tile"} />
+    {label != null ? <Txt x={x + w / 2} y={y + h / 2 + (ls || 12) * .36} s={ls || 12} c={solid ? "inv" : lc || (soft || dash ? c : null)}>{label}</Txt> : null}
+  </g>;
+  const Chip = p => <Tile r={p.h / 2} {...p} />;
+  const Axes = ({ x0, y0, x1, y1 }) => <path d={`M${x0},${y1}V${y0}H${x1}`} className="ax" />;
+  /* a path that draws itself in between t0 and t1 */
+  const Draw = ({ d, c, t0, t1, w }) => <path d={d} pathLength="1" className={"s" + (c || 1) + (w ? " w3" : "")} strokeDasharray="1 1" strokeDashoffset={still() ? 0 : 1}>
+    <K a="stroke-dashoffset" kf={[[0, 1], [t0 == null ? .08 : t0, 1], [t1 == null ? .45 : t1, 0]]} /></path>;
+  /* a token with a halo */
+  const Dot = ({ x, y, c, r }) => <g><circle cx={x} cy={y} r={(r || 4) * 2.3} className={"f" + (c || 1)} opacity=".16" /><circle cx={x} cy={y} r={r || 4} className={"f" + (c || 1)} /></g>;
+  /* a token that travels a path between t0 and t1 with a comet trail; `at` is where it rests in the still picture */
+  const Comet = ({ path, c, t0, t1, at, r }) => {
+    r = r || 4; c = c || 1; t0 = t0 == null ? .1 : t0; t1 = t1 == null ? .6 : t1;
+    if (still()) return at ? <Dot x={at[0]} y={at[1]} c={c} r={r} /> : null;
+    const mv = lag => [[0, 0], [t0 + lag, 0], [t1 + lag, 1]];
+    return <g><K a="opacity" kf={win(Math.max(0, t0 - .04), t1 + .07)} />
+      {[3, 2, 1].map(i => <circle key={i} r={r * (1 - .2 * i)} className={"f" + c} opacity={n3(.5 - .13 * i)}><KM path={path} kf={mv(.018 * i)} /></circle>)}
+      <circle r={r * 2.3} className={"f" + c} opacity=".16"><KM path={path} kf={mv(0)} /></circle>
+      <circle r={r} className={"f" + c}><KM path={path} kf={mv(0)} /></circle>
+    </g>;
+  };
+  /* the result signature: a ripple and a burst of rays */
+  const Hit = ({ x, y, c, at, r }) => {
+    if (still()) return null;
+    c = c || 2; at = at == null ? .62 : at; r = r || 15;
+    return <g>
+      <circle cx={x} cy={y} r="2" className={"s" + c} opacity="0"><K a="r" kf={[[0, 2], [at, 2], [at + .16, r]]} /><K a="opacity" kf={[[0, 0], [at, 0], [at + .01, .85], [at + .16, 0]]} /></circle>
+      <g transform={`translate(${x} ${y})`}><g opacity="0">
+        <K a="opacity" kf={[[0, 0], [at, 0], [at + .02, 1], [at + .13, 0]]} /><KT type="scale" kf={[[0, ".45"], [at, ".45"], [at + .13, "1"]]} />
+        {Array.from({ length: 8 }, (_, i) => { const a = i * Math.PI / 4 + Math.PI / 8, cs = Math.cos(a), sn = Math.sin(a);
+          return <path key={i} d={`M${n1(cs * r * .62)},${n1(sn * r * .62)}L${n1(cs * r * .95)},${n1(sn * r * .95)}`} className={"s" + c} />; })}
+      </g></g>
+    </g>;
+  };
+  /* a quick scale pulse around (x, y) at `at` */
+  const Bump = ({ x, y, at, k, children }) => <g transform={`translate(${x} ${y})`}><g>
+    <KT type="scale" kf={[[0, "1"], [at, "1"], [at + .05, String(k || 1.16)], [at + .14, "1"]]} />
+    <g transform={`translate(${-x} ${-y})`}>{children}</g></g></g>;
+  /* translate through keyframes [[t, "dx dy"]]; `fin` is the still-picture offset (default: the last keyframe) */
+  const Slide = ({ kf, fin, children }) => <g transform={still() ? `translate(${fin || kf[kf.length - 1][1]})` : undefined}><KT kf={kf} />{children}</g>;
+  /* rotate about (cx, cy) through keyframes [[t, degrees]] */
+  const Rot = ({ cx, cy, kf, fin, children }) => <g transform={still() ? `rotate(${fin == null ? kf[kf.length - 1][1] : fin} ${cx} ${cy})` : undefined}>
+    <KT type="rotate" kf={kf.map(([t, d]) => [t, `${d} ${cx} ${cy}`])} />{children}</g>;
+  /* scale about (cx, cy) through keyframes [[t, "sx sy"]] */
+  const Scale = ({ cx, cy, kf, fin, children }) => <g transform={`translate(${cx} ${cy})`}><g transform={still() ? `scale(${fin || kf[kf.length - 1][1]})` : undefined}>
+    <KT type="scale" kf={kf} /><g transform={`translate(${-cx} ${-cy})`}>{children}</g></g></g>;
+  /* a card or tile that flips from its back to its face at `at` */
+  const Flip = ({ x, y, w, h, at, back, children }) => {
+    const cx = x + w / 2, cy = y + h / 2;
+    if (still()) return <g>{children}</g>;
+    return <Scale cx={cx} cy={cy} kf={[[0, "1 1"], [at, "1 1"], [at + .045, ".04 1"], [at + .1, "1 1"]]}>
+      <g><K a="opacity" kf={[[0, 1], [at + .044, 1], [at + .046, 0]]} />{back || <CardBack x={x} y={y} w={w} h={h} />}</g>
+      <g><K a="opacity" kf={[[0, 0], [at + .044, 0], [at + .046, 1]]} />{children}</g>
+    </Scale>;
+  };
+  const CardBack = ({ x, y, w, h }) => <g><rect x={x} y={y} width={w} height={h} rx="5" className="t1" />
+    <path d={`M${x + 5},${y + 5}L${x + w - 5},${y + h - 5}M${x + w - 5},${y + 5}L${x + 5},${y + h - 5}`} className="s1 thin" /></g>;
+  const PCard = ({ x, y, w, h, label, c }) => <g><rect x={x} y={y} width={w || 26} height={h || 36} rx="5" className="tile" />
+    <Txt x={x + (w || 26) / 2} y={y + (h || 36) / 2 + 5} s={14} c={c || 1} b>{label}</Txt>
+    <circle cx={x + 6} cy={y + 7} r="2" className={"f" + (c || 1)} /></g>;
+  /* real deck cards (front and back from TIP_KIT), scaled into a w x h box */
+  const DeckFace = ({ x, y, w, h, v, s }) => <g transform={`translate(${x} ${y}) scale(${n3(w / 250)} ${n3(h / 350)})`}>{TH(TIP_KIT.CardFaceArt, { v, s })}</g>;
+  const DeckBack = ({ x, y, w, h }) => <g transform={`translate(${x} ${y}) scale(${n3(w / 250)} ${n3(h / 350)})`}>{TH(TIP_KIT.CardBackArt, {})}</g>;
+  const DeckDie = ({ x, y, s, n }) => <g transform={`translate(${x} ${y}) scale(${n3(s / 60)})`}>{TH(TIP_KIT.DieFaceArt, { n })}</g>;
+  const DeckDieBack = ({ x, y, s }) => <g transform={`translate(${x} ${y}) scale(${n3(s / 60)})`}>{TH(TIP_KIT.DieBackArt, {})}</g>;
+  const DeckFlip = ({ x, y, w, h, at, v, s }) => <Flip x={x} y={y} w={w} h={h} at={at} back={<DeckBack x={x} y={y} w={w} h={h} />}><DeckFace x={x} y={y} w={w} h={h} v={v} s={s} /></Flip>;
+  const PIPS = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
+  const Die = ({ x, y, s, n, c }) => { s = s || 28; const cx = x + s / 2, cy = y + s / 2, d = s * .27;
+    return <g><rect x={x} y={y} width={s} height={s} rx={s * .2} className="tile" />{PIPS[n].map(([i, j], k) => <circle key={k} cx={n1(cx + i * d)} cy={n1(cy + j * d)} r={s * .075} className={"f" + (c || 1)} />)}</g>; };
+  /* polyline helpers */
+  const poly = pts => "M" + pts.map(p => n1(p[0]) + "," + n1(p[1])).join("L");
+  const samp = (f, x0, x1, n) => Array.from({ length: n + 1 }, (_, i) => { const x = x0 + (x1 - x0) * i / n; return [x, f(x)]; });
+  /* seeded random walk, so every card draws the same path every time */
+  const walk = (seed, n, x0, x1, y0, step) => { let s = seed, y = y0; const pts = [[x0, y0]];
+    for (let i = 1; i <= n; i++) { s = (s * 9301 + 49297) % 233280; y += (s / 233280 - .5) * 2 * step; pts.push([x0 + (x1 - x0) * i / n, y]); } return pts; };
+  /* a two-sided quote: ask above fair, bid below; moves with `kf`; an order hits the ask at `hit` */
+  const Quote = ({ x, y, kf, hit, bid, ask }) => <g>
+    <Slide kf={kf}>
+      <Chip x={x - 34} y={y - 30} w={68} h={18} c={4} soft label={"ASK " + ask} ls={10} />
+      <path d={`M${x - 40},${y}H${x + 40}`} className="s2 dash" /><Txt x={x + 46} y={y + 3.5} s={9} c={2} a="start">fair</Txt>
+      <Chip x={x - 34} y={y + 12} w={68} h={18} c={3} soft label={"BID " + bid} ls={10} />
+      <Bump x={x} y={y - 21} at={hit}><rect x={x - 34} y={y - 30} width="68" height="18" rx="9" className="f4" opacity="0"><K a="opacity" kf={[[0, 0], [hit, 0], [hit + .01, .9], [hit + .2, 0]]} /></rect></Bump>
+    </Slide>
+  </g>;
+
+  /* ---------- scenes ---------- */
+  const S = {};
+
+  /* ===== Mental maths ===== */
+  S.seq = () => <Act>
+    {[2, 4, 8, 16].map((v, i) => <Show key={i} t0={.03 + i * .08}><Bump x={62 + i * 48} y={55} at={.03 + i * .08}><Tile x={44 + i * 48} y={38} w={36} h={34} label={v} lc={1} /></Bump></Show>)}
+    {[0, 1, 2].map(i => <Show key={i} t0={.08 + i * .08}><path d={`M${64 + i * 48},34Q${86 + i * 48},14 ${108 + i * 48},34`} className="s5 dash" /><Txt x={86 + i * 48} y={18} s={9} c={5}>×2</Txt></Show>)}
+    <Draw d="M208,34Q230,14 252,34" c={2} t0={.4} t1={.54} /><Show t0={.44}><Txt x={230} y={18} s={9} c={2}>×2</Txt></Show>
+    <Comet path="M208,34Q230,14 252,34" c={2} t0={.4} t1={.56} />
+    <Show t1={.58} pre><Tile x={236} y={38} w={36} h={34} c={2} dash label="?" /></Show>
+    <Show t0={.58}><Bump x={254} y={55} at={.58}><Tile x={236} y={38} w={36} h={34} c={2} solid label="32" /></Bump></Show>
+    <Hit x={254} y={55} at={.6} r={24} />
+  </Act>;
+
+  S.frac = () => {
+    const C = 100, sweep = 37.5;
+    return <Act>
+      <Txt x={56} y={50} s={22} c={1} b>3</Txt><path d="M44,57H68" className="s1 w3" /><Txt x={56} y={80} s={22} c={1} b>8</Txt>
+      <Draw d="M82,58H104" c={5} t0={.08} t1={.16} />
+      <circle cx="136" cy="58" r="27" className="tile" />
+      {Array.from({ length: 8 }, (_, i) => { const a = i * Math.PI / 4 - Math.PI / 2; return <path key={i} d={`M136,58L${n1(136 + 27 * Math.cos(a))},${n1(58 + 27 * Math.sin(a))}`} className="ax" />; })}
+      <circle cx="136" cy="58" r="13.5" className="pie s1" pathLength={C} strokeDasharray={`${still() ? sweep : 0} ${C}`} transform="rotate(-90 136 58)">
+        <K a="stroke-dasharray" kf={[[0, `0 ${C}`], [.14, `0 ${C}`], [.42, `${sweep} ${C}`]]} /></circle>
+      <Draw d="M172,58H194" c={5} t0={.4} t1={.48} />
+      {["0", ".", "3", "7", "5"].map((ch, i) => <Show key={i} t0={.42 + i * .04}><Txt x={[214, 225, 235, 248, 261][i]} y={64} s={22} c={2} b>{ch}</Txt></Show>)}
+      <Show t0={.64}><Chip x={208} y={76} w={58} h={18} c={5} soft label="37.5%" ls={10} /></Show>
+      <Hit x={238} y={56} at={.62} r={20} />
+    </Act>;
+  };
+
+  S.scale = () => {
+    const th = [[0, -10], [.12, -10], [.3, 7], [.42, -4], [.52, 2], [.6, 0]];
+    const dy = sgn => th.map(([t, d]) => [t, `0 ${n1(sgn * 70 * Math.sin(d * Math.PI / 180))}`]);
+    return <Act>
+      <path d="M160,36L146,96H174z" className="tile" /><path d="M120,96H200" className="ax" />
+      <Rot cx={160} cy={36} kf={th}><path d="M88,36H232" className="s1 w3" /></Rot>
+      <circle cx="160" cy="36" r="4" className="f1" />
+      <Slide kf={dy(-1)}><path d="M90,36V54M70,54Q90,64 110,54" className="sn" />
+        <circle cx="81" cy="47" r="6.5" className="t1" /><path d="M92,54L99,41L106,54z" className="t5" /></Slide>
+      <Slide kf={dy(1)}><path d="M230,36V54M210,54Q230,64 250,54" className="sn" />
+        <rect x="214" y="41" width="13" height="13" rx="2" className="t3" />
+        <Show t1={.6} pre><Tile x={231} y={40} w={14} h={14} r={3} c={2} dash label="?" ls={9} /></Show>
+        <Show t0={.6}><Tile x={231} y={40} w={14} h={14} r={3} c={2} solid label="3" ls={9} /></Show>
+      </Slide>
+      <Hit x={238} y={47} at={.62} r={18} />
+    </Act>;
+  };
+
+  S.mental = () => <Act>
+    <Show t1={.3} pre><Txt x={160} y={52} s={24} b>48 × 25</Txt></Show>
+    <Show t0={.3} t1={.58} pre><Txt x={160} y={52} s={24} b><tspan className="c5">12 × 4</tspan> × 25</Txt></Show>
+    <Show t0={.58}><Txt x={160} y={52} s={24} b><tspan className="c5">12</tspan> × <tspan className="c1">100</tspan></Txt></Show>
+    <Draw d="M108,66Q160,84 212,66" c={5} t0={.28} t1={.4} />
+    <Show t0={.66}><Bump x={160} y={92} at={.66}><Chip x={124} y={80} w={72} h={22} c={2} solid label="1200" ls={13} /></Bump></Show>
+    <Hit x={160} y={91} at={.66} r={16} />
+  </Act>;
+
+  S.numbers = () => {
+    const cx = 130, cy = 56, R = 38, at = k => { const a = k * Math.PI / 6 - Math.PI / 2; return [n1(cx + R * Math.cos(a)), n1(cy + R * Math.sin(a))]; };
+    const hops = [0, 5, 10, 3, 8];
+    const arc = (a, b) => { const p = at(a), q = at(b); return `M${p[0]},${p[1]}Q${cx},${cy} ${q[0]},${q[1]}`; };
+    return <Act>
+      <circle cx={cx} cy={cy} r={R} className="tile" />
+      {Array.from({ length: 12 }, (_, k) => { const [x, y] = at(k); return <g key={k}><circle cx={x} cy={y} r="2.4" className="fn" />
+        <Txt x={n1(cx + (R - 11) * Math.cos(k * Math.PI / 6 - Math.PI / 2))} y={n1(cy + (R - 11) * Math.sin(k * Math.PI / 6 - Math.PI / 2) + 3)} s={7.5}>{k}</Txt></g>; })}
+      {hops.slice(1).map((b, i) => <g key={i}><Draw d={arc(hops[i], b)} c={i % 2 ? 5 : 1} t0={.08 + i * .13} t1={.18 + i * .13} />
+        <Comet path={arc(hops[i], b)} c={i % 2 ? 5 : 1} t0={.08 + i * .13} t1={.2 + i * .13} r={3.2} /></g>)}
+      <Dot x={at(8)[0]} y={at(8)[1]} c={2} r={4} />
+      <Txt x={236} y={44} s={13} c={1} b>+5 mod 12</Txt>
+      <Show t0={.64}><Chip x={204} y={58} w={64} h={20} c={2} solid label="0→8" ls={11} /></Show>
+      <Hit x={at(8)[0]} y={at(8)[1]} at={.62} r={14} />
+    </Act>;
+  };
+
+  /* ===== Probability and statistics ===== */
+  S.prob = () => {
+    const rows = 4, dx = 14, dy = 12, top = 16, bins = [132, 146, 160, 174, 188];
+    const balls = [[1, 0, 1, 1], [0, 1, 0, 1], [1, 1, 0, 0], [0, 0, 1, 0], [1, 0, 0, 1], [0, 1, 1, 1]];
+    const pathOf = b => { let x = 160, y = top - 8, d = `M${x},${y}`; b.forEach(s => { y += dy; x += s ? dx / 2 : -dx / 2; d += `L${x},${y}`; }); return d + `L${x},84`; };
+    const hts = [1, 3, 4, 3, 1];
+    return <Act>
+      {Array.from({ length: rows }, (_, r) => Array.from({ length: r + 1 }, (_, i) => <circle key={r + "-" + i} cx={160 + (i - r / 2) * dx} cy={top + 4 + r * dy} r="2" className="fn" />))}
+      {bins.map((x, i) => <g key={i}><path d={`M${x - 7},70V98`} className="ax" />
+        <rect x={x - 5} y={98 - hts[i] * 6} width="10" height={hts[i] * 6} rx="2" className="t1">
+          <K a="height" kf={[[0, 0], [.15, 0], [.82, hts[i] * 6]]} /><K a="y" kf={[[0, 98], [.15, 98], [.82, 98 - hts[i] * 6]]} /></rect></g>)}
+      <path d="M195,70V98M118,98H202" className="ax" />
+      {balls.map((b, i) => <Comet key={i} path={pathOf(b)} c={i % 2 ? 5 : 1} t0={.06 + i * .09} t1={.28 + i * .09} r={3} />)}
+      <Txt x={250} y={42} s={12} c={1} b>P(k)</Txt><Txt x={250} y={60} s={11} c={5}>C(4,k) / 16</Txt>
+      <Show t0={.84}><Bump x={160} y={74} at={.84}><path d="M139,74Q160,56 181,74" className="s2 w3" /></Bump></Show>
+      <Hit x={160} y={70} at={.82} r={14} />
+    </Act>;
+  };
+
+  S.counting = () => {
+    const g = 18, x0 = 104, y0 = 96;
+    const P = s => { let x = x0, y = y0, d = `M${x},${y}`; s.split("").forEach(ch => { ch === "R" ? x += g : y -= g; d += `L${x},${y}`; }); return d; };
+    const ps = [["RRRUUU", 1], ["URURUR", 5], ["UUURRR", 3]];
+    return <Act>
+      {[0, 1, 2, 3].map(i => <path key={i} d={`M${x0 + i * g},${y0}V${y0 - 3 * g}M${x0},${y0 - i * g}H${x0 + 3 * g}`} className="ax" />)}
+      {ps.map(([s, c], i) => <g key={i}><Draw d={P(s)} c={c} t0={.06 + i * .18} t1={.24 + i * .18} w /><Comet path={P(s)} c={c} t0={.06 + i * .18} t1={.24 + i * .18} r={3.2} /></g>)}
+      <Dot x={x0} y={y0} c={1} r={3.5} /><Dot x={x0 + 3 * g} y={y0 - 3 * g} c={2} r={4} />
+      {ps.map(([, c], i) => <Show key={i} t0={.2 + i * .18}><circle cx={196 + i * 14} cy={40} r="5" className={"f" + c} /></Show>)}
+      <Txt x={238} y={66} s={13} c={1} b>C(6,3)</Txt>
+      <Show t0={.66}><Chip x={212} y={76} w={52} h={20} c={2} solid label="= 20" ls={11} /></Show>
+      <Hit x={x0 + 3 * g} y={y0 - 3 * g} at={.64} r={14} />
+    </Act>;
+  };
+
+  S.bayes = () => {
+    const cols = 10, rows = 4;
+    const A = new Set([3, 14, 22, 31]), pos = new Set([3, 14, 22, 7, 18, 26, 35, 9, 33]);
+    return <Act>
+      {Array.from({ length: cols * rows }, (_, i) => { const x = 66 + (i % cols) * 15, y = 26 + Math.floor(i / cols) * 16;
+        const a = A.has(i), p = pos.has(i);
+        return <g key={i}>
+          <g><K a="opacity" kf={[[0, 1], [.36, 1], [.46, p ? 1 : .18]]} /><circle cx={x} cy={y} r="4.2" className={a ? "f1" : "fn"} opacity={still() && !p ? .18 : 1} /></g>
+          {p ? <Show t0={.14 + (i % 7) * .025}><circle cx={x} cy={y} r="6.8" className="s2" /></Show> : null}
+        </g>; })}
+      <Txt x={256} y={38} s={10}>positive test</Txt>
+      <Show t0={.5}><Txt x={256} y={62} s={13} c={1} b>P(A | +)</Txt></Show>
+      <Show t0={.64}><Chip x={230} y={72} w={52} h={20} c={2} solid label="3 / 9" ls={11} /></Show>
+      <Hit x={256} y={82} at={.64} r={20} />
+    </Act>;
+  };
+
+  S.linearity = () => {
+    const on = [1, 0, 1, 1, 0];
+    return <Act>
+      {on.map((v, i) => <g key={i}><Tile x={56 + i * 34} y={30} w={26} h={26} /><Txt x={69 + i * 34} y={22} s={8.5}>{"I" + (i + 1)}</Txt>
+        <Show t0={.08 + i * .08}><Bump x={69 + i * 34} y={43} at={.08 + i * .08}><Tile x={56 + i * 34} y={30} w={26} h={26} c={v ? 3 : 4} soft label={v} ls={12} /></Bump></Show>
+        {v ? <Comet path={`M${69 + i * 34},58Q${(69 + i * 34 + 252) / 2},96 252,${92 - on.slice(0, i).filter(Boolean).length * 12}`} c={3} t0={.12 + i * .08} t1={.32 + i * .08} r={3} /> : null}</g>)}
+      {[0, 1, 2].map(k => <Show key={k} t0={[.34, .48, .56][k]}><rect x="240" y={84 - k * 12} width="24" height="10" rx="3" className="t3" /></Show>)}
+      <path d="M234,96H270" className="ax" />
+      <Txt x={142} y={84} s={12} c={1} b>E[ΣI] = ΣE[I]</Txt>
+      <Show t0={.64}><Chip x={276} y={52} w={30} h={20} c={2} solid label="3" ls={11} /></Show>
+      <Hit x={252} y={62} at={.62} r={18} />
+    </Act>;
+  };
+
+  S.symmetry = () => {
+    const L = "M70,92C82,40 120,30 160,52", R = "M250,92C238,40 200,30 160,52";
+    return <Act>
+      <path d="M160,8V102" className="s5 dash" />
+      <Draw d={L} c={1} t0={.08} t1={.5} w /><Draw d={R} c={5} t0={.08} t1={.5} w />
+      {[.25, .5, .75].map((f, i) => <Show key={i} t0={.14 + i * .1}><path d={`M${n1(70 + 90 * f)},${n1(92 - 50 * Math.sin(f * Math.PI))}H${n1(250 - 90 * f)}`} className="ax dash" /></Show>)}
+      <Comet path={L} c={1} t0={.08} t1={.5} /><Comet path={R} c={5} t0={.08} t1={.5} />
+      <Show t0={.54}><Dot x={160} y={52} c={2} r={5} /></Show>
+      <Hit x={160} y={52} at={.54} r={18} />
+    </Act>;
+  };
+
+  S.firststep = () => {
+    const out1 = "M118,52L196,26", out2 = "M118,60L196,86", back = "M196,86Q150,108 114,66";
+    return <Act>
+      <circle cx="104" cy="56" r="14" className="t1" /><Txt x={104} y={60} s={11} c={1} b>S</Txt>
+      <circle cx="210" cy="24" r="13" className="t3" /><Txt x={210} y={28} s={10} c={3} b>win</Txt>
+      <circle cx="210" cy="88" r="13" className="t5" /><Txt x={210} y={92} s={10} c={5} b>tie</Txt>
+      <path d={out1} className="ax" /><path d={out2} className="ax" /><path d={back} className="s5 dash" />
+      <Txt x={152} y={30} s={10} c={3}>p</Txt><Txt x={152} y={84} s={10} c={5}>q</Txt>
+      <Comet path={out2} c={5} t0={.08} t1={.26} r={3.5} />
+      <Comet path={back} c={5} t0={.27} t1={.42} r={3.5} />
+      <Comet path={out1} c={3} t0={.44} t1={.58} r={3.5} />
+      <Show t0={.6}><Txt x={270} y={52} s={12} c={1} b>E = 1 + qE</Txt></Show>
+      <Hit x={210} y={24} at={.58} r={18} />
+    </Act>;
+  };
+
+  S.geometric = () => {
+    const pts = [[22, 70], [60, 30], [80, 74], [36, 20], [70, 50], [12, 40], [88, 18], [50, 84], [30, 56], [76, 88], [44, 40], [92, 60]];
+    return <Act>
+      <rect x="108" y="8" width="94" height="94" rx="2" className="tile" />
+      <path d="M108,102L202,8V102z" className="t1" />
+      {pts.map(([u, v], i) => { const x = 108 + u * .94, y = 102 - v * .94, inT = u > v;
+        return <Show key={i} t0={.06 + i * .045}><Bump x={x} y={y} at={.06 + i * .045} k={1.6}><circle cx={n1(x)} cy={n1(y)} r="3.4" className={inT ? "f3" : "f4"} /></Bump></Show>; })}
+      <Txt x={252} y={44} s={12} c={1} b>area ratio</Txt>
+      <Show t0={.64}><Chip x={226} y={58} w={52} h={20} c={2} solid label="½" ls={13} /></Show>
+      <Hit x={252} y={68} at={.64} r={22} />
+    </Act>;
+  };
+
+  S.pigeonhole = () => {
+    const holes = [104, 160, 216];
+    const drops = [[0, 1], [1, 1], [2, 1], [1, 2]];
+    return <Act>
+      {holes.map((x, i) => <path key={i} d={`M${x - 22},62V98H${x + 22}V62`} className="sn" />)}
+      {drops.map(([h, lvl], i) => { const xx = lvl === 2 ? holes[h] + 9 : holes[h] - (h === 1 ? 9 : 0);
+        return <g key={i}><Comet path={`M${holes[h]},14L${xx},88`} c={i === 3 ? 2 : 1} t0={.06 + i * .13} t1={.18 + i * .13} r={6} at={[xx, 88]} />
+          {still() ? null : <Show t0={.18 + i * .13}><circle cx={xx} cy="88" r="6" className={i === 3 ? "f2" : "f1"} /></Show>}</g>; })}
+      <Show t0={.62}><rect x="136" y="60" width="48" height="40" rx="6" className="s2 w3" /></Show>
+      <Txt x={270} y={50} s={12} c={1} b>4 into 3</Txt>
+      <Hit x={160} y={80} at={.62} r={28} />
+    </Act>;
+  };
+
+  S.invariants = () => {
+    const cx = 128, cy = 56, R = 36;
+    const at = i => [n1(cx + R * Math.cos(i * Math.PI / 3 - Math.PI / 2)), n1(cy + R * Math.sin(i * Math.PI / 3 - Math.PI / 2))];
+    const flips = [[0, 1], [2, 3], [4, 5], [1, 2]];
+    return <Act>
+      <polygon points={Array.from({ length: 6 }, (_, i) => at(i).join(",")).join(" ")} className="ax" />
+      {Array.from({ length: 6 }, (_, i) => { const [x, y] = at(i); const times = flips.map((f, k) => f.includes(i) ? .1 + k * .14 : null).filter(t => t != null);
+        let odd = i === 0 || i === 3; const kf = [[0, odd ? 1 : 0]]; times.forEach(t => { kf.push([t, odd ? 1 : 0]); odd = !odd; kf.push([t + .05, odd ? 1 : 0]); });
+        return <g key={i}><circle cx={x} cy={y} r="8" className="t1" /><circle cx={x} cy={y} r="8" className="f5" opacity={still() ? (odd ? 1 : 0) : 0}><K a="opacity" kf={kf} /></circle>
+          {times.map((t, k) => <Bump key={k} x={x} y={y} at={t}><circle cx={x} cy={y} r="8" className="s5" opacity="0"><K a="opacity" kf={[[0, 0], [t, 0], [t + .01, 1], [t + .12, 0]]} /></circle></Bump>)}</g>; })}
+      <Txt x={cx} y={cy + 4} s={10} c={2} b>even</Txt>
+      <Txt x={240} y={44} s={11}>flip any two</Txt>
+      <Chip x={206} y={56} w={68} h={20} c={2} soft label="parity fixed" ls={9.5} />
+      {[.1, .24, .38, .52].map((t, i) => <Hit key={i} x={cx} y={cy} at={t + .04} r={12} c={2} />)}
+    </Act>;
+  };
+
+  S.genfun = () => {
+    const co = [1, 6, 15, 20, 15, 6, 1];
+    return <Act>
+      <Txt x={84} y={34} s={14} c={1} b>(1 + x)⁶</Txt>
+      <Draw d="M110,44Q130,58 150,74" c={5} t0={.08} t1={.2} />
+      <path d="M152,98H292" className="ax" />
+      {co.map((v, i) => { const h = v * 3.6; return <g key={i}><rect x={158 + i * 19} y={98 - h} width="13" height={h} rx="2" className={i === 3 ? "t2" : "t1"}>
+        <K a="height" kf={[[0, 0], [.16 + i * .05, 0], [.3 + i * .05, h]]} /><K a="y" kf={[[0, 98], [.16 + i * .05, 98], [.3 + i * .05, 98 - h]]} /></rect>
+        <Show t0={.3 + i * .05}><Txt x={164.5 + i * 19} y={92 - h} s={8} c={i === 3 ? 2 : 1}>{v}</Txt></Show></g>; })}
+      <Hit x={221} y={44} at={.62} r={16} />
+    </Act>;
+  };
+
+  S.orderstats = () => {
+    const xs = [.18, .62, .35, .84, .5], X = u => 80 + u * 160;
+    return <Act>
+      <path d="M80,82H240" className="sn" /><path d="M80,76V88M240,76V88" className="sn" />
+      <Txt x={80} y={100} s={9}>0</Txt><Txt x={240} y={100} s={9}>1</Txt>
+      {xs.map((u, i) => <g key={i}><Comet path={`M${X(u)},14V82`} c={u === .84 ? 2 : 1} t0={.04 + i * .07} t1={.14 + i * .07} r={3.6} at={[X(u), 82]} />
+        {still() ? null : <Show t0={.14 + i * .07}><circle cx={X(u)} cy="82" r="3.6" className={u === .84 ? "f2" : "f1"} /></Show>}</g>)}
+      <Draw d={poly(samp(x => 74 - 56 * Math.pow((x - 80) / 160, 4), 80, 240, 32))} c={5} t0={.45} t1={.66} />
+      <Show t0={.62}><Txt x={X(.84)} y={70} s={10} c={2} b>max</Txt></Show>
+      <Txt x={274} y={36} s={11} c={5}>n xⁿ⁻¹</Txt>
+      <Hit x={X(.84)} y={82} at={.6} r={14} />
+    </Act>;
+  };
+
+  S.markov = () => {
+    const N = { A: [96, 78], B: [140, 24], C: [184, 78] };
+    const seg = (a, b) => `M${N[a][0]},${N[a][1]}L${N[b][0]},${N[b][1]}`;
+    const hops = ["AB", "BC", "CA", "AB", "BC"];
+    const visits = [2, 2, 1];
+    return <Act>
+      {Object.keys(N).map((k, i) => <g key={k}><circle cx={N[k][0]} cy={N[k][1]} r="14" className={"t" + [1, 5, 3][i]} /><Txt x={N[k][0]} y={N[k][1] + 4} s={11} c={[1, 5, 3][i]} b>{k}</Txt></g>)}
+      {["AB", "BC", "CA"].map(s => <path key={s} d={seg(s[0], s[1])} className="ax dash" />)}
+      {hops.map((h, i) => <Comet key={i} path={seg(h[0], h[1])} c={2} t0={.06 + i * .12} t1={.15 + i * .12} r={3.6} />)}
+      <path d="M220,96H296" className="ax" />
+      {visits.map((v, i) => <rect key={i} x={226 + i * 24} y={96 - v * 20} width="16" height={v * 20} rx="2" className={"t" + [1, 5, 3][i]}>
+        <K a="height" kf={[[0, 0], [.1, 0], [.7, v * 20]]} /><K a="y" kf={[[0, 96], [.1, 96], [.7, 96 - v * 20]]} /></rect>)}
+      <Txt x={258} y={20} s={10} c={2}>π (stationary)</Txt>
+      <Hit x={258} y={56} at={.7} r={18} />
+    </Act>;
+  };
+
+  S.martingale = () => {
+    const pts = walk(7, 22, 60, 228, 56, 9).map(([x, y], i, a) => i === a.length - 1 ? [x, 22] : [x, Math.max(26, Math.min(88, y))]);
+    const d = poly(pts);
+    return <Act>
+      <path d="M56,22H250M56,92H250" className="s4 dash" /><Txt x={262} y={25} s={9} c={4} a="start">stop</Txt><Txt x={262} y={95} s={9} c={4} a="start">stop</Txt>
+      <path d="M56,56H250" className="s5 dash" /><Txt x={262} y={59} s={9} c={5} a="start">X₀</Txt>
+      <Draw d={d} c={1} t0={.06} t1={.58} /><Comet path={d} c={1} t0={.06} t1={.58} />
+      <Show t0={.6}><Dot x={228} y={22} c={2} r={4.5} /></Show>
+      <Show t0={.66}><Chip x={60} y={2} w={96} h={15} c={2} solid label="E[X_τ] = X₀" ls={9} /></Show>
+      <Hit x={228} y={22} at={.6} r={14} />
+    </Act>;
+  };
+
+  S.poisson = () => {
+    const ts = [.08, .17, .21, .38, .47, .55, .7], X = t => 54 + t * 250;
+    return <Act>
+      <path d="M50,76H306" className="sn" />
+      {ts.map((t, i) => <Show key={i} t0={t * .9}><Bump x={X(t)} y={60} at={t * .9} k={1.4}><path d={`M${X(t)},76V54`} className="s1 w3" /><circle cx={X(t)} cy="50" r="4" className="f1" /></Bump></Show>)}
+      {ts.slice(1).map((t, i) => <Show key={i} t0={t * .9}><path d={`M${X(ts[i]) + 2},88H${X(t) - 2}`} className="s5" /></Show>)}
+      <Comet path="M50,76H306" c={2} t0={0} t1={.8} r={3} />
+      <Txt x={120} y={24} s={12} c={1} b>rate λ</Txt><Txt x={232} y={24} s={10} c={5}>gaps ~ Exp(λ)</Txt>
+      <Hit x={X(.7)} y={50} at={.63} r={14} />
+    </Act>;
+  };
+
+  S.brownian = () => {
+    const ps = [walk(3, 40, 60, 260, 56, 6), walk(11, 40, 60, 260, 56, 6), walk(29, 40, 60, 260, 56, 6)]
+      .map(p => p.map(([x, y]) => { const s = Math.sqrt((x - 60) / 200) * 42 + 1; return [x, Math.max(56 - s, Math.min(56 + s, y))]; }));
+    return <Act>
+      <path d={poly(samp(x => 56 - Math.sqrt((x - 60) / 200) * 44, 60, 260, 24)) + "M" + poly(samp(x => 56 + Math.sqrt((x - 60) / 200) * 44, 60, 260, 24)).slice(1)} className="s5 dash" />
+      <path d="M60,56H260" className="ax" />
+      {ps.map((p, i) => <g key={i}><Draw d={poly(p)} c={[1, 3, 2][i]} t0={.06} t1={.62} /><Comet path={poly(p)} c={[1, 3, 2][i]} t0={.06} t1={.62} r={3} /></g>)}
+      <Txt x={276} y={20} s={11} c={5} a="start">√t</Txt><Txt x={276} y={100} s={11} c={5} a="start">−√t</Txt>
+      <Hit x={260} y={56} at={.64} r={14} c={5} />
+    </Act>;
+  };
+
+  S.ev = () => <Act>
+    <path d="M60,82H150" className="ax" /><Txt x={105} y={98} s={9}>keep ≥ 4</Txt>
+    <Show t1={.3} pre><Die x={90} y={34} s={30} n={2} c={4} /></Show>
+    <Show t0={.3}><Scale cx={105} cy={49} kf={[[0, "1 1"], [.3, ".6 .6"], [.36, "1.1 1.1"], [.42, "1 1"]]} fin="1 1"><Rot cx={105} cy={49} kf={[[0, 0], [.3, -200], [.42, 0]]} fin={0}><Die x={90} y={34} s={30} n={5} c={3} /></Rot></Scale></Show>
+    <Show t0={.14} t1={.32} pre><Chip x={128} y={20} w={56} h={18} c={4} soft label="reroll" ls={9.5} /></Show>
+    <Show t0={.44}><Chip x={128} y={20} w={56} h={18} c={3} soft label="keep" ls={9.5} /></Show>
+    <Txt x={238} y={42} s={12} c={1} b>½·5 + ½·3.5</Txt>
+    <Show t0={.62}><Chip x={208} y={56} w={60} h={22} c={2} solid label="4.25" ls={12} /></Show>
+    <Hit x={238} y={67} at={.62} r={20} />
+  </Act>;
+
+  /* ===== Trading: market making (cards and dice share one choreography) ===== */
+  const fairKf = [[0, "0 8"], [.2, "0 8"], [.28, "0 -6"], [.42, "0 -6"], [.5, "0 4"], [.62, "0 4"]];
+  S.trading = () => <Act>
+    <DeckFace x={40} y={32} w={30} h={42} v={7} s={0} />
+    <DeckFlip x={76} y={32} w={30} h={42} at={.2} v={13} s={1} />
+    <DeckFlip x={112} y={32} w={30} h={42} at={.44} v={3} s={2} />
+    <Txt x={91} y={92} s={10}>sum of the hand</Txt>
+    <Quote x={222} y={56} kf={fairKf} hit={.7} bid="23" ask="27" />
+    <Comet path="M300,39H258" c={5} t0={.6} t1={.7} r={3.4} />
+    <Hit x={222} y={39} at={.7} r={16} c={4} />
+  </Act>;
+  S.dice = () => <Act>
+    <DeckDie x={42} y={38} s={30} n={4} />
+    <Flip x={78} y={38} w={30} h={30} at={.2} back={<DeckDieBack x={78} y={38} s={30} />}><DeckDie x={78} y={38} s={30} n={6} /></Flip>
+    <Flip x={114} y={38} w={30} h={30} at={.44} back={<DeckDieBack x={114} y={38} s={30} />}><DeckDie x={114} y={38} s={30} n={2} /></Flip>
+    <Txt x={92} y={92} s={10}>sum of the dice</Txt>
+    <Quote x={222} y={56} kf={fairKf} hit={.7} bid="11.5" ask="12.5" />
+    <Comet path="M300,39H258" c={5} t0={.6} t1={.7} r={3.4} />
+    <Hit x={222} y={39} at={.7} r={16} c={4} />
+  </Act>;
+
+  S.cards = () => {
+    const desks = [["A", "14 / 16", 3], ["B", "11 / 12", 4], ["C", "14 / 15", 3]];
+    return <Act>
+      {[0, 1, 2, 3].map(i => <DeckFlip key={i} x={34 + i * 33} y={33} w={30} h={42} at={.08 + i * .12} v={[5, 9, 2, 12][i]} s={[3, 1, 0, 2][i]} />)}
+      {desks.map(([n, q, c], i) => <g key={n}><Txt x={186} y={30 + i * 26} s={10} b>{n}</Txt>
+        <Chip x={196} y={18 + i * 26} w={70} h={18} c={i === 1 ? 4 : 1} soft={i === 1} label={q} ls={10} />
+        {i === 1 ? <Show t0={.5} t1={.85}><rect x="196" y="44" width="70" height="18" rx="9" className="s4 w3" /></Show> : null}</g>)}
+      <Comet path="M164,54Q180,70 194,53" c={2} t0={.56} t1={.66} r={3.4} />
+      <Show t0={.66}><Txt x={290} y={57} s={10} c={3} b>buy</Txt></Show>
+      <Hit x={231} y={53} at={.66} r={18} c={2} />
+    </Act>;
+  };
+
+  S.etf = () => {
+    const nav = x => 58 - 10 * Math.sin((x - 40) / 46);
+    const etf = x => nav(x) - (x > 150 && x < 250 ? 22 * Math.sin((x - 150) / 100 * Math.PI) * (x < 210 ? 1 : (250 - x) / 40) : 0);
+    const N = samp(nav, 40, 280, 48), E = samp(etf, 40, 280, 48);
+    return <Act>
+      {["A", "B", "C"].map((n, i) => <Txt key={n} x={26} y={34 + i * 22} s={9} c={[1, 3, 5][i]} b>{n}</Txt>)}
+      {[0, 1, 2].map(i => <Draw key={i} d={`M32,${31 + i * 22}Q38,${31 + i * 22} 42,${n1(nav(40))}`} c={[1, 3, 5][i]} t0={.02} t1={.1} />)}
+      <Draw d={poly(N)} c={1} t0={.08} t1={.6} />
+      <Draw d={poly(E)} c={2} t0={.08} t1={.6} />
+      <Show t0={.38} t1={.66} pre><path d={`M190,${n1(nav(190))}V${n1(etf(190))}`} className="s4 w3" /></Show>
+      <Comet path={poly(E)} c={2} t0={.08} t1={.6} r={3.6} />
+      <Txt x={292} y={n1(nav(280)) + 4} s={9} c={1} a="start">NAV</Txt><Txt x={170} y={18} s={9} c={2}>ETF</Txt>
+      <Show t0={.5}><Chip x={214} y={86} w={64} h={18} c={3} soft label="+ spread" ls={9.5} /></Show>
+      <Hit x={190} y={n1((nav(190) + etf(190)) / 2)} at={.48} r={16} />
+    </Act>;
+  };
+
+  S.fermi = () => {
+    const X = e => 50 + (e - 2) * 55;
+    return <Act>
+      <path d="M44,74H286" className="sn" />
+      {[2, 3, 4, 5, 6].map(e => <g key={e}><path d={`M${X(e)},70V78`} className="sn" /><Txt x={X(e)} y={92} s={9}>{"10" + ["²", "³", "⁴", "⁵", "⁶"][e - 2]}</Txt></g>)}
+      <Slide kf={[[0, "0 0"], [.1, "0 0"], [.3, "-30 0"], [.4, "-12 0"]]}><path d="M118,46V62M118,54" className="s2 w3" /></Slide>
+      <Slide kf={[[0, "0 0"], [.1, "0 0"], [.3, "40 0"], [.4, "22 0"]]}><path d="M220,46V62" className="s2 w3" /></Slide>
+      <rect x="106" y="50" width="136" height="8" rx="4" className="t2"><K a="x" kf={[[0, 118], [.1, 118], [.3, 88], [.4, 106]]} /><K a="width" kf={[[0, 102], [.1, 102], [.3, 172], [.4, 136]]} /></rect>
+      <Txt x={174} y={40} s={9} c={2}>90% interval</Txt>
+      <Slide kf={[[0, "0 0"], [.12, "0 0"], [.4, "6 0"]]}><path d="M162,62L168,70L174,62z" className="f1" /></Slide>
+      <Comet path="M190,4V72" c={3} t0={.5} t1={.62} r={4} at={[190, 74]} />
+      <Hit x={190} y={74} at={.62} r={16} c={3} />
+      <Show t0={.64}><Txt x={264} y={40} s={10} c={3} b>inside ✓</Txt></Show>
+    </Act>;
+  };
+
+  /* prediction market price chart with news jumps (Event Contracts game = Updating on news lesson) */
+  S.events = () => {
+    const xs = [40, 100, 104, 170, 174, 240, 244, 280], ys = [70, 70, 42, 42, 60, 60, 30, 30];
+    const d = poly(xs.map((x, i) => [x, ys[i]]));
+    return <Act>
+      <path d="M36,14H284M36,96H284" className="ax dash" /><Txt x={30} y={17} s={8} a="end">100</Txt><Txt x={30} y={99} s={8} a="end">0</Txt>
+      <Draw d={d} c={1} t0={.05} t1={.62} w />
+      <Comet path={d} c={1} t0={.05} t1={.62} />
+      {[[102, .2, 3], [172, .37, 4], [242, .55, 3]].map(([x, t, c], i) => <Show key={i} t0={t}><Bump x={x} y={88} at={t} k={1.4}>
+        <path d={`M${x + 2},78L${x - 4},88H${x + 2}L${x - 2},98`} className={"s" + c + " w3"} /></Bump></Show>)}
+      {[[102, .2, 3], [172, .37, 4], [242, .55, 3]].map(([x, t, c], i) => <Hit key={i} x={x} y={88} at={t} r={11} c={c} />)}
+      <Show t0={.62}><Chip x={250} y={14} w={50} h={16} c={2} solid label="70¢" ls={9.5} /></Show>
+      <Hit x={276} y={30} at={.64} r={14} />
+    </Act>;
+  };
+
+  /* Higher or Lower game = Sizing with Kelly lesson */
+  S.hilo = () => <Act>
+    <DeckFace x={52} y={26} w={34} h={48} v={8} s={0} />
+    <DeckFlip x={94} y={26} w={34} h={48} at={.42} v={11} s={1} />
+    <Show t0={.1} t1={.9}><path d="M144,44l8,-10 8,10M152,34V58" className="s3 w3" /></Show>
+    <Txt x={152} y={76} s={9} c={3}>higher</Txt>
+    <path d="M184,40H284" className="ax" /><rect x="184" y="34" width="100" height="12" rx="6" className="tile" />
+    <rect x="184" y="34" width="38" height="12" rx="6" className="t2"><K a="width" kf={[[0, 0], [.12, 0], [.34, 38]]} /></rect>
+    <path d="M222,28V52" className="s5" /><Txt x={222} y={24} s={9} c={5}>f* (Kelly)</Txt>
+    <Txt x={196} y={66} s={9} a="start">bankroll</Txt>
+    <rect x="184" y="72" width="70" height="12" rx="6" className="t3"><K a="width" kf={[[0, 70], [.5, 70], [.62, 96]]} /></rect>
+    <Hit x={270} y={78} at={.6} r={14} c={3} />
+  </Act>;
+
+  /* Betting Board game = Arbitrage across outcomes lesson */
+  S.board = () => {
+    const ps = [[30, 1], [28, 5], [34, 3]], tot = 92;
+    let acc = 0;
+    return <Act>
+      {ps.map(([p, c], i) => <g key={i}><Chip x={40} y={18 + i * 26} w={62} h={18} c={c} soft label={["Home", "Draw", "Away"][i] + " " + p + "%"} ls={9} />
+        <Comet path={`M232,${n1(96 - (ps.slice(0, i).reduce((s, q) => s + q[0], 0) + p / 2) * .8)}Q170,${27 + i * 26} 104,${27 + i * 26}`} c={2} t0={.5 + i * .04} t1={.62 + i * .04} r={3} /></g>)}
+      <path d="M210,16H260" className="s4 dash" /><Txt x={266} y={19} s={9} c={4} a="start">100%</Txt>
+      {ps.map(([p, c], i) => { const h = p * .8, y = 96 - (acc + p) * .8; acc += p;
+        return <rect key={i} x="216" y={n1(y)} width="32" height={n1(h)} className={"t" + c}><K a="height" kf={[[0, 0], [.08 + i * .12, 0], [.2 + i * .12, n1(h)]]} />
+          <K a="y" kf={[[0, n1(y + h)], [.08 + i * .12, n1(y + h)], [.2 + i * .12, n1(y)]]} /></rect>; })}
+      <Show t0={.44}><Txt x={210} y={n1(96 - tot * .8) + 8} s={9} c={2} b a="end">92%</Txt></Show>
+      <Show t0={.7}><Chip x={128} y={84} w={74} h={18} c={2} solid label="+$ locked" ls={9.5} /></Show>
+      <Hit x={165} y={93} at={.7} r={18} />
+    </Act>;
+  };
+
+  /* ===== Options ===== */
+  /* Options Market Making trainer = Quoting an option market lesson */
+  S.options = () => {
+    const price = "M36,88C76,86 98,70 150,26";
+    return <Act>
+      <Axes x0={34} y0={92} x1={154} y1={14} />
+      <path d="M36,90H96L150,34" className="ax dash" />
+      <Draw d={price} c={1} t0={.06} t1={.5} /><Comet path={price} c={1} t0={.06} t1={.5} />
+      <Txt x={96} y={102} s={8}>K</Txt>
+      <Quote x={222} y={56} kf={[[0, "0 14"], [.1, "0 14"], [.5, "0 -8"]]} hit={.66} bid="4.2" ask="4.6" />
+      <Comet path="M300,27H258" c={5} t0={.56} t1={.66} r={3.4} />
+      <Hit x={222} y={27} at={.66} r={16} c={4} />
+    </Act>;
+  };
+  S.options1 = () => {
+    const S0 = "M50,90H160", C = "M50,90H160L250,28", P = "M60,28L160,90H250";
+    return <Act>
+      <Axes x0={44} y0={94} x1={276} y1={14} />
+      <path d="M160,14V94" className="ax dash" /><Txt x={160} y={104} s={9}>K</Txt>
+      <Draw d="M50,90H160L250,28" c={1} t0={.05} t1={.36} w /><Draw d="M60,28L160,90H250" c={5} t0={.18} t1={.48} w />
+      <Txt x={262} y={30} s={10} c={1} a="start">call</Txt><Txt x={52} y={24} s={10} c={5} a="start">put</Txt>
+      <Comet path={C} c={1} t0={.5} t1={.86} r={3.6} /><Comet path={P} c={5} t0={.5} t1={.86} r={3.6} />
+      <Hit x={160} y={90} at={.66} r={14} />
+    </Act>;
+  };
+  S.options2 = () => {
+    const curve = (k) => `M50,${90 - k * 2}C${110},${88 - k * 4} ${150},${82 - k * 18} 250,${28 - k * 2}`;
+    return <Act>
+      <Axes x0={44} y0={94} x1={276} y1={14} />
+      <path d="M50,90H150L250,28" className="s5 w3" /><Txt x={262} y={34} s={9} c={5} a="start">intrinsic</Txt>
+      <path d={curve(1)} className="s1 w3"><K a="d" kf={[[0, curve(1)], [.15, curve(1)], [.7, curve(0.1)]]} /></path>
+      <Show t0={.08} t1={.6} pre><path d="M150,90V68" className="s2 w3" /><Txt x={150} y={60} s={9} c={2}>time value</Txt></Show>
+      <Txt x={96} y={24} s={10} c={1}>T → 0</Txt>
+      <Hit x={150} y={84} at={.66} r={14} />
+    </Act>;
+  };
+  S.options3 = () => <Act>
+    <Axes x0={44} y0={98} x1={276} y1={12} />
+    <path d="M44,56H276" className="ax" /><path d="M160,12V98" className="ax dash" />
+    <Draw d="M50,56H160L250,10" c={1} t0={.04} t1={.26} /><Draw d="M60,10L160,56H250" c={5} t0={.14} t1={.36} />
+    <Draw d="M60,102L250,10" c={2} t0={.38} t1={.6} w /><Comet path="M60,102L250,10" c={2} t0={.38} t1={.6} />
+    <Show t0={.6}><Chip x={186} y={74} w={84} h={18} c={2} solid label="C − P = S − K" ls={9.5} /></Show>
+    <Hit x={250} y={14} at={.62} r={14} />
+  </Act>;
+  S.options4 = () => {
+    const d = "M44,94C120,94 140,16 236,16", ys = [94, 90, 72, 40, 22, 16];
+    return <Act>
+      <path d="M40,94H240M40,16H240" className="ax dash" /><Txt x={34} y={19} s={8} a="end">1</Txt><Txt x={34} y={97} s={8} a="end">0</Txt>
+      <Draw d={d} c={1} t0={.05} t1={.6} /><Comet path={d} c={1} t0={.05} t1={.6} />
+      <Txt x={150} y={46} s={12} c={1} b>Δ</Txt>
+      <rect x="262" y="16" width="20" height="78" rx="4" className="tile" />
+      <rect x="262" y="16" width="20" height="78" rx="4" className="t5"><K a="height" kf={ys.map((y, i) => [.05 + i * .11, 94 - y])} /><K a="y" kf={ys.map((y, i) => [.05 + i * .11, y])} /></rect>
+      <Txt x={272} y={108} s={8} c={5}>hedge</Txt>
+      <Hit x={272} y={16} at={.64} r={12} c={5} />
+    </Act>;
+  };
+  S.options5 = () => {
+    const g = (h, w) => `M40,96C${160 - w},96 ${160 - w / 3},${96 - h} 160,${96 - h}S${160 + w},96 280,96`;
+    return <Act>
+      <path d="M40,96H280" className="ax" /><path d="M160,12V96" className="ax dash" /><Txt x={160} y={108} s={9}>K</Txt>
+      <path d={g(36, 70)} className="s1 w3"><K a="d" kf={[[0, g(36, 70)], [.15, g(36, 70)], [.62, g(78, 26)]]} /></path>
+      <Txt x={178} y={16} s={12} c={1} b a="start">Γ</Txt><Txt x={238} y={28} s={10} c={5}>θ: near expiry</Txt>
+      <Hit x={160} y={18} at={.62} r={14} />
+    </Act>;
+  };
+
+  /* ===== Futures ===== */
+  /* Futures & Basis trainer = Basis and convergence lesson */
+  S.futures = () => {
+    const spot = walk(5, 24, 40, 268, 72, 5).map(([x, y], i, a) => [x, i === a.length - 1 ? 52 : y + (52 - 72) * (x - 40) / 228]);
+    const fut = x => 26 + 26 * Math.pow((x - 40) / 228, .7);
+    const F = samp(fut, 40, 268, 24);
+    const keys = [0, 6, 12, 18, 24];
+    return <Act>
+      <Axes x0={36} y0={96} x1={284} y1={10} />
+      <path d={poly(F) + "L" + spot.slice().reverse().map(p => n1(p[0]) + "," + n1(p[1])).join("L") + "Z"} className="t2" opacity="0"><K a="opacity" kf={[[0, 0], [.2, 0], [.5, .8]]} /></path>
+      <Draw d={poly(F)} c={5} t0={.06} t1={.6} /><Draw d={poly(spot)} c={1} t0={.06} t1={.6} />
+      <path d={`M40,${n1(fut(40))}V72`} className="s2 w3"><KT kf={keys.map((k, i) => [.06 + i * .135, `${n1(spot[k][0] - 40)} 0`])} />
+        <K a="d" kf={keys.map((k, i) => [.06 + i * .135, `M40,${n1(fut(spot[k][0]))}V${n1(spot[k][1])}`])} /></path>
+      <Txt x={64} y={22} s={9} c={5}>F</Txt><Txt x={64} y={90} s={9} c={1}>S</Txt><Txt x={150} y={48} s={9} c={2}>basis</Txt>
+      <Hit x={268} y={52} at={.62} r={14} />
+    </Act>;
+  };
+  S.futures1 = () => {
+    const parts = [[40, 1, "S"], [14, 2, "+ interest"], [8, 5, "+ storage"], [-6, 3, "− yield"]];
+    let top = 96;
+    return <Act>
+      <path d="M60,96H270" className="ax" />
+      {parts.map(([h, c, l], i) => { const y0 = top; top -= h; const y = Math.min(y0, top), hh = Math.abs(h); const x = 70 + i * 44;
+        return <g key={i}><rect x={x} y={n1(y)} width="30" height={hh} rx="3" className={"t" + c}><K a="opacity" kf={[[0, 0], [.06 + i * .12, 0], [.14 + i * .12, 1]]} /></rect>
+          <Txt x={x + 15} y={104} s={8} c={c}>{l}</Txt>{i ? <path d={`M${x - 14},${n1(y0)}H${x}`} className="ax dash" /> : null}</g>; })}
+      <rect x="246" y={n1(top)} width="30" height={n1(96 - top)} rx="3" className="t2"><K a="height" kf={[[0, 0], [.55, 0], [.66, n1(96 - top)]]} /><K a="y" kf={[[0, 96], [.55, 96], [.66, n1(top)]]} /></rect>
+      <Txt x={261} y={n1(top) - 5} s={10} c={2} b>F</Txt>
+      <Hit x={261} y={n1(top)} at={.66} r={14} />
+    </Act>;
+  };
+  S.futures3 = () => <Act>
+    <Chip x={36} y={44} w={68} h={22} c={1} soft label="buy spot" ls={10} />
+    <Chip x={130} y={14} w={60} h={20} c={5} soft label="borrow" ls={9.5} />
+    <Chip x={216} y={44} w={68} h={22} c={4} soft label="sell F" ls={10} />
+    <Comet path="M160,34L80,44" c={5} t0={.08} t1={.22} r={3} />
+    <Comet path="M104,55H216" c={1} t0={.26} t1={.42} r={3.4} />
+    <Comet path="M250,66Q160,100 70,66" c={3} t0={.46} t1={.6} r={3.4} />
+    <Show t0={.62}><Chip x={118} y={80} w={86} h={20} c={2} solid label="locked profit" ls={9.5} /></Show>
+    <Hit x={161} y={90} at={.62} r={16} />
+  </Act>;
+  S.futures4 = () => {
+    const d = poly(samp(x => 86 - 58 * (Math.exp((x - 70) / 180 * 1.2) - 1) / (Math.exp(1.2) - 1), 70, 250, 24));
+    return <Act>
+      <Axes x0={56} y0={96} x1={270} y1={12} />
+      <Dot x={70} y={86} c={1} /><Txt x={70} y={104} s={9} c={1}>S</Txt>
+      <Draw d={d} c={5} t0={.08} t1={.5} /><Comet path={d} c={5} t0={.08} t1={.5} />
+      <Show t0={.5}><Dot x={250} y={28} c={5} /><Txt x={262} y={31} s={9} c={5} a="start">F</Txt></Show>
+      <Show t0={.6}><Chip x={92} y={18} w={104} h={20} c={2} solid label="r = ln(F/S) / T" ls={9.5} /></Show>
+      <Hit x={250} y={28} at={.52} r={14} c={5} />
+    </Act>;
+  };
+  S.futures5 = () => {
+    const near = x => 70 - 14 * Math.sin((x - 40) / 50), far = x => near(x) - 24 - 8 * Math.sin((x - 40) / 70);
+    return <Act>
+      <Axes x0={36} y0={96} x1={284} y1={10} />
+      <Draw d={poly(samp(near, 40, 270, 30))} c={1} t0={.06} t1={.6} /><Draw d={poly(samp(far, 40, 270, 30))} c={5} t0={.06} t1={.6} />
+      <Txt x={278} y={n1(near(270)) + 4} s={9} c={1} a="start">near</Txt><Txt x={278} y={n1(far(270)) + 4} s={9} c={5} a="start">far</Txt>
+      <path d={`M40,${n1(far(40))}V${n1(near(40))}`} className="s2 w3"><KT kf={[0, 1, 2, 3, 4].map(i => [.06 + i * .135, `${i * 57.5} 0`])} />
+        <K a="d" kf={[0, 1, 2, 3, 4].map(i => { const x = 40 + i * 57.5; return [.06 + i * .135, `M40,${n1(far(x))}V${n1(near(x))}`]; })} /></path>
+      <Show t0={.62}><Chip x={110} y={84} w={74} h={18} c={2} solid label="spread" ls={10} /></Show>
+      <Hit x={270} y={n1((near(270) + far(270)) / 2)} at={.64} r={14} />
+    </Act>;
+  };
+  S.futures6 = () => <Act>
+    <path d="M44,56H260" className="ax" />
+    <Draw d="M44,56C100,60 150,74 250,92" c={1} t0={.06} t1={.5} /><Draw d="M44,56C100,52 150,38 250,20" c={5} t0={.06} t1={.5} />
+    <Draw d="M44,56H250" c={2} t0={.34} t1={.62} w /><Comet path="M44,56H250" c={2} t0={.34} t1={.62} />
+    <Txt x={258} y={95} s={9} c={1} a="start">stock</Txt><Txt x={258} y={23} s={9} c={5} a="start">short F</Txt><Txt x={258} y={59} s={9} c={2} a="start">hedged</Txt>
+    <Hit x={250} y={56} at={.62} r={14} />
+  </Act>;
+
+  /* ===== Prediction markets ===== */
+  /* Prediction Markets trainer = Prices are probabilities lesson */
+  S.pred = () => {
+    const lit = 31;
+    return <Act>
+      <Chip x={30} y={42} w={68} h={26} c={1} soft label="YES 62¢" ls={11} />
+      <Draw d="M102,55H124" c={5} t0={.06} t1={.14} />
+      {Array.from({ length: 50 }, (_, i) => { const x = 136 + (i % 10) * 14, y = 24 + Math.floor(i / 10) * 14, on = i < lit;
+        return <g key={i}><circle cx={x} cy={y} r="4.2" className="fn" opacity=".35" />
+          {on ? <Show t0={.12 + i * .014}><circle cx={x} cy={y} r="4.2" className="f1" /></Show> : null}</g>; })}
+      <Show t0={.62}><Chip x={176} y={89} w={60} h={16} c={2} solid label="≈ 62%" ls={9.5} /></Show>
+      <Hit x={206} y={52} at={.6} r={22} />
+    </Act>;
+  };
+  S.pred2 = () => <Act>
+    <path d="M60,98H260" className="ax" />
+    <rect x="92" y="50" width="40" height="48" rx="3" className="t1"><K a="height" kf={[[0, 0], [.06, 0], [.24, 48]]} /><K a="y" kf={[[0, 98], [.06, 98], [.24, 50]]} /></rect>
+    <Txt x={112} y={44} s={10} c={1} b>40¢</Txt><Txt x={112} y={108} s={8}>price</Txt>
+    <rect x="188" y="32" width="40" height="66" rx="3" className="t5"><K a="height" kf={[[0, 0], [.2, 0], [.4, 66]]} /><K a="y" kf={[[0, 98], [.2, 98], [.4, 32]]} /></rect>
+    <Txt x={208} y={26} s={10} c={5} b>55%</Txt><Txt x={208} y={108} s={8}>belief</Txt>
+    <Show t0={.44}><path d="M136,50H184M136,32H184" className="ax dash" /><path d="M160,50V32" className="s2 w3" /></Show>
+    <Show t0={.62}><Chip x={240} y={34} w={58} h={18} c={2} solid label="+15¢ EV" ls={9.5} /></Show>
+    <Hit x={160} y={41} at={.6} r={14} />
+  </Act>;
+  S.pred3 = () => {
+    const ps = [[38, 1], [36, 5], [32, 3]];
+    let acc = 0;
+    return <Act>
+      <path d="M90,22H230" className="s2 dash" /><Txt x={236} y={25} s={9} c={2} a="start">100%</Txt>
+      {ps.map(([p, c], i) => { const y0 = 100 - acc * .74, h = p * .74; acc += p; const y = y0 - h;
+        return <g key={i}><rect x="130" y={n1(y)} width="60" height={n1(h)} className={"t" + c}><K a="height" kf={[[0, 0], [.06 + i * .12, 0], [.18 + i * .12, n1(h)]]} /><K a="y" kf={[[0, n1(y0)], [.06 + i * .12, n1(y0)], [.18 + i * .12, n1(y)]]} /></rect>
+          <Txt x={110} y={n1(y + h / 2 + 3)} s={9} c={c} a="end">{p}%</Txt></g>; })}
+      <Show t0={.46}><rect x="130" y={n1(100 - 106 * .74)} width="60" height={n1(6 * .74)} className="f4" /></Show>
+      <Show t0={.5}><Txt x={196} y={14} s={10} c={4} b a="start">106%</Txt></Show>
+      <Show t0={.62}><Chip x={212} y={56} w={70} h={18} c={2} solid label="overround" ls={9.5} /></Show>
+      <Hit x={160} y={20} at={.5} r={14} c={4} />
+    </Act>;
+  };
+
+  /* ===== Cognitive ===== */
+  S.taskswitch = () => {
+    const stim = [[.04, .3, <circle cx="160" cy="56" r="13" className="t1" />, 0], [.33, .6, <path d="M160,42L174,68H146z" className="t4" />, 1], [.63, .9, <rect x="147" y="43" width="26" height="26" rx="3" className="t3" />, 0]];
+    return <Act>
+      <Chip x={40} y={14} w={70} h={18} label="COLOUR" ls={9} /><Chip x={210} y={14} w={70} h={18} label="SHAPE" ls={9} />
+      <rect x="40" y="14" width="70" height="18" rx="9" className="s2 w3"><K a="x" kf={[[0, 40], [.3, 40], [.36, 210], [.6, 210], [.66, 40]]} /></rect>
+      {stim.map(([t0, t1, el, side], i) => <Show key={i} t0={t0} t1={t1} pre={i < 2}><Bump x={160} y={56} at={t0} k={1.25}>{el}</Bump></Show>)}
+      <Tile x={72} y={80} w={30} h={20} label="A" ls={10} /><Tile x={218} y={80} w={30} h={20} label="B" ls={10} />
+      {stim.map(([t0, , , side], i) => <g key={i}><Comet path={side ? "M172,66Q210,84 226,90" : "M148,66Q110,84 94,90"} c={2} t0={t0 + .1} t1={t0 + .18} r={3} />
+        <Hit x={side ? 233 : 87} y={90} at={t0 + .18} r={12} c={3} /></g>)}
+    </Act>;
+  };
+
+  S.conflict = () => {
+    const arrow = (x, y, left, c) => <path d={left ? `M${x + 9},${y}H${x - 9}M${x - 3},${y - 6}L${x - 9},${y}L${x - 3},${y + 6}` : `M${x - 9},${y}H${x + 9}M${x + 3},${y - 6}L${x + 9},${y}L${x + 3},${y + 6}`} className={"s" + c + " w3"} />;
+    return <Act>
+      {[0, 1, 3, 4].map(i => <g key={i}><K a="opacity" kf={[[0, 1], [.2, 1], [.34, .2], [.8, .2]]} />{arrow(100 + i * 30, 44, false, 1)}</g>)}
+      <Bump x={160} y={44} at={.2} k={1.3}>{arrow(160, 44, true, 2)}</Bump>
+      <Show t0={.2}><rect x="146" y="31" width="28" height="26" rx="6" className="s2" /></Show>
+      <Tile x={100} y={78} w={34} h={20} label="◀" ls={10} /><Tile x={186} y={78} w={34} h={20} label="▶" ls={10} />
+      <Show t0={.42}><Tile x={100} y={78} w={34} h={20} c={3} soft label="◀" ls={10} /></Show>
+      <Comet path="M160,58Q130,70 117,78" c={2} t0={.3} t1={.42} r={3} />
+      <Hit x={117} y={88} at={.42} r={14} c={3} />
+    </Act>;
+  };
+
+  S.pincode = () => {
+    const seq = [4, 7, 2, 9], cell = d => { const i = d - 1; return [70 + (i % 3) * 26, 18 + Math.floor(i / 3) * 26]; };
+    return <Act>
+      {Array.from({ length: 9 }, (_, i) => { const [x, y] = cell(i + 1); return <Tile key={i} x={x} y={y} w={22} h={22} r={5} label={i + 1} ls={10} />; })}
+      {seq.map((d, k) => { const [x, y] = cell(d), t = .06 + k * .1; return <g key={k}><rect x={x} y={y} width="22" height="22" rx="5" className="f2" opacity="0"><K a="opacity" kf={[[0, 0], [t, 0], [t + .01, 1], [t + .08, 0]]} /></rect>
+        <Hit x={x + 11} y={y + 11} at={t} r={14} /></g>; })}
+      {seq.map((d, k) => <g key={k}><Tile x={176 + k * 28} y={42} w={22} h={28} r={5} />
+        <Show t0={.06 + k * .1} t1={.46} pre><circle cx={187 + k * 28} cy="56" r="3" className="fn" /></Show>
+        <Show t0={.5 + k * .05}><Bump x={187 + k * 28} y={56} at={.5 + k * .05}><Txt x={187 + k * 28} y={61} s={13} c={3} b>{d}</Txt></Bump></Show></g>)}
+      <Hit x={229} y={56} at={.7} r={26} c={3} />
+    </Act>;
+  };
+
+  S.cube = () => {
+    /* a cross-shaped net folds up flap by flap around the middle face (each flap turns edge-on about its hinge),
+       the tail folds onto the bottom flap before that flap folds, then the finished cube appears with the
+       same colours on the faces you can see: middle face green (front left), right flap red, top flap blue */
+    const s = 18, cx = 96, cy = 46, h = s / 2;
+    const face = (x, y, c) => <rect x={x} y={y} width={s} height={s} rx="2" className={c ? "t" + c : "tile"} />;
+    const flat = "1 1";
+    const k = (v, t0) => [[0, flat], [t0, flat], [t0 + .1, v], [.74, v], [.84, flat]];
+    const fade = t0 => [[0, 1], [t0, 1], [t0 + .09, 1], [t0 + .1, 0], [.74, 0], [.75, 1]];
+    const flap = (hx, hy, v, t0, kids) => <Scale cx={hx} cy={hy} kf={k(v, t0)} fin={flat}><g><K a="opacity" kf={fade(t0)} />{kids}</g></Scale>;
+    return <Act>
+      {flap(cx - h, cy, ".04 1", .1, face(cx - h - s, cy - h, 5))}
+      {flap(cx + h, cy, ".04 1", .17, face(cx + h, cy - h, 4))}
+      {flap(cx, cy - h, "1 .04", .24, face(cx - h, cy - h - s, 1))}
+      {flap(cx, cy + h, "1 .04", .38, <g>{face(cx - h, cy + h, 2)}{flap(cx, cy + h + s, "1 .04", .3, face(cx - h, cy + h + s, 0))}</g>)}
+      {face(cx - h, cy - h, 3)}
+      <Draw d="M136,52H170" c={5} t0={.46} t1={.52} /><Draw d="M163,46L170,52L163,58" c={5} t0={.5} t1={.54} />
+      <Show t0={.52}><Bump x={222} y={52} at={.52}>
+        <path d="M222,26L246,38L222,50L198,38z" className="t1" /><path d="M198,38L222,50V78L198,66z" className="t3" /><path d="M246,38L222,50V78L246,66z" className="t4" />
+      </Bump></Show>
+      <Hit x={222} y={52} at={.54} r={30} c={3} />
+    </Act>;
+  };
+
+  S.codematch = () => {
+    const cand = [["K7-D04", 4, .16], ["K7-QD4", 4, .34], ["K7-DQ4", 3, .52]];
+    return <Act>
+      <Chip x={118} y={10} w={84} h={22} c={2} soft label="K7-DQ4" ls={12} />
+      {cand.map(([code, c, t], i) => <g key={i}><Tile x={34 + i * 88} y={64} w={76} h={24} label={code} ls={11} />
+        <Show t0={t + .06}><rect x={34 + i * 88} y="64" width="76" height="24" rx="6" className={"s" + c + " w3"} /></Show>
+        {c === 4 ? <Show t0={t + .06}><Txt x={72 + i * 88} y={102} s={10} c={4} b>✕</Txt></Show> : null}</g>)}
+      <rect x="30" y="60" width="84" height="32" rx="8" className="s5 dash"><K a="x" kf={[[0, 30], [.1, 30], [.16, 30], [.28, 118], [.34, 118], [.46, 206], [.52, 206]]} /></rect>
+      <Comet path="M160,34Q220,44 244,62" c={2} t0={.5} t1={.6} r={3} />
+      <Hit x={248} y={76} at={.6} r={22} c={3} />
+    </Act>;
+  };
+
+  S.gridrecall = () => {
+    const at = (r, c) => [124 + c * 19, 18 + r * 19], pat = [[0, 1], [1, 2], [2, 1], [3, 3]], decoy = [[0, 3], [3, 0]];
+    return <Act>
+      {Array.from({ length: 16 }, (_, i) => { const [x, y] = at(Math.floor(i / 4), i % 4); return <rect key={i} x={x} y={y} width="15" height="15" rx="3" className="tile" />; })}
+      {pat.map(([r, c], i) => { const [x, y] = at(r, c), t = .06 + i * .06; return <g key={i}>
+        <rect x={x} y={y} width="15" height="15" rx="3" className="f1" opacity="0"><K a="opacity" kf={[[0, 0], [t, 0], [t + .02, 1], [.32, 1], [.36, 0]]} /></rect>
+        <Show t0={.5 + i * .06}><Bump x={x + 7.5} y={y + 7.5} at={.5 + i * .06} k={1.3}><rect x={x} y={y} width="15" height="15" rx="3" className="f3" /></Bump></Show></g>; })}
+      {decoy.map(([r, c], i) => { const [x, y] = at(r, c); return <rect key={i} x={x} y={y} width="15" height="15" rx="3" className="f5" opacity="0"><K a="opacity" kf={[[0, 0], [.38 + i * .04, 0], [.4 + i * .04, .9], [.46 + i * .04, 0]]} /></rect>; })}
+      <Txt x={70} y={40} s={10} c={1}>watch</Txt><Txt x={70} y={56} s={10} c={5}>ignore</Txt><Txt x={70} y={72} s={10} c={3}>rebuild</Txt>
+      <Hit x={161} y={56} at={.74} r={40} c={3} />
+    </Act>;
+  };
+
+  S.intercept = () => <Act>
+    {[0, 1, 2, 3].map(i => <path key={i} d={`M${112 + i * 32},8V92`} className="ax dash" />)}
+    <path d="M96,96H224" className="sn" />
+    <Slide kf={[[0, "-64 0"], [.1, "-64 0"], [.24, "0 0"]]}><path d="M168,98L176,86L184,98z" className="f1" /></Slide>
+    <Comet path="M176,14V46" c={4} t0={.1} t1={.58} r={5} />
+    <Comet path="M176,86V46" c={2} t0={.32} t1={.58} r={3} />
+    <Show t0={.24} t1={.58} pre><path d="M176,46m-8,0h16M176,38v16" className="s2" /></Show>
+    <Hit x={176} y={46} at={.58} r={18} />
+  </Act>;
+
+  S.holdfire = () => {
+    const items = [[200, "go"], [250, "no"], [300, "go"], [350, "no"], [400, "go"], [450, "go"]];
+    const pass = items.map((it, i) => .1 + i * .13);
+    return <Act>
+      <Chip x={120} y={8} w={80} h={18} c={3} soft label="TAP ● only" ls={9} />
+      <circle cx="160" cy="58" r="17" className="s2 dash" />
+      <g clipPath={`url(#${UID}c1)`}>
+        <Slide kf={[[0, "0 0"], [.03, "0 0"], ...items.map(([x], i) => [pass[i], `${160 - x} 0`])]} fin="-90 0">
+          {items.map(([x, k], i) => k === "go" ? <circle key={i} cx={x} cy="58" r="10" className="t3" /> : <path key={i} d={`M${x},47L${x + 11},68H${x - 11}z`} className="t4" />)}
+        </Slide>
+      </g>
+      {items.map(([, k], i) => k === "go" ? <Hit key={i} x={160} y={58} at={pass[i]} r={22} c={3} /> : null)}
+      <rect x="110" y="92" width="100" height="8" rx="4" className="tile" />
+      <rect x="110" y="92" width="100" height="8" rx="4" className="t2"><K a="width" kf={[[0, 100], [.88, 24]]} /></rect>
+    </Act>;
+  };
+
+  S.signal = () => {
+    const cues = [["◆", 1], ["●", 5], ["▲", 3]];
+    return <Act>
+      {cues.map(([s, c], i) => <g key={i}><Tile x={40 + i * 34} y={38} w={28} h={28} label={s} ls={13} lc={c} />
+        {i !== 1 ? <Show t0={.06 + i * .06}><rect x={40 + i * 34} y="38" width="28" height="28" rx="6" className={"s" + c + " w3"} /></Show> : null}</g>)}
+      <path d="M180,78A40,40 0 0,1 260,78" className="tile" />
+      <path d="M180,78A40,40 0 0,1 220,38" className="s2 w3" /><path d="M220,38A40,40 0 0,1 260,78" className="s1 w3" />
+      <Txt x={176} y={94} s={9} c={2}>Sun</Txt><Txt x={264} y={94} s={9} c={1}>Rain</Txt>
+      <Rot cx={220} cy={78} kf={[[0, 0], [.18, 0], [.36, -48], [.42, -36], [.48, -40]]}><path d="M220,78V46" className="s5 w3" /></Rot>
+      <circle cx="220" cy="78" r="4" className="f5" />
+      <Show t0={.5}><Chip x={196} y={10} w={48} h={18} c={2} solid label="70%" ls={10} /></Show>
+      <Comet path="M220,28V6" c={2} t0={.6} t1={.7} r={2} />
+      <Hit x={220} y={19} at={.58} r={18} />
+    </Act>;
+  };
+
+  S.boxsearch = () => {
+    const bx = [[60, 26], [108, 60], [150, 18], [196, 56], [240, 22], [262, 70]];
+    const route = [0, 1, 2, 3, 4, 5];
+    const d = poly(route.map(i => [bx[i][0] + 10, bx[i][1] + 10]));
+    const found = 3;
+    return <Act>
+      {bx.map(([x, y], i) => <g key={i}><Tile x={x} y={y} w={20} h={20} r={4} />
+        <Show t0={.08 + i * .1}><rect x={x} y={y} width="20" height="20" rx="4" className={i === found ? "t2" : "t1"} /></Show>
+        {i === found ? <Show t0={.38}><Bump x={x + 10} y={y + 10} at={.38} k={1.4}><circle cx={x + 10} cy={y + 10} r="4.5" className="f2" /></Bump></Show> : null}</g>)}
+      <Draw d={d} c={5} t0={.08} t1={.6} />
+      <Comet path={d} c={5} t0={.08} t1={.6} r={3.5} />
+      <Hit x={bx[found][0] + 10} y={bx[found][1] + 10} at={.38} r={16} />
+      <rect x="120" y="94" width="80" height="8" rx="4" className="tile" /><rect x="120" y="94" width="40" height="8" rx="4" className="t2"><K a="width" kf={[[0, 26], [.36, 26], [.44, 40]]} /></rect>
+    </Act>;
+  };
+
+  S.dial = () => {
+    const cx = 112, cy = 56, R = 36;
+    return <Act>
+      <circle cx={cx} cy={cy} r={R} className="tile" />
+      {Array.from({ length: 24 }, (_, i) => { const a = i * Math.PI / 12; return <path key={i} d={`M${n1(cx + (R - 5) * Math.cos(a))},${n1(cy + (R - 5) * Math.sin(a))}L${n1(cx + R * Math.cos(a))},${n1(cy + R * Math.sin(a))}`} className="ax" />; })}
+      <path d={`M${n1(cx + R * Math.cos(-1.1))},${n1(cy + R * Math.sin(-1.1))}A${R},${R} 0 0,1 ${n1(cx + R * Math.cos(-.75))},${n1(cy + R * Math.sin(-.75))}`} className="s2 arcw" />
+      <Rot cx={cx} cy={cy} kf={[[0, -150], [.1, -150], [.24, 60], [.32, 120], [.4, -10], [.48, -40], [.56, -52]]}><path d={`M${cx},${cy}H${cx + R - 8}`} className="s1 w3" /></Rot>
+      <circle cx={cx} cy={cy} r="4.5" className="f1" />
+      {[0, 1, 2].map(i => <g key={i}><Tile x={184 + i * 30} y={42} w={24} h={30} r={5} />
+        <Show t0={i === 2 ? .58 : .0}><Tile x={184 + i * 30} y={42} w={24} h={30} r={5} c={i === 2 ? 2 : 3} soft label={[3, 8, 5][i]} ls={13} /></Show></g>)}
+      <Hit x={n1(cx + R * Math.cos(-.92))} y={n1(cy + R * Math.sin(-.92))} at={.58} r={14} />
+    </Act>;
+  };
+
+  S.trust = () => {
+    const rounds = [["H", "H", 3], ["H", "H", 3], ["H", "L", 4], ["L", "L", 1], ["H", "H", 3]];
+    return <Act>
+      <circle cx="54" cy="36" r="11" className="t1" /><Txt x={54} y={40} s={9} c={1} b>you</Txt>
+      <circle cx="54" cy="76" r="11" className="t5" /><Txt x={54} y={80} s={9} c={5} b>rival</Txt>
+      {rounds.map(([a, b, c], i) => { const t = .06 + i * .12, x = 92 + i * 40; return <Show key={i} t0={t}><Bump x={x + 14} y={56} at={t}>
+        <Tile x={x} y={26} w={28} h={20} c={1} soft label={a} ls={10} /><Tile x={x} y={66} w={28} h={20} c={5} soft label={b} ls={10} />
+        <path d={`M${x + 14},48V64`} className={"s" + c + " w3"} /></Bump></Show>; })}
+      <Hit x={186} y={56} at={.3} r={18} c={4} />
+      <Hit x={266} y={56} at={.54} r={18} c={3} />
+    </Act>;
+  };
+
+  S.hidden = () => {
+    const clicks = [[0, .12, 30], [2, .26, -12], [1, .4, 26], [3, .54, 14]];
+    let lvl = 20; const kf = [[0, 20]];
+    clicks.forEach(([, t, dv]) => { kf.push([t, lvl]); lvl += dv; kf.push([t + .06, lvl]); });
+    return <Act>
+      <rect x="70" y="16" width="180" height="12" rx="6" className="tile" />
+      <rect x="70" y="16" width={still() ? lvl * 1.8 : 36} height="12" rx="6" className="t1"><K a="width" kf={kf.map(([t, v]) => [t, n1(v * 1.8)])} /></rect>
+      <path d={`M${70 + 78 * 1.8},10V34`} className="s2 w3" /><Txt x={70 + 78 * 1.8} y={44} s={9} c={2}>target</Txt>
+      {[0, 1, 2, 3].map(i => <g key={i}><Tile x={72 + i * 46} y={60} w={38} h={30} label={"G" + (i + 1)} ls={10} lc={[1, 5, 3, 4][i]} /></g>)}
+      {clicks.map(([g, t], i) => <g key={i}><Bump x={91 + g * 46} y={75} at={t}><rect x={72 + g * 46} y="60" width="38" height="30" rx="6" className={"s" + [1, 5, 3, 4][g] + " w3"} opacity="0"><K a="opacity" kf={[[0, 0], [t, 0], [t + .01, 1], [t + .1, 0]]} /></rect></Bump>
+        <Comet path={`M${91 + g * 46},58L${n1(70 + (kf[2 * i + 2][1]) * 1.8)},30`} c={[1, 5, 3, 4][g]} t0={t} t1={t + .06} r={2.6} /></g>)}
+      <Hit x={70 + 78 * 1.8} y={22} at={.6} r={16} />
+    </Act>;
+  };
+
+  S.pattern = () => {
+    const frame = (x, n, rot, shade, key) => <g key={key}><Tile x={x} y={34} w={40} h={40} />
+      <g transform={`rotate(${rot} ${x + 20} 54)`}><path d={`M${x + 20},40L${x + 32},64H${x + 8}z`} className={shade ? "t5" : "s5"} /></g>
+      {Array.from({ length: n }, (_, j) => <circle key={j} cx={x + 8 + j * 8} cy="44" r="2.6" className="f1" />)}</g>;
+    return <Act>
+      {frame(34, 1, 0, false, 0)}{frame(84, 2, 90, true, 1)}{frame(134, 3, 180, false, 2)}
+      <rect x="196" y="34" width="40" height="40" rx="6" className="s2 dash" />
+      {[0, 1, 2, 3].map(j => <Show key={j} t0={.12 + j * .06}><Bump x={204 + j * 8} y={44} at={.12 + j * .06} k={1.5}><circle cx={204 + j * 8} cy="44" r="2.6" className="f1" /></Bump></Show>)}
+      <Rot cx={216} cy={54} kf={[[0, 0], [.4, 0], [.56, 270]]}><path d="M216,40L228,64H204z" className="s5" /></Rot>
+      <Show t0={.58}><path d="M216,40L228,64H204z" transform="rotate(270 216 54)" className="t5" /></Show>
+      <Hit x={216} y={54} at={.62} r={26} />
+    </Act>;
+  };
+
+  S.target = () => <Act>
+    <circle cx="262" cy="56" r="20" className="s2 w3" /><Txt x={262} y={61} s={14} c={2} b>24</Txt>
+    <Slide kf={[[0, "0 0"], [.12, "0 0"], [.24, "22 0"]]} fin="22 0"><Show t1={.25} pre><Tile x={40} y={26} w={30} h={26} label="4" ls={13} lc={1} /></Show></Slide>
+    <Slide kf={[[0, "0 0"], [.12, "0 0"], [.24, "-22 0"]]} fin="-22 0"><Show t1={.25} pre><Tile x={84} y={26} w={30} h={26} label="6" ls={13} lc={1} /></Show></Slide>
+    <Show t0={.25} t1={.52} pre><Bump x={77} y={39} at={.25}><Tile x={57} y={26} w={40} h={26} c={1} soft label="24" ls={13} /></Bump></Show>
+    <Slide kf={[[0, "0 0"], [.26, "0 0"], [.38, "22 0"]]} fin="22 0"><Show t1={.39} pre><Tile x={40} y={66} w={30} h={26} label="3" ls={13} lc={5} /></Show></Slide>
+    <Slide kf={[[0, "0 0"], [.26, "0 0"], [.38, "-22 0"]]} fin="-22 0"><Show t1={.39} pre><Tile x={84} y={66} w={30} h={26} label="2" ls={13} lc={5} /></Show></Slide>
+    <Show t0={.39} t1={.52} pre><Bump x={77} y={79} at={.39}><Tile x={57} y={66} w={40} h={26} c={5} soft label="1" ls={13} /></Bump></Show>
+    <Comet path="M100,39Q150,40 180,56" c={1} t0={.5} t1={.62} r={3.2} /><Comet path="M100,79Q150,76 180,58" c={5} t0={.5} t1={.62} r={3.2} />
+    <Show t0={.62}><Bump x={198} y={56} at={.62}><Tile x={176} y={43} w={44} h={26} c={2} solid label="24" ls={13} /></Bump></Show>
+    <Hit x={262} y={56} at={.66} r={26} />
+  </Act>;
+
+  S.pump = () => {
+    const steps = [.08, .17, .26, .35, .44];
+    const kf = [[0, "1 1"]]; steps.forEach((t, i) => { const s = (1 + .14 * i).toFixed(2), s2 = (1 + .14 * (i + 1)).toFixed(2); kf.push([t, s + " " + s]); kf.push([t + .05, s2 + " " + s2]); });
+    kf.push([.56, "1.7 1.7"], [.62, "1 1"]);
+    return <Act>
+      <path d="M100,98V80" className="sn" />
+      <Scale cx={100} cy={78} kf={kf} fin="1.4 1.4"><circle cx="100" cy="62" r="16" className="t4" /><path d="M96,78L100,74L104,78z" className="f4" /></Scale>
+      {steps.map((t, i) => <Show key={i} t0={t}><Txt x={150 + i * 18} y={30} s={10} c={3} b>+</Txt></Show>)}
+      <Txt x={186} y={52} s={11}>bank before it pops</Txt>
+      <Comet path="M110,40Q180,30 236,70" c={2} t0={.54} t1={.66} r={4} />
+      <Chip x={220} y={66} w={64} h={22} c={3} soft label="BANK" ls={10} />
+      <Show t0={.66}><Chip x={220} y={66} w={64} h={22} c={3} solid label="$ 5" ls={11} /></Show>
+      <Hit x={252} y={77} at={.66} r={22} c={3} />
+    </Act>;
+  };
+
+  S.skyline = () => {
+    /* three posts that hold 3, 2 and 1 blocks, as in the game; solve in 3 moves */
+    const blk = (x, y, c, k) => <rect key={k} x={x} y={y} width="30" height="14" rx="3" className={"t" + c} />;
+    const post = (cx, cap, k, step, base) => <path key={k} d={`M${cx},${base - cap * step - 6}V${base}`} className="ax" style={{ strokeWidth: 2.5 }} />;
+    return <Act>
+      <path d="M40,96H190" className="sn" />
+      {[[65, 3], [115, 2], [165, 1]].map(([cx, cap], i) => post(cx, cap, i, 16, 96))}
+      {blk(50, 80, 1, 0)}
+      <Slide kf={[[0, "0 0"], [.36, "0 0"], [.44, "0 -42"], [.52, "50 -42"], [.6, "50 16"]]} fin="50 16">{blk(50, 64, 5, 1)}</Slide>
+      <Slide kf={[[0, "0 0"], [.08, "0 0"], [.16, "0 -26"], [.26, "100 -26"], [.34, "100 32"], [.62, "100 32"], [.7, "100 -26"], [.78, "50 -26"], [.86, "50 16"]]} fin="50 16">{blk(50, 48, 2, 2)}</Slide>
+      <g transform="translate(236 0)"><path d="M0,96H64" className="ax" />
+        {[[12, 3], [32, 2], [52, 1]].map(([cx, cap], i) => post(cx, cap, i, 10, 96))}
+        <rect x="4" y="82" width="16" height="8" rx="2" className="s1 dash" /><rect x="24" y="82" width="16" height="8" rx="2" className="s5 dash" /><rect x="24" y="72" width="16" height="8" rx="2" className="s2 dash" /></g>
+      <Txt x={268} y={30} s={10} c={2}>target</Txt>
+      <Hit x={115} y={87} at={.6} r={14} c={5} /><Hit x={115} y={71} at={.86} r={14} c={2} />
+    </Act>;
+  };
+
+  S.mystery = () => {
+    const tries = [[.06, <circle cx="150" cy="56" r="13" className="t1" />, "1/3"], [.26, <rect x="137" y="43" width="26" height="26" rx="3" className="t5" />, "2/3"], [.46, <path d="M150,42L164,68H136z" className="t2" />, "3/3"]];
+    return <Act>
+      <Tile x={40} y={30} w={52} h={52} r={10} /><Show t1={.62} pre><Txt x={66} y={63} s={22} c={2} b>?</Txt></Show>
+      <Show t0={.62}><Bump x={66} y={56} at={.62}><path d="M66,40L80,66H52z" className="t2" /></Bump></Show>
+      {tries.map(([t, el, lab], i) => <g key={i}><Show t0={t} t1={t + .18} pre={i < 2}><Bump x={150} y={56} at={t} k={1.2}>{el}</Bump></Show>
+        <Show t0={t + .06}><Chip x={200 + i * 32} y={46} w={28} h={18} c={i === 2 ? 3 : 1} soft label={lab} ls={9} /></Show></g>)}
+      <Comet path="M164,56Q120,90 84,64" c={2} t0={.54} t1={.62} r={3} />
+      <Hit x={66} y={56} at={.62} r={26} />
+    </Act>;
+  };
+
+  S.sweet = () => {
+    const dial = (cx, cy, R, kf, at, key) => <g key={key}>
+      <circle cx={cx} cy={cy} r={R} className="tile" />
+      <path d={`M${n1(cx + R * Math.cos(-.9))},${n1(cy + R * Math.sin(-.9))}A${R},${R} 0 0,1 ${n1(cx + R * Math.cos(-.4))},${n1(cy + R * Math.sin(-.4))}`} className="s2 arcw" />
+      <Rot cx={cx} cy={cy} kf={kf}><path d={`M${cx},${cy}L${cx + R - 5},${cy}`} className="s1 w3" /></Rot>
+      <circle cx={cx} cy={cy} r="3.5" className="f1" />
+      <Hit x={n1(cx + R * Math.cos(-.65))} y={n1(cy + R * Math.sin(-.65))} at={at} r={13} c={3} /></g>;
+    return <Act>
+      {dial(110, 58, 34, [[0, -180], [.34, -37]], .34, 0)}
+      <Scale cx={220} cy={50} kf={[[0, "0 0"], [.3, "0 0"], [.4, "1 1"], [.86, "1 1"], [.9, ".7 .7"]]} fin="1 1">{dial(220, 50, 26, [[0, -200], [.4, -200], [.66, -37]], .66, 1)}</Scale>
+      <rect x="80" y="96" width="160" height="6" rx="3" className="tile" /><rect x="80" y="96" width="160" height="6" rx="3" className="t2"><K a="width" kf={[[0, 160], [.88, 30]]} /></rect>
+    </Act>;
+  };
+
+  S.inductive = () => {
+    const cell = (r, c) => [70 + c * 28, 14 + r * 28];
+    const sh = (x, y, rot, c) => <path d={`M${x + 12},${y + 4}L${x + 20},${y + 20}H${x + 4}z`} transform={`rotate(${rot} ${x + 12} ${y + 12})`} className={"t" + c} />;
+    const cells = [];
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) { if (r === 2 && c === 2) continue; const [x, y] = cell(r, c); cells.push(<g key={r + "" + c}><Tile x={x} y={y} w={24} h={24} r={4} />{sh(x, y, c * 90, [1, 5, 3][r])}</g>); }
+    const [qx, qy] = cell(2, 2);
+    return <Act>
+      {cells}
+      <rect x={qx} y={qy} width="24" height="24" rx="4" className="s2 dash" />
+      {[[0, 1], [1, 3], [2, 4]].map(([i, col], k) => { const x = 200 + k * 34, y = 40; return <g key={k}><Tile x={x} y={y} w={24} h={24} r={4} />{sh(x, y, [90, 180, 270][k], k === 1 ? 3 : col)}</g>; })}
+      <rect x="196" y="36" width="32" height="32" rx="6" className="s5"><K a="x" kf={[[0, 196], [.1, 196], [.2, 230], [.3, 264], [.38, 230]]} /></rect>
+      <Slide kf={[[0, "0 0"], [.42, "0 0"], [.58, `${qx - 234} ${qy - 40}`]]}><g><K a="opacity" kf={[[0, 0], [.4, 0], [.42, 1]]} />{sh(234, 40, 180, 3)}</g></Slide>
+      <Hit x={qx + 12} y={qy + 12} at={.6} r={20} />
+    </Act>;
+  };
+
+  /* ===== 22 Nov additions ===== */
+  S.bto = () => <Act>
+    <Die x={40} y={30} s={30} n={6} /><Die x={76} y={30} s={30} n={3} />
+    <Txt x={136} y={30} s={10}>P(sum ≥ 9)?</Txt>
+    {["12%", "28%", "45%", "63%", "80%"].map((t, i) => <g key={i}><Show t0={.08 + i * .04}><Chip x={128 + i * 34} y={54} w={30} h={20} c={i === 1 ? 2 : 1} soft={i !== 1} label={t} ls={8} /></Show></g>)}
+    <Show t0={.5}><Chip x={162} y={54} w={30} h={20} c={2} solid label="28%" ls={8} /></Show>
+    <Comet path="M100,46Q140,90 177,64" c={2} t0={.3} t1={.5} r={3} /><Hit x={177} y={64} at={.5} r={18} />
+  </Act>;
+  S.likelihood = () => <Act>
+    {[["sum 7", 96, 3], ["double", 66, 1], ["sum 12", 36, 5]].map(([t, w, c], i) => <g key={i}>
+      <Tile x={50} y={18 + i * 28} w={70} h={22} label={t} ls={10} />
+      <rect x="130" y={22 + i * 28} width="0" height="14" rx="7" className={"t" + c}><K a="width" kf={[[0, 0], [.1 + i * .08, 0], [.4 + i * .08, w]]} /></rect>
+      <Show t0={.55 + i * .06}><Chip x={240} y={18 + i * 28} w={24} h={22} c={2} solid label={i + 1} ls={11} /></Show></g>)}
+    <Hit x={252} y={29} at={.58} r={16} />
+  </Act>;
+  S.intervals = () => <Act>
+    <path d="M40,64H280" className="ax" />{[40, 100, 160, 220, 280].map(x => <path key={x} d={`M${x},60V68`} className="ax" />)}
+    <Txt x={40} y={84} s={9}>0</Txt><Txt x={280} y={84} s={9}>1</Txt>
+    <rect x="90" y="54" width="140" height="20" rx="10" className="t1"><K a="x" kf={[[0, 90], [.15, 90], [.45, 140]]} /><K a="width" kf={[[0, 140], [.15, 140], [.45, 50]]} /></rect>
+    <Show t0={.5}><path d="M168,40V88" className="s2 w3" /><Txt x={168} y={34} s={10} c={2} b>answer</Txt></Show>
+    <Hit x={168} y={64} at={.52} r={18} c={3} />
+  </Act>;
+  S.orderbook = () => <Act>
+    {[[101.5, 15], [101, 25], [100.5, 10]].map(([p, q], i) => <Tile key={"a" + i} x={170} y={10 + i * 18} w={70} h={15} c={4} soft label={p + " × " + q} ls={8} />)}
+    {[[99.5, 20], [99, 10], [98.5, 30]].map(([p, q], i) => <Tile key={"b" + i} x={80} y={10 + (2 - i) * 18 + 54} w={70} h={15} c={3} soft label={p + " × " + q} ls={8} />)}
+    <path d="M70,60H250" className="s2 dash" /><Txt x={258} y={63} s={9} c={2} a="start">fair 102</Txt>
+    <Show t0={.42}><Tile x={170} y={46} w={70} h={15} c={3} solid label="BUY 10" ls={8} /></Show>
+    <Comet path="M270,58Q250,40 205,54" c={2} t0={.24} t1={.42} r={3} /><Hit x={205} y={54} at={.44} r={16} c={3} />
+  </Act>;
+  S.shapeshift = () => {
+    const seq = [[.05, "circle", 1], [.25, "square", 5], [.45, "circle", 1], [.65, "square", 5]];
+    return <Act>
+      <Tile x={70} y={72} w={44} h={22} label="◀" ls={11} /><Tile x={206} y={72} w={44} h={22} label="▶" ls={11} />
+      {seq.map(([t, k, c], i) => <Show key={i} t0={t} t1={t + .18} pre={i < 3}><Bump x={160} y={44} at={t} k={1.3}>{k === "circle" ? <circle cx="160" cy="44" r="18" className={"f" + c} /> : <rect x="142" y="26" width="36" height="36" rx="5" className={"f" + c} />}</Bump>
+        <rect x={k === "circle" ? 206 : 70} y="72" width="44" height="22" rx="6" className="f3" opacity="0"><K a="opacity" kf={[[0, 0], [t + .1, 0], [t + .11, .5], [t + .18, 0]]} /></rect></Show>)}
+    </Act>;
+  };
+  S.keypress = () => <Act>
+    <rect x="110" y="24" width="100" height="56" rx="14" className="tile" />
+    {[.08, .16, .24, .32, .4, .48].map((t, i) => <circle key={i} cx="160" cy="52" r="4" className="s1" opacity="0"><K a="r" kf={[[0, 4], [t, 4], [t + .08, 34]]} /><K a="opacity" kf={[[0, 0], [t, 0], [t + .01, .8], [t + .08, 0]]} /></circle>)}
+    <Txt x={160} y={57} s={14} c={1} b>TAP</Txt>
+    <Show t0={.55}><Chip x={226} y={40} w={64} h={22} c={2} solid label="7.4/s" ls={10} /></Show><Hit x={258} y={51} at={.56} r={16} />
+  </Act>;
+  S.easyhard = () => <Act>
+    <Tile x={50} y={26} w={90} h={52} c={1} soft /><Txt x={95} y={46} s={11} c={1} b>EASY</Txt><Txt x={95} y={64} s={11}>$1.00</Txt>
+    <Tile x={180} y={26} w={90} h={52} c={5} soft /><Txt x={225} y={46} s={11} c={5} b>HARD</Txt><Txt x={225} y={64} s={11}>$3.40</Txt>
+    <Show t0={.3}><rect x="180" y="26" width="90" height="52" rx="6" className="s2 w3" /></Show>
+    <rect x="180" y="86" width="0" height="8" rx="4" className="t5"><K a="width" kf={[[0, 0], [.35, 0], [.6, 90]]} /></rect>
+    <Hit x={225} y={52} at={.62} r={22} c={3} />
+  </Act>;
+  S.decks = () => <Act>
+    {[0, 1, 2, 3].map(i => <g key={i}><DeckBack x={56 + i * 54} y={18} w={38} h={54} /><Txt x={75 + i * 54} y={88} s={9}>{["−", "−", "+", "+"][i]}</Txt></g>)}
+    <Show t0={.2} t1={.42}><Chip x={52} y={0} w={46} h={14} c={4} soft label="+100 −250" ls={7} /></Show>
+    <Show t0={.45}><Chip x={160} y={0} w={46} h={14} c={3} soft label="+50" ls={8} /></Show>
+    <Comet path="M75,80Q130,104 183,80" c={2} t0={.42} t1={.6} r={3} /><Hit x={183} y={45} at={.6} r={22} c={3} />
+  </Act>;
+  S.lengths = () => <Act>
+    {[[110, 18], [210, 26]].map(([x, l], i) => <g key={i}><circle cx={x} cy="50" r="30" className="t2" /><circle cx={x - 10} cy="42" r="3" className="f1" /><circle cx={x + 10} cy="42" r="3" className="f1" />
+      <path d={`M${x - l / 2},63H${x + l / 2}`} className="s1 w3" /></g>)}
+    <Txt x={110} y={98} s={10}>short</Txt><Show t0={.4}><Txt x={210} y={98} s={10} c={2} b>long</Txt></Show>
+    <Hit x={210} y={63} at={.42} r={16} />
+  </Act>;
+  S.change = () => {
+    const ar = (x, y, d, c) => <g transform={`rotate(${d} ${x} ${y})`}><path d={`M${x - 9},${y}H${x + 9}M${x + 3},${y - 6}L${x + 9},${y}L${x + 3},${y + 6}`} className={"s" + c + " w3"} /></g>;
+    return <Act>
+      {[[0, 90, 180], [270, 0, 90]].map((row, r) => row.map((d, i) => <g key={r + "" + i}>{r === 0 && i === 1 ? <Rot cx={130 + i * 30} cy={36 + r * 30} kf={[[0, 0], [.4, 0], [.46, 180]]} fin={180}>{ar(130 + i * 30, 36 + r * 30, d, 1)}</Rot> : ar(130 + i * 30, 36 + r * 30, d, 1)}</g>))}
+      <Show t0={.2} t1={.36} pre><rect x="112" y="20" width="96" height="62" rx="8" className="tile" /></Show>
+      <Show t0={.55}><rect x="145" y="22" width="30" height="28" rx="6" className="s2 w3" /></Show><Hit x={160} y={36} at={.56} r={18} />
+    </Act>;
+  };
+  S.numreason = () => <Act>
+    {[0, 1, 2].map(r => [0, 1, 2].map(c => <Tile key={r + "" + c} x={60 + c * 44} y={14 + r * 26} w={40} h={22} label={[[42, 51, 63], [80, 76, 90], [35, 40, 52]][r][c]} ls={10} />))}
+    <Show t0={.25}><rect x="58" y="38" width="134" height="26" rx="7" className="s2 w3" /></Show>
+    <Draw d="M200,51H228" c={2} t0={.35} t1={.45} />
+    <Show t0={.48}><Chip x={232} y={40} w={56} h={22} c={2} solid label="+12.5%" ls={9} /></Show><Hit x={260} y={51} at={.5} r={18} />
+  </Act>;
+  S.diagram = () => <Act>
+    <Txt x={60} y={58} s={14} c={1} b>ABCD</Txt>
+    <Draw d="M88,54H112" c={1} t0={.08} t1={.16} /><rect x="114" y="42" width="24" height="24" rx="5" className="f1" />
+    <Draw d="M140,54H164" c={1} t0={.22} t1={.3} /><path d="M178,40L192,66H164z" className="f4" />
+    <Draw d="M196,54H220" c={2} t0={.36} t1={.44} />
+    <Show t0={.46}><Txt x={252} y={58} s={14} c={2} b>BCDA</Txt></Show><Hit x={252} y={54} at={.48} r={20} />
+  </Act>;
+  S.cardmarket = () => <Act>
+    {[0, 1, 2, 3].map(i => i === 0 ? <DeckFace key={i} x={30} y={14} w={30} h={42} v={9} s={2} /> : <DeckBack key={i} x={30 + i * 36} y={14} w={30} h={42} />)}
+    {[0, 1, 2].map(i => <DeckFlip key={"c" + i} x={180 + i * 36} y={14} w={30} h={42} at={.25 + i * .15} v={[4, 12, 7][i]} s={i} />)}
+    <Chip x={44} y={72} w={90} h={20} c={3} soft label="BID 46" ls={9} /><Chip x={150} y={72} w={90} h={20} c={4} soft label="ASK 48" ls={9} />
+    <Comet path="M120,40Q160,96 195,82" c={2} t0={.4} t1={.58} r={3} /><Hit x={195} y={82} at={.58} r={16} c={4} />
+  </Act>;
+  S.oddsbet = () => <Act>
+    <Die x={44} y={22} s={30} n={5} /><Die x={80} y={22} s={30} n={4} />
+    <Chip x={44} y={64} w={66} h={20} c={2} soft label="pays 3 to 1" ls={8} />
+    <path d="M140,40H280" className="ax" /><rect x="140" y="34" width="140" height="12" rx="6" className="tile" />
+    <rect x="140" y="34" width="0" height="12" rx="6" className="t2"><K a="width" kf={[[0, 0], [.12, 0], [.34, 34]]} /></rect>
+    <Show t0={.36}><path d="M174,26V54" className="s5" /><Txt x={174} y={20} s={9} c={5}>Kelly 12%</Txt></Show>
+    <rect x="140" y="64" width="70" height="12" rx="6" className="t3"><K a="width" kf={[[0, 70], [.5, 70], [.62, 104]]} /></rect><Hit x={234} y={70} at={.62} r={14} c={3} />
+  </Act>;
+  S.superday = () => <Act>
+    {["Maths", "Prob", "Market", "News"].map((t, i) => <g key={i}><Tile x={34 + i * 66} y={40} w={56} h={26} label={t} ls={9} />
+      <Show t0={.1 + i * .14}><Tile x={34 + i * 66} y={40} w={56} h={26} c={3} soft label={t} ls={9} /></Show>
+      {i < 3 ? <Draw d={`M${92 + i * 66},53H${98 + i * 66}`} c={1} t0={.1 + i * .14} t1={.16 + i * .14} /> : null}</g>)}
+    <Show t0={.62}><Chip x={128} y={78} w={64} h={22} c={2} solid label="78 / 100" ls={10} /></Show><Hit x={160} y={89} at={.64} r={20} />
+  </Act>;
+  S.daily = () => <Act>
+    {Array.from({ length: 7 }, (_, i) => <g key={i}><Tile x={46 + i * 34} y={30} w={28} h={28} r={7} label={["M", "T", "W", "T", "F", "S", "S"][i]} ls={10} />
+      <Show t0={.06 + i * .07}><Tile x={46 + i * 34} y={30} w={28} h={28} r={7} c={2} solid label="✓" ls={12} /></Show></g>)}
+    <Show t0={.58}><Chip x={120} y={70} w={80} h={22} c={2} soft label="7-day streak" ls={10} /></Show><Hit x={160} y={81} at={.6} r={22} />
+  </Act>;
+
+  /* ===== Mental Math Trainer and the nine trick lessons (22 Nov) ===== */
+  /* question, the rewrite that makes it easy, then the answer: the same three beats as S.mental */
+  const Rewrite = (q, mid, ans) => () => <Act>
+    <Show t1={.3} pre><Txt x={160} y={52} s={24} b>{q}</Txt></Show>
+    <Show t0={.3} t1={.58} pre><Txt x={160} y={52} s={21} b><tspan className="c5">{mid}</tspan></Txt></Show>
+    <Show t0={.58}><Txt x={160} y={52} s={24} b>{q}</Txt></Show>
+    <Draw d="M108,66Q160,84 212,66" c={5} t0={.28} t1={.4} />
+    <Show t0={.66}><Bump x={160} y={92} at={.66}><Chip x={110} y={80} w={100} h={22} c={2} solid label={ans} ls={13} /></Bump></Show>
+    <Hit x={160} y={91} at={.66} r={16} />
+  </Act>;
+  S.tx11 = Rewrite("53 × 11", "5 | 5+3 | 3", "583");
+  S.td11 = Rewrite("583 ÷ 11", "5 | 8−5", "53");
+  S.td9 = Rewrite("47 ÷ 9", "4+7 = 11 → 2", "5.222…");
+  S.td99 = Rewrite("4752 ÷ 99", "4800 − 48", "48");
+  S.tx5 = Rewrite("68 × 5", "68 ÷ 2 = 34", "340");
+  S.tx25 = Rewrite("36 × 25", "36 ÷ 4 = 9", "900");
+  S.tx125 = Rewrite("64 × 125", "64 ÷ 8 = 8", "8000");
+  S.tsq5 = Rewrite("85²", "8 × 9 = 72", "7225");
+  S.tpct = Rewrite("35% of 240", "3 × 24 + 12", "84");
+  S.mmt = () => <Act>
+    {["37 + 48", "12 × 7", "3/4 of 60"].map((t, i) => <Show key={i} t0={i * .2} t1={i * .2 + .2} pre={i < 2}><Txt x={130} y={50} s={20} b>{t}</Txt></Show>)}
+    <rect x="214" y="34" width="62" height="26" rx="7" className="tile" />
+    {["85", "84", "45"].map((t, i) => <Show key={i} t0={i * .2 + .1} t1={i * .2 + .2} pre={i < 2}><Txt x={245} y={52} s={14} c={3} b>{t}</Txt></Show>)}
+    <rect x="44" y="84" width="232" height="8" rx="4" className="tile" />
+    <rect x="44" y="84" width="232" height="8" rx="4" className="t1"><K a="width" kf={[[0, 232], [.85, 30]]} /></rect>
+    {[.18, .38, .58].map((t, i) => <Hit key={i} x={245} y={47} at={t} r={14} c={3} />)}
+  </Act>;
+
+  /* ---------- which scene each card shows ---------- */
+  /* lessons, trainers and games that are the same topic share one scene */
+  const SAME = {
+    marketmaking: "dice",        /* Making a market (sum of dice) = Market Making Dice */
+    options6: "options",         /* Quoting an option market = Options Market Making trainer */
+    futures2: "futures",         /* Basis and convergence = Futures & Basis trainer */
+    pred1: "pred",               /* Prices are probabilities = Prediction Markets trainer */
+    pred4: "board",              /* Arbitrage across outcomes = Betting Board */
+    pred5: "hilo",               /* Sizing with Kelly = Higher or Lower */
+    pred6: "events",             /* Updating on news = Event Contracts */
+  };
+  const scene = id => S[SAME[id] || id] || null;
+
+  let seq = 0;
+  /* the stage: a fixed 320 x 110 box, clipped to itself so nothing leaves the card */
+  function Art({ id }) {
+    const uid = TIP.R.useMemo(() => "ta" + (++seq), []);
+    const f = scene(id);
+    UID = uid;
+    return <svg className="tart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <defs><clipPath id={uid + "c0"}><rect x="0" y="0" width={W} height={H} /></clipPath><clipPath id={uid + "c1"}><rect x="36" y="0" width="248" height={H} /></clipPath></defs>
+      <g clipPath={`url(#${uid}c0)`}>{f ? f() : null}</g>
+    </svg>;
+  }
+  return { Art, scene, S, SAME };
+})();

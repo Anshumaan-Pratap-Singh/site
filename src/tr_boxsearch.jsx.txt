@@ -1,0 +1,81 @@
+/* Box Search: spatial working memory (the CANTAB-style search task used in game-based assessments).
+   A token hides in one box at a time and never twice in the same box. Open boxes to find one token per box.
+   Errors: reopening a box in the same search, or opening a box that has already given up its token. */
+(function () {
+  const { TH, TF, R } = TIP;
+  const { useState, useEffect, useMemo } = R;
+  const K = TIP_KIT;
+  function layout(rng, n) {
+    const pts = [];
+    for (let t = 0; pts.length < n && t < 3000; t++) { const p = [rng.int(8, 92), rng.int(10, 88)]; if (pts.every(q => Math.hypot(q[0] - p[0], (q[1] - p[1]) * 0.75) > 17)) pts.push(p); }
+    return pts;
+  }
+  function Game({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const sizes = useMemo(() => s.sizes, []);
+    const [ri, setRi] = useState(0);
+    const n = sizes[ri];
+    const [pos, setPos] = useState(() => layout(rng, n));
+    const [found, setFound] = useState([]);          /* boxes that have given a token */
+    const [hide, setHide] = useState(() => rng.int(0, n - 1));
+    const [opened, setOpened] = useState([]);        /* this search */
+    const [show, setShow] = useState(null);          /* {i, tok} */
+    const [err, setErr] = useState({ within: 0, between: 0 }), [roundErr, setRoundErr] = useState([]), [done, setDone] = useState(false), [busy, setBusy] = useState(false);
+    function open(i) {
+      if (busy || done) return;
+      const w = opened.includes(i), b = found.includes(i);
+      if (w || b) setErr(e => ({ within: e.within + (w && !b ? 1 : 0), between: e.between + (b ? 1 : 0) }));
+      setOpened(o => o.includes(i) ? o : [...o, i]);
+      const tok = i === hide;
+      setShow({ i, tok, bad: w || b });
+      if (!tok) { setTimeout(() => setShow(x => x && x.i === i ? null : x), 600); return; }
+      setBusy(true);
+      setTimeout(() => {
+        const nf = [...found, i];
+        setShow(null); setOpened([]); setBusy(false);
+        if (nf.length >= n) {
+          setRoundErr(r => [...r, { n, ...err }]);
+          if (ri + 1 >= sizes.length) { setFound(nf); setDone(true); return; }
+          const nn = sizes[ri + 1]; setRi(ri + 1); setPos(layout(rng, nn)); setFound([]); setHide(rng.int(0, nn - 1)); setErr({ within: 0, between: 0 });
+          return;
+        }
+        setFound(nf);
+        const left = Array.from({ length: n }, (_, k) => k).filter(k => !nf.includes(k));
+        setHide(rng.pick(left));
+      }, 800);
+    }
+    const res = useMemo(() => {
+      if (!done) return null;
+      const all = [...roundErr], W = all.reduce((a, r) => a + r.within, 0), B = all.reduce((a, r) => a + r.between, 0);
+      return { score: Math.max(0, 100 - 4 * B - 2 * W), within: W, between: B, rounds: all };
+    }, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={`${res.score} points`} sub={`${res.between} between-search and ${res.within} within-search errors`} ring={res.score / 100} onRestart={onRestart}
+      metrics={[{ label: "Between-search errors", value: res.between, sub: "opened a box that had already given a token", tone: res.between ? "dn" : "" }, { label: "Within-search errors", value: res.within, sub: "reopened a box in the same search" }]}
+      review={res.rounds.map(r => ({ ok: !r.within && !r.between, text: `${r.n} boxes`, shown: `${r.between} between, ${r.within} within` }))}
+      notes="Search in a fixed order (for example clockwise round the screen) and keep a mental list of the boxes that have already paid out. 100 − 4 per between-search error − 2 per within-search error." />;
+    return (
+      <K.Stage title="Box Search" sub={`Round ${ri + 1} of ${sizes.length}: ${n} boxes · tokens ${found.length}/${n}`} stats={[{ label: "Errors", value: err.within + err.between, tone: err.within + err.between ? "dn" : "", pop: true }]}>
+        <div className="bs-wrap">
+          <div className="bs-bank">{Array.from({ length: n }, (_, k) => <i key={k} className={k < found.length ? "on" : ""} />)}</div>
+          <div className="bs-field">
+            {pos.map((p, i) => {
+              const o = show && show.i === i, done_ = found.includes(i);
+              return <button key={ri + ":" + i} className={"bs-box" + (o ? (show.tok ? " tok" : show.bad ? " bad" : " open") : "")} style={{ left: p[0] + "%", top: p[1] + "%" }} onClick={() => open(i)} aria-label={"box " + (i + 1)}>
+                <svg viewBox="0 0 40 40"><path d="M6,14H34V34H6z" className="bs-body" /><path d={o ? "M6,14L12,4H40L34,14z" : "M4,9H36V15H4z"} className="bs-lid" />{o && show.tok ? <circle cx="20" cy="22" r="7" className="bs-tok" /> : null}</svg>
+              </button>;
+            })}
+          </div>
+        </div>
+      </K.Stage>
+    );
+  }
+  TIP_TRAINERS.register({
+    id: "boxsearch", name: "Box Search", metric: "score", unit: " pts", version: 2, playFilter: K.versioned(2),
+    blurb: "Spatial working memory, as in the box-search task of game-based assessments: a token hides in one box at a time and never in a box that has already given one up. Collect a token from every box with as few wasted openings as possible.",
+    fields: [{ key: "sizes", label: "Rounds", type: "sel", choices: [{ value: [3, 4, 5], label: "3, 4, 5 boxes" }, { value: [4, 6, 8], label: "4, 6, 8 boxes" }, { value: [6, 8, 10], label: "6, 8, 10 boxes" }] }],
+    presets: { Easy: { sizes: [3, 4, 5] }, Medium: { sizes: [4, 6, 8] }, Hard: { sizes: [6, 8, 10] } },
+    note: "No clock: the score counts only errors.",
+    component: Game,
+  });
+})();

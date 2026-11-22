@@ -1,0 +1,120 @@
+/* Tradermath: game animations. Uses the app's own theme variables only. */
+
+:root {
+  --tm-out: cubic-bezier(.22, 1, .36, 1);
+  --tm-spring: cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* ---------- keyframes ---------- */
+@keyframes tm-rise   { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes tm-pop    { 0% { opacity: 0; transform: scale(.96); } 100% { opacity: 1; transform: none; } }
+@keyframes tm-deal   { from { opacity: 0; transform: translateY(-10px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes tm-flip   { 0% { transform: perspective(700px) rotateY(95deg); filter: brightness(.9); } 100% { transform: perspective(700px) rotateY(0); filter: none; } }
+@keyframes tm-roll   { 0% { opacity: 0; transform: translateY(-14px) rotate(-220deg) scale(.6); } 55% { opacity: 1; transform: translateY(2px) rotate(14deg) scale(1.08); } 78% { transform: rotate(-5deg) scale(.98); } 100% { transform: none; } }
+@keyframes tm-pulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+@keyframes tm-up     { 0% { background: var(--ok-soft); box-shadow: inset 0 0 0 1px var(--ok); } 100% { background: var(--surface-2); box-shadow: inset 0 0 0 1px transparent; } }
+@keyframes tm-down   { 0% { background: var(--err-soft); box-shadow: inset 0 0 0 1px var(--err); } 100% { background: var(--surface-2); box-shadow: inset 0 0 0 1px transparent; } }
+@keyframes tm-cell-up   { 0% { background: var(--ok-soft); } 100% { background: transparent; } }
+@keyframes tm-cell-down { 0% { background: var(--err-soft); } 100% { background: transparent; } }
+@keyframes tm-arrow  { 0% { opacity: 0; transform: translateY(var(--tm-dy, 3px)); } 20% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes tm-good   { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 45%, transparent); transform: scale(.98); } 40% { transform: scale(1.01); } 100% { box-shadow: 0 0 0 10px transparent; transform: none; } }
+@keyframes tm-shake  { 0%, 100% { transform: none; } 15% { transform: translateX(-6px); } 35% { transform: translateX(5px); } 55% { transform: translateX(-3px); } 75% { transform: translateX(2px); } }
+@keyframes tm-log    { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+@keyframes tm-log-pos { 0% { opacity: 0; transform: translateX(-6px); background: var(--ok-soft); } 30% { opacity: 1; transform: none; } 100% { background: transparent; } }
+@keyframes tm-log-neg { 0% { opacity: 0; transform: translateX(-6px); background: var(--err-soft); } 30% { opacity: 1; transform: none; } 100% { background: transparent; } }
+@keyframes tm-sweep-buy  { 0% { background: transparent; } 25% { background: var(--ok-soft); } 100% { background: transparent; } }
+@keyframes tm-sweep-sell { 0% { background: transparent; } 25% { background: var(--err-soft); } 100% { background: transparent; } }
+@keyframes tm-trophy { 0% { transform: scale(.4) rotate(-25deg); opacity: 0; } 60% { transform: scale(1.2) rotate(8deg); opacity: 1; } 100% { transform: none; } }
+@keyframes tm-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* ---------- entering screens ---------- */
+.game-view > * { animation: tm-rise .45s var(--tm-out) both; }
+.game-view > :nth-child(2) { animation-delay: .05s; }
+.game-view > :nth-child(3) { animation-delay: .1s; }
+.game-view > :nth-child(4) { animation-delay: .15s; }
+.game-view > .col > .card,
+.game-view > .grid2 > *, .game-view > .grid3 > * { animation: tm-rise .42s var(--tm-out) both; }
+.game-view > .col > .card:nth-child(2) { animation-delay: .06s; }
+.game-view > .col > .card:nth-child(3) { animation-delay: .12s; }
+.game-view > .col > .card:nth-child(4) { animation-delay: .18s; }
+.game-view .logbox { animation: tm-rise .4s var(--tm-out) both; }
+
+/* Market Games list */
+.grid4 > .card { animation: tm-rise .42s var(--tm-out) both; transition: transform .2s var(--tm-out), box-shadow .2s, border-color .2s; }
+.grid4 > .card:nth-child(2) { animation-delay: .04s; }
+.grid4 > .card:nth-child(3) { animation-delay: .08s; }
+.grid4 > .card:nth-child(4) { animation-delay: .12s; }
+.grid4 > .card:nth-child(5) { animation-delay: .16s; }
+.grid4 > .card:nth-child(6) { animation-delay: .2s; }
+.grid4 > .card:nth-child(7) { animation-delay: .24s; }
+.grid4 > .card:nth-child(8) { animation-delay: .28s; }
+.tm-games .grid4 > .card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.tm-games .grid4 > .card:hover .gicon { transform: scale(1.08) rotate(-4deg); }
+.gicon { transition: transform .25s var(--tm-spring); }
+
+/* Buttons: small press feel */
+.btn { transition: background .15s, filter .15s, transform .12s var(--tm-out), opacity .15s; }
+.btn:active:not(:disabled) { transform: scale(.97); }
+
+/* ---------- metrics: flash + arrow ---------- */
+.metric { position: relative; }
+.metric.tm-up   { animation: tm-up .8s var(--tm-out); }
+.metric.tm-down { animation: tm-down .8s var(--tm-out); }
+.metric.tm-up::after, .metric.tm-down::after {
+  position: absolute; top: 6px; right: 8px; font-size: 9px; line-height: 1;
+  animation: tm-arrow 1.1s var(--tm-out) both;
+}
+.metric.tm-up::after   { content: "\25B2"; color: var(--ok); --tm-dy: 3px; }
+.metric.tm-down::after { content: "\25BC"; color: var(--err); --tm-dy: -3px; }
+
+/* ---------- order books / quote tables ---------- */
+.game-view .tbl tbody tr { animation: tm-rise .35s var(--tm-out) both; }
+.game-view .tbl tbody tr:nth-child(2) { animation-delay: .04s; }
+.game-view .tbl tbody tr:nth-child(3) { animation-delay: .08s; }
+.game-view .tbl tbody tr:nth-child(n+4) { animation-delay: .12s; }
+.game-view .tbl td.tm-up   { animation: tm-cell-up .7s var(--tm-out); }
+.game-view .tbl td.tm-down { animation: tm-cell-down .7s var(--tm-out); }
+.game-view .tbl tr.tm-buy td  { animation: tm-sweep-buy .65s var(--tm-out) both; }
+.game-view .tbl tr.tm-sell td { animation: tm-sweep-sell .65s var(--tm-out) both; }
+.game-view .tbl tr.tm-buy td:nth-child(2), .game-view .tbl tr.tm-sell td:nth-child(2) { animation-delay: .05s; }
+.game-view .tbl tr.tm-buy td:nth-child(3), .game-view .tbl tr.tm-sell td:nth-child(3) { animation-delay: .1s; }
+.game-view .tbl tr.tm-buy td:nth-child(n+4), .game-view .tbl tr.tm-sell td:nth-child(n+4) { animation-delay: .15s; }
+
+/* ---------- feedback ---------- */
+.game-view .box.okbox  { animation: tm-good .6s var(--tm-out); }
+.game-view .box.errbox { animation: tm-shake .45s ease-in-out; }
+.game-view .box.hint   { animation: tm-pop .35s var(--tm-out) both; }
+.game-view .chip.easy  { animation: tm-good .6s var(--tm-out); }
+.game-view .chip.hard  { animation: tm-shake .45s ease-in-out; }
+.game-view .logbox > div { border-radius: 4px; padding: 0 4px; margin: 0 -4px; animation: tm-log .3s var(--tm-out) both; }
+.game-view .logbox > .pos { animation-name: tm-log-pos; animation-duration: .9s; }
+.game-view .logbox > .neg { animation-name: tm-log-neg; animation-duration: .9s; }
+
+/* ---------- results ---------- */
+.game-over { animation: tm-pop .45s var(--tm-out) both; }
+.game-over > :not(.big-result):not(.cards) { animation: tm-rise .4s var(--tm-out) both; }
+.game-over > :nth-child(n+4) { animation-delay: .34s; }
+.game-over .res-title svg { animation: tm-trophy .6s var(--tm-spring) .1s both; }
+.game-over .big { animation: tm-pop .5s var(--tm-spring) .1s both; }
+.game-over .stat { animation: tm-rise .35s var(--tm-out) both; }
+.game-over .stat:nth-child(1) { animation-delay: .2s; }
+.game-over .stat:nth-child(2) { animation-delay: .26s; }
+.game-over .stat:nth-child(3) { animation-delay: .32s; }
+.game-over .stat:nth-child(n+4) { animation-delay: .38s; }
+.tm-pb {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; color: var(--on-accent);
+  background: linear-gradient(110deg, var(--accent) 35%, color-mix(in srgb, var(--accent) 55%, #fff) 50%, var(--accent) 65%);
+  background-size: 200% 100%;
+  animation: tm-pop .4s var(--tm-spring) both, tm-shimmer 2.4s linear .4s infinite;
+}
+
+/* ---------- reduce motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .game-view *, .game-view, .grid4 > .card, .game-over, .game-over *, .metric, .tm-pb, .btn, .pc3-in, .d2, .d2-face {
+    animation: none !important; transition: none !important;
+  }
+}
+
+/* dialogs never inherit the screen-entry animation */
+.game-view > .tm-scrim { animation: tm-fade .15s ease-out both; animation-delay: 0s; }

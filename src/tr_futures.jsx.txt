@@ -1,0 +1,103 @@
+/* Futures & Basis: lessons, timed drills and a live basis-trading case. */
+(function () {
+  const { TH, R } = TIP;
+  const { useState, useMemo } = R;
+  const { course, PART, num } = TIP_DRILL;
+  const S_ = String.raw;
+  const f2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  const fair = (S, r, d, D) => S * (1 + r * d / 365) - D;
+
+  /* lessons now live in the Lessons tab (learn_p3) */
+
+
+  const Q = {
+    fair: r => { const S = r.int(20, 600) * 10, rr = r.pick([2, 3, 4, 5, 6]) / 100, d = r.pick([30, 45, 60, 73, 90, 120, 146, 182]), D = r() < 0.5 ? 0 : r.int(1, 40);
+      const F = fair(S, rr, d, D);
+      return { q: S_`Spot ${S}, rates ${rr * 100}%, ${d} days, dividends ${D}. What is the fair future (simple interest, 365-day year)?`, v: F, a: f2(F), tol: 0.02, x: S_`$${S} \times (1 + ${rr} \times ${d}/365) - ${D} = ${f2(F)}$.` }; },
+    basis: r => { const b = r.int(6, 40), d0 = r.pick([60, 80, 90, 120]), d1 = r.int(5, d0 - 5); const v = b * d1 / d0;
+      return { q: S_`The basis is ${b} with ${d0} days left and shrinks in a straight line. What is it with ${d1} days left?`, v, a: f2(v), tol: 0.02, x: S_`$${b} \times ${d1}/${d0} = ${f2(v)}$.` }; },
+    repo: r => { const S = r.int(10, 200) * 10, d = r.pick([73, 146, 219, 292, 365]), rr = r.pick([2, 3, 4, 5, 6, 8]) / 100, F = Math.round(S * (1 + rr * d / 365) * 100) / 100;
+      const v = (F / S - 1) * 365 / d * 100;
+      return { q: S_`Spot ${S}, future ${f2(F)}, ${d} days, no dividends. What is the implied repo rate, in %?`, v, a: v.toFixed(2) + "%", tol: 0.03, x: S_`$(${f2(F)}/${S} - 1) \times 365/${d} = ${v.toFixed(2)}\%$.` }; },
+    arb: r => { const S = r.int(50, 500) * 10, rr = r.pick([3, 4, 5]) / 100, d = r.pick([60, 90, 120]), F = fair(S, rr, d, 0), off = r.pick([-1, 1, 0]) * (1 + r.int(0, 6)) * 0.5;
+      const bid = Math.round((F + off - 0.25) * 4) / 4, ask = bid + 0.5;
+      const ans = bid > F ? "Cash and carry" : ask < F ? "Reverse cash and carry" : "Nothing";
+      return { q: S_`Spot ${S}, rates ${rr * 100}%, ${d} days, no dividends. The future is ${f2(bid)} / ${f2(ask)}. What do you do?`, choices: ["Cash and carry", "Reverse cash and carry", "Nothing"], v: ans, a: ans,
+        x: S_`Fair is $${S}(1 + ${rr} \times ${d}/365) = ${f2(F)}$. ${ans === "Cash and carry" ? `The bid ${f2(bid)} is above fair: sell the future, buy spot.` : ans === "Reverse cash and carry" ? `The offer ${f2(ask)} is below fair: buy the future, short spot.` : "Fair is inside the bid–ask, so there is nothing to lock in."}` }; },
+    calendar: r => { const S = r.int(20, 600) * 10, rr = r.pick([2, 3, 4, 5]) / 100, d1 = r.pick([30, 60, 91]), d2 = d1 + r.pick([60, 91, 182]); const v = S * rr * (d2 - d1) / 365;
+      return { q: S_`Spot ${S}, rates ${rr * 100}%, no dividends. Futures expire in ${d1} and ${d2} days. What is the fair calendar spread (far minus near)?`, v, a: f2(v), tol: 0.03, x: S_`$${S} \times ${rr} \times (${d2} - ${d1})/365 = ${f2(v)}$.` }; },
+    hedge: r => { const V = r.int(2, 40), b = r.pick([0.6, 0.8, 0.9, 1, 1.1, 1.2, 1.5]), F = r.pick([2000, 2500, 4000, 4800, 5000]), m = r.pick([10, 20, 50]); const v = b * V * 1e6 / (F * m);
+      return { q: S_`You hold a $${V}m portfolio with beta ${b}. The index future is ${F} with multiplier ${m}. How many contracts do you sell (to the nearest whole contract)?`, v: Math.round(v), a: String(Math.round(v)), tol: 0.6, x: S_`$${b} \times ${V}{,}000{,}000 / (${F} \times ${m}) = ${v.toFixed(1)}$, so ${Math.round(v)} contracts.` }; },
+  };
+  /* ---------- more drill types (19 Nov) ---------- */
+  const r2 = v => Math.round(v * 100) / 100;
+  Object.assign(Q, {
+    divYield: r => { const S = r.int(20, 600) * 10, rr = r.pick([2, 3, 4, 5, 6]) / 100, q = r.pick([1, 2, 3, 4]) / 100, d = r.pick([73, 91, 146, 182, 365]); const F = S * (1 + (rr - q) * d / 365);
+      return { q: S_`Index ${S}, rates ${rr * 100}%, dividend yield ${q * 100}%, ${d} days. What is the fair future (simple carry, 365-day year)?`, v: F, a: f2(F), tol: 0.02, x: S_`$${S} \times (1 + (${rr} - ${q}) \times ${d}/365) = ${f2(F)}$.` }; },
+    impliedDiv: r => { const S = r.int(20, 600) * 10, rr = r.pick([2, 3, 4, 5]) / 100, d = r.pick([73, 91, 182, 365]), D = r.int(2, 60), F = r2(fair(S, rr, d, D));
+      const v = S * (1 + rr * d / 365) - F;
+      return { q: S_`Spot ${S}, future ${f2(F)}, rates ${rr * 100}%, ${d} days. What dividends (in index points) does the future imply?`, v, a: f2(v), tol: 0.02, x: S_`$D = S(1 + r\,d/365) - F = ${f2(S * (1 + rr * d / 365))} - ${f2(F)} = ${f2(v)}$.` }; },
+    basisCalc: r => { const S = r.int(200, 6000), b = r.int(-30, 40), F = S + b, cash = r() < 0.5;
+      return cash ? { q: S_`Spot is ${S} and the future is ${F}. What is the basis (future minus spot)?`, v: b, a: String(b), tol: 0.01, x: S_`${F} − ${S} = ${b}.` } : { q: S_`The future is ${F} and the basis (future minus spot) is ${b}. Where is spot?`, v: S, a: String(S), tol: 0.01, x: S_`${F} − (${b}) = ${S}.` }; },
+    notional: r => { const L = r.int(1500, 6000), m = r.pick([10, 20, 25, 50, 250]), n = r.int(1, 20), v = L * m * n;
+      return { q: S_`You hold ${n} index futures at ${L} with a multiplier of ${m}. What is the notional exposure, in currency units?`, v, a: v.toLocaleString("en-GB"), tol: 0.5, x: S_`${n} × ${L} × ${m} = ${v.toLocaleString("en-GB")}.` }; },
+    futPnl: r => { const n = r.int(1, 25), m = r.pick([10, 20, 25, 50]), e = r.int(1500, 6000), mv = r.int(-60, 60) || 7, long = r() < 0.5, v = (long ? 1 : -1) * n * m * mv;
+      return { q: S_`You are ${long ? "long" : "short"} ${n} futures (multiplier ${m}) bought${long ? "" : "/sold"} at ${e}. The future settles at ${e + mv}. What is your P&L?`, v, a: String(v), tol: 0.5, x: S_`${long ? "+" : "−"}${n} × ${m} × (${e + mv} − ${e}) = ${v}.` }; },
+    marginCall: r => { const im = r.pick([5000, 6000, 8000, 10000, 12000]), mm = Math.round(im * r.pick([0.6, 0.7, 0.75, 0.8])), m = r.pick([10, 20, 25, 50]), e = r.int(2000, 5000); const pts = (im - mm) / m, v = e - pts;
+      return { q: S_`You buy one future at ${e} (multiplier ${m}). Initial margin is ${im.toLocaleString("en-GB")} and maintenance margin is ${mm.toLocaleString("en-GB")}. Below what futures price do you get a margin call?`, v, a: f2(v), tol: 0.02, x: S_`You can lose ${im - mm} before hitting maintenance, which is ${im - mm}/${m} = ${f2(pts)} points: ${e} − ${f2(pts)} = ${f2(v)}.` }; },
+    rollCost: r => { const n = r.int(2, 40), m = r.pick([10, 20, 25, 50]), sp = r.int(2, 30), long = r() < 0.5, v = n * m * sp;
+      return { q: S_`You are ${long ? "long" : "short"} ${n} expiring futures (multiplier ${m}) and roll into the next month, which trades ${sp} points ${long ? "above" : "below"} the expiring one. How much worse is the price you hold after the roll, in currency units?`, v, a: String(v), tol: 0.5, x: S_`${n} × ${m} × ${sp} = ${v}: the roll costs the calendar spread on every contract.` }; },
+    minVarHedge: r => { const rho = r.pick([0.6, 0.7, 0.8, 0.9, 0.95]), sS = r.pick([10, 15, 20, 25, 30]), sF = r.pick([12, 15, 20, 25]), v = rho * sS / sF;
+      return { q: S_`The asset has volatility ${sS}%, the future ${sF}%, and their correlation is ${rho}. What is the minimum-variance hedge ratio?`, v, a: v.toFixed(3), tol: 0.005, x: S_`$h = \rho\,\sigma_S/\sigma_F = ${rho} \times ${sS}/${sF} = ${v.toFixed(3)}$.` }; },
+    fxForward: r => { const S = r.pick([1.1, 1.25, 1.3, 0.85, 1.5, 150, 110]), rd = r.pick([1, 2, 3, 4, 5]) / 100, rf = r.pick([0, 1, 2, 3, 5]) / 100, T = r.pick([0.25, 0.5, 1]), v = S * (1 + rd * T) / (1 + rf * T), big = S > 10;
+      return { q: S_`FX spot is ${S} (price currency per base currency). The price-currency rate is ${rd * 100}%, the base-currency rate ${rf * 100}%, both simple. What is the ${T * 12}-month forward?`, v, a: v.toFixed(big ? 2 : 4), tol: big ? 0.02 : 0.0002, x: S_`Covered interest parity: $F = S(1 + r_d T)/(1 + r_f T) = ${S} \times ${(1 + rd * T).toFixed(4)}/${(1 + rf * T).toFixed(4)} = ${v.toFixed(big ? 2 : 4)}$.` }; },
+    storage: r => { const S = r.int(20, 120), rr = r.pick([2, 3, 4, 5]) / 100, d = r.pick([91, 182, 365]), st = r2(r.int(5, 60) / 10), v = S * (1 + rr * d / 365) + st;
+      return { q: S_`A commodity costs ${S} spot. Rates are ${rr * 100}%, storage costs ${st.toFixed(2)} per unit over the ${d} days, and there is no convenience yield. What is the fair forward?`, v, a: f2(v), tol: 0.02, x: S_`$${S} \times (1 + ${rr} \times ${d}/365) + ${st.toFixed(2)} = ${f2(v)}$.` }; },
+    betaShift: r => { const V = r.int(5, 50), b1 = r.pick([0.8, 1, 1.2, 1.4]), b2 = r.pick([0, 0.5, 0.8, 1, 1.5]), F = r.pick([2000, 4000, 5000]), m = r.pick([10, 20, 50]); if (b1 === b2) return Q.hedge(r);
+      const v = (b2 - b1) * V * 1e6 / (F * m);
+      return { q: S_`You run a ${V}m portfolio with beta ${b1} and want beta ${b2}. The index future is ${F}, multiplier ${m}. How many futures do you buy (negative = sell), to the nearest contract?`, v: Math.round(v), a: String(Math.round(v)), tol: 0.6, x: S_`$(${b2} - ${b1}) \times ${V}{,}000{,}000/(${F} \times ${m}) = ${v.toFixed(1)}$, so ${Math.round(v)}.` }; },
+    tickValue: r => { const t = r.pick([0.25, 0.5, 0.1, 1, 0.01]), m = r.pick([50, 20, 10, 1000, 100]), n = r.int(1, 30), k = r.int(1, 12), v = r2(t * m * n * k);
+      return { q: S_`A future has a tick size of ${t} points and a multiplier of ${m}. You hold ${n} contracts and the price moves ${k} ticks in your favour. What is your gain?`, v, a: f2(v), tol: 0.01, x: S_`Tick value ${t} × ${m} = ${r2(t * m)}; × ${n} contracts × ${k} ticks = ${f2(v)}.` }; },
+    leverage: r => { const L = r.int(2000, 6000), m = r.pick([10, 20, 50]), im = r.pick([5, 6, 8, 10, 12]) / 100, notl = L * m, mg = Math.round(notl * im), v = notl / mg;
+      return { q: S_`One future at ${L} with multiplier ${m} needs ${mg.toLocaleString("en-GB")} of initial margin. What leverage is that (notional ÷ margin)?`, v, a: v.toFixed(1) + "×", tol: 0.06, x: S_`Notional ${notl.toLocaleString("en-GB")} ÷ ${mg.toLocaleString("en-GB")} = ${v.toFixed(1)}×.` }; },
+    convergence: r => { const b = r.int(3, 40), d = r.pick([30, 60, 90]), sign = r() < 0.5;
+      return { q: S_`The future trades ${b} points ${sign ? "above" : "below"} spot with ${d} days to expiry. Ignoring carry changes, what will the basis be at expiry?`, v: 0, a: "0", tol: 0.01, x: S_`At expiry the future settles to spot, so the basis converges to 0.` }; },
+  });
+  const TOPICS = { carry: ["fair", "basis", "repo", "divYield", "impliedDiv", "basisCalc", "storage", "fxForward", "convergence"], trading: ["arb", "calendar", "hedge", "fair", "notional", "futPnl", "marginCall", "rollCost", "minVarHedge", "betaShift", "tickValue", "leverage"], all: Object.keys(Q) };
+  function gen(r, s, i, hist) {
+    const list = TOPICS[s.topics] || TOPICS.all;
+    let k, t = 0; do { k = r.pick(list); t++; } while (hist.length && hist[hist.length - 1].kind === k && t < 6);
+    const g = Q[k](r);
+    const base = { kind: k, text: g.q, prompt: <div className="tip-prob">{TH(Rt, { text: g.q, as: "p", className: "tip-prob-q" })}</div>, answer: g.a, explain: TH(Rt, { text: g.x, as: "span" }) };
+    if (g.choices) return { ...base, input: "choice", choices: g.choices.map(c => ({ value: c, label: c })), check: v => v === g.v };
+    return { ...base, input: "num", placeholder: "Number", check: raw => { const x = num(String(raw).replace(/[$%,]/g, "")); return isFinite(x) && Math.abs(x - g.v) <= g.tol; } };
+  }
+
+  /* ---------- live case: the shared market-making interview engine ---------- */
+  const Case = props => TH(TIP_MM.Game, { ...props, inst: "future", mode: "make", title: "Futures & Basis · live case", settings: { ...props.settings, news: props.settings.moves, n: props.settings.moves, story: "rates", size: 1 } });
+
+  TIP_TRAINERS.register(course({
+    version: 2, caseStats: TIP_MM.stats, caseCharts: TIP_MM.charts,
+    id: "futures", name: "Futures & Basis", icon: "chart",
+    blurb: "Drills on cost of carry, basis, implied repo and hedge ratios, then a live futures quoting case: price the future from spot, rates and dividends, quote it inside the width as spot moves, and get hedged out by sharp flow if your carry is wrong.",
+    fields: [
+      PART,
+      { key: "count", label: "Questions", type: "num", min: 3, max: 40, showIf: c => c.part === "drill" },
+      { key: "qtime", label: "Time per question", type: "num", min: 10, max: 180, unit: "s", showIf: c => c.part === "drill" },
+      { key: "topics", label: "Topics", type: "sel", showIf: c => c.part === "drill", choices: [{ value: "carry", label: "Fair value and basis" }, { value: "trading", label: "Arbitrage and hedging" }, { value: "all", label: "Everything" }] },
+      { key: "rounds", label: "Rounds", type: "num", min: 1, max: 10, showIf: c => c.part === "case" },
+      { key: "moves", label: "Updates per round", type: "num", min: 2, max: 8, showIf: c => c.part === "case" },
+      { key: "width", label: "Max width", type: "num", min: 0.5, max: 10, step: 0.25, unit: "", showIf: c => c.part === "case" },
+      { key: "time", label: "Time per quote", type: "num", min: 6, max: 90, unit: "s", showIf: c => c.part === "case" },
+      { key: "sharp", label: "Sharp customers", type: "sel", showIf: c => c.part === "case", choices: [{ value: 0, label: "None" }, { value: 0.25, label: "Some" }, { value: 0.45, label: "Many" }] },
+      { key: "showFair", label: "Show fair value", type: "bool", showIf: c => c.part === "case" },
+      { key: "hedge", label: "Hedge with spot", type: "bool", showIf: c => c.part === "case" },
+    ],
+    presets: {
+      Easy: { part: "drill", count: 8, qtime: 90, topics: "carry", step: 10, noise: 4, spread: 0.5, cost: 0.1, lot: 5, limit: 20, rounds: 3, moves: 3, width: 3, time: 40, sharp: 0, tighten: 0, showFair: true, hedge: true },
+      Medium: { part: "drill", count: 10, qtime: 60, topics: "all", step: 5, noise: 2.5, spread: 1, cost: 0.25, lot: 5, limit: 20, rounds: 4, moves: 4, width: 2, time: 25, sharp: 0.25, tighten: 0.2, showFair: false, hedge: true },
+      Hard: { part: "drill", count: 12, qtime: 45, topics: "all", step: 5, noise: 1.5, spread: 1, cost: 0.5, lot: 5, limit: 15, rounds: 5, moves: 5, width: 1, time: 15, sharp: 0.45, tighten: 0.35, showFair: false, hedge: false },
+    },
+    note: "Drill answers in index points or %. In the case, fair = spot × (1 + r·days/365) − dividends still to come.",
+  }, { gen, variety: true, count: s => s.count, perQSecs: s => s.qtime }, Case));
+})();

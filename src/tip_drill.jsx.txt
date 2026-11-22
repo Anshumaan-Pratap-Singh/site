@@ -1,0 +1,237 @@
+/* Shared drill engine for question-and-answer trainers, drawn with the OA console (TIP_KIT).
+   spec: {
+     gen(rng, settings, index, history) -> question,
+     count(s) and/or sessionSecs(s), perQSecs(s, i)   clocks (any combination)
+     penalty(s) -> points lost per wrong answer (0 = none), like negative marking in 80-in-8 tests
+     fast: true  -> no feedback pause; the right tile flashes and the next question appears (real OA pacing)
+     variety: true -> avoid repeats and rotate question kinds
+     summary(hist, s) -> extra result metrics [{label, value, key, raw}]
+   }
+   question: { prompt: node | fn({running, picked}), text, kind, input: "num" | "choice" | "custom",
+               choices: [{value, label, node}], cols, check(raw) -> bool, answer, explain,
+               memo: node (shown first for memoMs), render({submit, running}) for custom input } */
+var TIP_DRILL = (function () {
+  const { TH, TF, R, typing } = TIP;
+  const K = TIP_KIT;
+  const { useState, useEffect, useMemo, useRef } = R;
+
+  /* number parsing: fractions, decimals, percentages, simple expressions */
+  function num(raw) {
+    const t = String(raw == null ? "" : raw).trim().replace(/[−–]/g, "-").replace(/,/g, "");
+    if (!t) return NaN;
+    if (/^-?\d*\.?\d+$/.test(t)) return parseFloat(t);
+    if (/^-?\d*\.?\d+\s*%$/.test(t)) return parseFloat(t) / 100;
+    const v = yv(t);
+    return typeof v === "number" ? v : NaN;
+  }
+  const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
+  function frac(n, d) { if (d < 0) { n = -n; d = -d; } const g = gcd(n, d); n /= g; d /= g; return d === 1 ? String(n) : `${n}/${d}`; }
+  const near = (x, v, tol) => isFinite(x) && Math.abs(x - v) <= tol + 1e-12;
+  const fmtMs = ms => ms == null ? "—" : (ms / 1000).toFixed(1) + "s";
+  /* multiple-choice distractors around a numeric answer: plausible slips, never duplicates */
+  function options(rng, ans, n, make) {
+    const set = new Map([[String(ans), ans]]);
+    let guard = 0;
+    while (set.size < n && guard++ < 200) { const d = make(rng, ans, guard); if (d != null && isFinite(d) && !set.has(String(d))) set.set(String(d), d); }
+    return rng.shuffle([...set.values()]);
+  }
+
+  /* ---------- variety: no repeats, rotate kinds ---------- */
+  const SEEN_KEY = id => "tip-seen-" + id;
+  const readSeen = id => { try { const o = JSON.parse(localStorage.getItem(SEEN_KEY(id)) || "{}"); return o && typeof o === "object" ? o : {}; } catch (e) { return {}; } };
+  const baseKind = k => String(k == null ? "" : k).split(":")[0];
+  function fresh(spec, rng, s, i, hist, seen) {
+    const asked = new Set(hist.map(h => h.text));
+    const last = hist.length ? baseKind(hist[hist.length - 1].kind) : null;
+    const N = spec.candidates || 14;
+    let best = null, bestScore = Infinity;
+    for (let c = 0; c < N * 3 && (c < N || !best); c++) {
+      const q = spec.gen(rng, s, i, hist);
+      const k = q.kind == null ? q.text : String(q.kind);
+      if (asked.has(q.text)) continue;
+      const sc = (last != null && baseKind(k) === last && c < N * 3 - 1 ? 1e15 : 0) + (seen[k] || 0) + rng() * 1000;
+      if (sc < bestScore) { best = q; bestScore = sc; }
+    }
+    return best || spec.gen(rng, s, i, hist);
+  }
+
+  function Drill({ settings: s, onFinish, onRestart, spec, title }) {
+    const [rng] = useState(() => jt(spec.seed ? spec.seed() : undefined));
+    const seenRef = useRef(null);
+    if (!seenRef.current) seenRef.current = readSeen(spec.__id || "drill");
+    const nextQ = (i, h) => {
+      if (!spec.variety) return spec.gen(rng, s, i, h);
+      const q = fresh(spec, rng, s, i, h, seenRef.current);
+      const k = q.kind == null ? q.text : String(q.kind);
+      seenRef.current[k] = Date.now() + i;
+      try { const o = seenRef.current, ks = Object.keys(o); if (ks.length > 600) ks.sort((a, b) => o[a] - o[b]).slice(0, ks.length - 600).forEach(x => delete o[x]); localStorage.setItem(SEEN_KEY(spec.__id || "drill"), JSON.stringify(o)); } catch (e) {}
+      return q;
+    };
+    const total = spec.count ? spec.count(s) : null;
+    const sess = spec.sessionSecs ? spec.sessionSecs(s) : null;
+    const pen = spec.penalty ? Number(spec.penalty(s)) || 0 : 0;
+    const [hist, setHist] = useState([]);
+    const [q, setQ] = useState(() => nextQ(0, []));
+    const [qi, setQi] = useState(0);
+    const [fb, setFb] = useState(null);          /* {ok, given, timedOut, skipped} while the banner shows */
+    const [picked, setPicked] = useState(null);  /* fast mode: brief tile reveal */
+    const [t0] = useState(() => Date.now());
+    const [qt0, setQt0] = useState(() => Date.now());
+    const [done, setDone] = useState(false);
+    const [memo, setMemo] = useState(() => !!q.memo);
+    const perQ = spec.perQSecs ? spec.perQSecs(s, qi) : null;
+    const running = !done && !fb && !memo && picked == null;
+    const now = K.useTick(!done, spec.tick || 100);
+    const sessLeft = sess ? Math.max(0, sess - (now - t0) / 1000) : null;
+    const qLeft = perQ ? Math.max(0, perQ - Math.max(0, now - qt0) / 1000) : null;
+    const score = hist.reduce((a, h) => a + (h.ok ? 1 : h.skipped || h.timedOut ? 0 : -pen), 0);
+    let streak = 0; for (let i = hist.length - 1; i >= 0 && hist[i].ok; i--) streak++;
+
+    function record(ok, given, extra) {
+      const h = { ok, given: q.givenText ? q.givenText(given) : given, kind: q.kind, text: q.text, answer: q.answer, explain: q.explain, ms: Date.now() - qt0, ...(extra || {}) };
+      setHist(x => [...x, h]);
+      return h;
+    }
+    function advance(nh) {
+      const n = nh.length;
+      if ((total && n >= total) || (sess && (Date.now() - t0) / 1000 >= sess)) { setDone(true); return; }
+      const nq = nextQ(n, nh);
+      setQ(nq); setQi(n); setFb(null); setPicked(null); setMemo(!!nq.memo); setQt0(Date.now() + (nq.memo ? nq.memoMs || 0 : 0));
+    }
+    function submit(raw) {
+      if (!running) return;
+      const ok = !!q.check(raw);
+      const h = record(ok, raw, spec.onRecord ? spec.onRecord(q, raw) : undefined);
+      const nh = [...hist, h];
+      if (spec.fast) { setPicked(raw); setTimeout(() => advance(nh), ok ? (spec.okMs || 260) : (spec.badMs || 650)); }
+      else if (ok && !spec.always) { setPicked(raw); setTimeout(() => advance(nh), 420); }
+      else setFb({ ok, given: raw, nh });
+    }
+    function skip() { if (!running) return; const h = record(false, "", { skipped: true }); const nh = [...hist, h]; if (spec.fast) advance(nh); else setFb({ ok: false, skipped: true, nh }); }
+
+    useEffect(() => { if (sess && sessLeft <= 0 && !done) setDone(true); }, [sessLeft != null && sessLeft <= 0]);
+    useEffect(() => {
+      if (!(perQ && running && qLeft <= 0)) return;
+      if (q.timeoutAnswer !== undefined) { submit(q.timeoutAnswer); return; }
+      const h = record(false, "", { timedOut: true }); const nh = [...hist, h];
+      if (spec.fast) { setPicked("\u0000"); setTimeout(() => advance(nh), 650); } else setFb({ ok: false, timedOut: true, nh });
+    }, [qLeft != null && qLeft <= 0, running]);
+    useEffect(() => { if (!memo) return; const t = setTimeout(() => setMemo(false), q.memoMs || 1500); return () => clearTimeout(t); }, [memo, qi]);
+    useEffect(() => {
+      if (!running || !spec.skipChoice) return;
+      const h = e => { if (!typing(e) && e.key === " ") { e.preventDefault(); skip(); } };
+      window.addEventListener("keydown", h);
+      return () => window.removeEventListener("keydown", h);
+    }, [running, q]);
+    useEffect(() => {
+      if (!running || !q.keys) return;
+      const h = e => { if (typing(e)) return; if (q.keys[e.key] !== undefined) { e.preventDefault(); submit(q.keys[e.key]); } };
+      window.addEventListener("keydown", h);
+      return () => window.removeEventListener("keydown", h);
+    }, [running, q]);
+
+    const res = useMemo(() => {
+      if (!done) return null;
+      const n = hist.length, c = hist.filter(h => h.ok).length, wrong = hist.filter(h => !h.ok && !h.skipped && !h.timedOut).length;
+      const okMs = hist.filter(h => h.ok).map(h => h.ms);
+      let best = 0, run = 0; hist.forEach(h => { run = h.ok ? run + 1 : 0; best = Math.max(best, run); });
+      const extra = spec.summary ? Object.fromEntries(spec.summary(hist, s).filter(m => m.key).map(m => [m.key, m.raw])) : {};
+      return { score: Math.round(score * 100) / 100, correct: c, wrong, total: n, acc: n ? c / n : 0, avgMs: okMs.length ? okMs.reduce((a, b) => a + b, 0) / okMs.length : null, bestStreak: best, ...extra };
+    }, [done]);
+    Jt(done, res, onFinish);
+    const errIds = TIP_READY.useErrLog(done && !!res, hist, spec.__id);
+
+    if (done && res) {
+      const outOf = total || res.total;
+      return (
+        <K.Result headline={`${res.score} point${res.score === 1 ? "" : "s"}`} sub={`${res.correct} right, ${res.wrong} wrong${pen ? ` (−${pen} each)` : ""}, ${res.total - res.correct - res.wrong} skipped or timed out` + (total && res.total < total ? ` · reached ${res.total} of ${total}` : "")}
+          ring={res.total ? res.correct / Math.max(outOf, 1) : 0} ringLabel={Math.round(res.acc * 100) + "%"} onRestart={onRestart} notes={spec.notes || null}
+          metrics={[
+            { label: "Accuracy", value: Math.round(res.acc * 100) + "%", sub: `${res.correct}/${res.total} answered right` },
+            { label: "Avg time", value: fmtMs(res.avgMs), sub: "per correct answer" },
+            { label: "Best streak", value: String(res.bestStreak) },
+            ...(spec.summary ? spec.summary(hist, s).map(m => ({ label: m.label, value: m.value, sub: m.sub })) : []),
+          ]}
+          review={hist.map((h, i) => ({ tag: errIds[i], ok: h.ok, text: h.text, shown: h.ok ? h.answer : h.timedOut ? "timed out" : h.skipped ? "skipped" : String(h.given), answer: h.answer, explain: h.explain, ms: h.ms }))} />
+      );
+    }
+
+    const clock = sess != null ? sessLeft : qLeft;
+    const clockFrac = sess != null ? sessLeft / sess : perQ ? qLeft / perQ : null;
+    const results = hist.map(h => h.ok ? true : h.skipped || h.timedOut ? null : false);
+    const isChoice = q.input === "choice";
+    const okVal = isChoice ? (q.choices.find(c => q.check(c.value)) || {}).value : undefined;
+    return (
+      <K.Stage title={title || spec.title} sub={total ? `Question ${Math.min(qi + 1, total)} of ${total}` : `Question ${qi + 1}`} clock={clock} clockFrac={clockFrac}
+        stats={[{ label: "Score", value: Math.round(score * 100) / 100, pop: true }, { label: "Streak", value: streak, tone: streak >= 3 ? "hot" : "", pop: true }]}
+        total={total} results={results} at={qi} cls={spec.cls}>
+        <div key={qi} className={"oa-q" + (picked != null || fb ? (fb ? (fb.ok ? " ok" : " bad") : q.check(picked) ? " ok" : " bad") : "")}>
+          {memo ? <div className="oa-memo">{q.memo}</div> : <div className="oa-prompt">{typeof q.prompt === "function" ? q.prompt({ running, picked, fb }) : q.prompt}</div>}
+          {memo ? null : q.input === "custom" ? q.render({ submit, running, picked, fb })
+            : isChoice ? <TF><K.Choices items={q.choices} cols={q.cols} cls={q.choiceCls} disabled={!running} onPick={submit} picked={fb ? fb.given : picked} correct={okVal} />
+              {spec.skipChoice ? <button className="ghost sm oa-skip" disabled={!running} onClick={skip}>Skip <kbd>Space</kbd></button> : null}</TF>
+              : !fb ? <K.NumIn key={qi} onSubmit={submit} disabled={!running} placeholder={q.placeholder} unit={q.unit} onSkip={spec.noSkip ? null : skip} /> : null}
+          {fb ? (
+            <K.Banner ok={fb.ok} onNext={() => advance(fb.nh)} title={fb.ok ? "Correct." : fb.timedOut ? "Time's up." : fb.skipped ? "Skipped." : "Not quite."}>
+              {!fb.ok ? <TF>The answer is <b><K.T>{String(q.answer)}</K.T></b>. </TF> : null}{q.explain ? <K.T>{q.explain}</K.T> : null}
+            </K.Banner>
+          ) : picked != null && !q.check(picked) && spec.fast && !isChoice ? <div className="oa-quick">Answer: <b><K.T>{String(q.answer)}</K.T></b></div> : null}
+        </div>
+      </K.Stage>
+    );
+  }
+
+  /* helper to build a trainer definition that uses the drill engine */
+  function trainer(def, spec) {
+    spec.__id = def.id;
+    const C = props => TH(Drill, { ...props, spec, title: def.name });
+    const extraStats = plays => {
+      if (!plays.length) return null;
+      const q = plays.reduce((a, p) => a + (p.total || 0), 0), c = plays.reduce((a, p) => a + (p.correct || 0), 0);
+      const ms = plays.filter(p => p.avgMs != null), avg = ms.length ? ms.reduce((a, p) => a + p.avgMs * (p.correct || 1), 0) / ms.reduce((a, p) => a + (p.correct || 1), 0) : null;
+      const streak = Math.max(0, ...plays.map(p => p.bestStreak || 0));
+      const last = plays.slice(-5), lastAcc = last.reduce((a, p) => a + (p.total || 0), 0) ? last.reduce((a, p) => a + (p.correct || 0), 0) / last.reduce((a, p) => a + (p.total || 0), 0) : null;
+      return (
+        <div className="tip-stats tip-stats4">
+          <div className="tip-stat"><span>Accuracy</span><b>{q ? Math.round(c / q * 100) + "%" : "—"}</b><em>{c}/{q} questions</em></div>
+          <div className="tip-stat"><span>Last 5 sessions</span><b>{lastAcc == null ? "—" : Math.round(lastAcc * 100) + "%"}</b><em>accuracy</em></div>
+          <div className="tip-stat"><span>Avg time</span><b>{fmtMs(avg)}</b><em>per correct answer</em></div>
+          <div className="tip-stat"><span>Best streak</span><b>{streak}</b><em>in a row</em></div>
+        </div>
+      );
+    };
+    const note = p => p.diff;
+    const charts = plays => [
+      { title: "Accuracy", sub: "% correct per session", label: "Accuracy", data: plays.filter(p => p.total).map(p => ({ ts: p.ts, v: (p.correct || 0) / p.total * 100, note: note(p) })), fmt: v => Math.round(v) + "%" },
+      { title: "Solve speed", sub: "avg seconds per correct answer · lower is better", label: "Avg time", data: plays.filter(p => p.avgMs != null).map(p => ({ ts: p.ts, v: p.avgMs / 1000, note: note(p) })), fmt: v => v.toFixed(v < 10 ? 1 : 0) + "s" },
+    ];
+    const version = def.version || 2;
+    return { metric: "score", unit: " pts", extraStats, charts, playFilter: p => (p.v || 1) === version, ...def, version, spec, component: C };
+  }
+
+  /* a trainer with timed drills and a live case; stats are kept apart for the two parts */
+  const PART = { key: "part", label: "Practice", type: "sel", wide: true, always: true, choices: [{ value: "drill", label: "Timed drills" }, { value: "case", label: "Live case" }] };
+  function course(def, spec, Case) {
+    const base = trainer(def, spec);
+    const C = props => props.settings.part === "case"
+      ? TH(Case, { ...props, onFinish: r => props.onFinish({ ...r, part: "case", modeLabel: "Live case" }) })
+      : TH(Drill, { ...props, spec, title: def.name, onFinish: r => props.onFinish({ ...r, part: "drill", modeLabel: "Drills" }) });
+    return {
+      ...base, splitBy: "part", metricOf: c => c.part === "case" ? "pnl" : "score",
+      charts: (plays, c) => c.part === "case" ? (def.caseCharts ? def.caseCharts(plays) : []) : base.charts(plays),
+      extraStats: (plays, c) => c.part === "case" ? (def.caseStats ? def.caseStats(plays) : null) : base.extraStats(plays),
+      component: C,
+    };
+  }
+  /* maths helpers for the trading trainers */
+  function erf(x) { const s = Math.sign(x); x = Math.abs(x); const t = 1 / (1 + 0.3275911 * x); const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return s * y; }
+  const ncdf = x => 0.5 * (1 + erf(x / Math.SQRT2));
+  function bs(S, K, T, v, put) {
+    if (T <= 0 || v <= 0) { const c = Math.max(S - K, 0); return { price: put ? Math.max(K - S, 0) : c, delta: put ? (S < K ? -1 : 0) : (S > K ? 1 : 0), gamma: 0, vega: 0 }; }
+    const sd = v * Math.sqrt(T), d1 = (Math.log(S / K) + sd * sd / 2) / sd, d2 = d1 - sd;
+    const c = S * ncdf(d1) - K * ncdf(d2), pdf = Math.exp(-d1 * d1 / 2) / Math.sqrt(2 * Math.PI);
+    const g = pdf / (S * sd), vega = S * pdf * Math.sqrt(T) / 100;
+    return put ? { price: c - S + K, delta: ncdf(d1) - 1, gamma: g, vega } : { price: c, delta: ncdf(d1), gamma: g, vega };
+  }
+  return { Drill, trainer, course, PART, num, gcd, frac, near, ncdf, bs, fresh, options };
+})();

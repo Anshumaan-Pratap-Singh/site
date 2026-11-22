@@ -1,0 +1,43 @@
+/* Signal Odds: the probabilistic "weather prediction" learning task (as in Pymetrics-style games).
+   Four symbols each carry a fixed hidden chance of sun. Each day shows one to three symbols; forecast Sun or
+   Rain, see what happened, and learn the odds. You are scored on choosing the more likely outcome, not on luck. */
+(function () {
+  const { TH, TF } = TIP;
+  const { trainer } = TIP_DRILL;
+  const K = TIP_KIT;
+  const SYM = [["diamond", 1], ["circle", 5], ["triangle", 3], ["star", 2]];
+  let S = null;   /* this session's hidden odds, set on the first trial */
+  function gen(r, s, i) {
+    if (i === 0 || !S) S = r.shuffle(s.level === 3 ? [0.75, 0.6, 0.4, 0.25] : [0.9, 0.7, 0.3, 0.1]);
+    const k = r.int(1, s.level === 1 ? 2 : 3), cards = r.shuffle([0, 1, 2, 3]).slice(0, k).sort();
+    /* naive Bayes with a 50% prior: multiply odds */
+    const odds = cards.reduce((o, c) => o * S[c] / (1 - S[c]), 1), p = odds / (1 + odds);
+    const sun = r() < p, best = p >= 0.5 ? "sun" : "rain";
+    const outcome = sun ? "sun" : "rain";
+    return {
+      text: `Day ${i + 1}: ${cards.map(c => SYM[c][0]).join(" + ")} (P(sun) = ${Math.round(p * 100)}%)`, kind: "d" + cards.join(""), answer: best === "sun" ? "Sun" : "Rain",
+      explain: `With these symbols the chance of sun was ${Math.round(p * 100)}%, so the better forecast was ${best}. It was actually ${outcome}.`,
+      prompt: ({ picked }) => <div className="col" style={{ alignItems: "center", gap: 10 }}>
+        <div className="oa-lbl">Today's signals</div>
+        <div className="sg-row">{cards.map(c => <div key={c} className="sg-card"><K.Art w={70} h={70}><K.Shape kind={SYM[c][0]} x={35} y={35} r={22} fill="half" tone={SYM[c][1]} /></K.Art></div>)}</div>
+        {picked != null ? <div className={"sg-out " + outcome}>{outcome === "sun" ? "☀ It was sunny" : "☂ It rained"}<em>chance of sun was {Math.round(p * 100)}%</em></div> : <div className="sg-out wait">Forecast the weather</div>}
+      </div>,
+      input: "choice", cols: 2, choices: [{ value: "sun", node: <span>☀ Sun</span> }, { value: "rain", node: <span>☂ Rain</span> }], check: v => v === best,
+    };
+  }
+  function summary(hist) {
+    const half = Math.floor(hist.length / 2), late = hist.slice(half), acc = late.length ? late.filter(h => h.ok).length / late.length : 0;
+    return [{ label: "Second half", value: Math.round(acc * 100) + "%", key: "lateAcc", raw: acc, sub: "best-forecast rate once learnt" }];
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "signal", name: "Signal Odds", version: 2,
+    blurb: "The weather-prediction learning task from game-based assessments: four symbols carry fixed hidden chances of sun. Forecast each day from the symbols shown, see the outcome, and learn the odds. Scored on picking the more likely outcome, not on luck.",
+    fields: [
+      { key: "count", label: "Days", type: "num", min: 20, max: 120 },
+      { key: "time", label: "Time per day", type: "num", min: 2, max: 20, unit: "s" },
+      { key: "level", label: "Signals", type: "sel", choices: [{ value: 1, label: "Strong (90/70/30/10%), up to 2" }, { value: 2, label: "Strong, up to 3" }, { value: 3, label: "Weak (75/60/40/25%), up to 3" }] },
+    ],
+    presets: { Easy: { count: 30, time: 8, level: 1 }, Medium: { count: 50, time: 5, level: 2 }, Hard: { count: 70, time: 4, level: 3 } },
+    note: "Several symbols combine: multiply their odds. Even a perfect forecaster is 'wrong' about the weather sometimes; only your choice is scored.",
+  }, { gen, count: s => s.count, perQSecs: s => s.time, fast: true, okMs: 900, badMs: 1300, summary }));
+})();

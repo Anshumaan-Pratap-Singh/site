@@ -1,0 +1,76 @@
+/* Dial Lock: a timing task in the style of Arctic Shores real-time games. A needle sweeps round a dial, speeding
+   up, slowing down and reversing; stop it inside the gold arc to unlock each digit. A miss resets the current lock. */
+(function () {
+  const { TH, TF, R, typing } = TIP;
+  const { useState, useEffect, useMemo, useRef } = R;
+  const K = TIP_KIT;
+  function Game({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const mk = () => ({ at: rng() * 360, w: s.arc * (0.85 + rng() * 0.3), base: s.speed * (0.8 + rng() * 0.5), wob: rng() * 0.9, dir: rng() < 0.5 ? 1 : -1, flip: s.reverse ? 1.2 + rng() * 2 : 99 });
+    const [lock, setLock] = useState(0), [digit, setDigit] = useState(0), [arc, setArc] = useState(mk);
+    const [stops, setStops] = useState(0), [misses, setMisses] = useState(0), [flash, setFlash] = useState(null), [done, setDone] = useState(false);
+    const ang = useRef(rng() * 360), tt = useRef(0), [, tick] = useState(0), t0 = useRef(Date.now());
+    useEffect(() => {
+      if (done) return;
+      let raf, last = performance.now(), dir = 1, nextFlip = arc.flip;
+      const step = now => {
+        const dt = Math.min(0.05, (now - last) / 1000); last = now; tt.current += dt;
+        if (tt.current > nextFlip) { dir = -dir; nextFlip = tt.current + arc.flip; }
+        const sp = arc.base * (1 + arc.wob * Math.sin(tt.current * 2.1));
+        ang.current = (ang.current + dir * arc.dir * sp * dt + 360) % 360;
+        tick(x => x + 1); raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step); return () => cancelAnimationFrame(raf);
+    }, [arc, done]);
+    const inArc = () => { const d = ((ang.current - arc.at) % 360 + 540) % 360 - 180; return Math.abs(d) <= arc.w / 2; };
+    function stop() {
+      if (done || flash) return;
+      setStops(n => n + 1);
+      if (inArc()) {
+        setFlash("ok");
+        setTimeout(() => {
+          setFlash(null);
+          if (digit + 1 >= s.digits) { if (lock + 1 >= s.locks) { setDone(true); return; } setLock(lock + 1); setDigit(0); } else setDigit(digit + 1);
+          setArc(mk());
+        }, 380);
+      } else { setMisses(m => m + 1); setFlash("bad"); setTimeout(() => { setFlash(null); setDigit(0); setArc(mk()); }, 520); }
+    }
+    useEffect(() => { const h = e => { if (e.key === " " && !typing(e)) { e.preventDefault(); stop(); } }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); });
+    const res = useMemo(() => done ? { score: Math.max(0, s.locks * s.digits * 10 - misses * 5), misses, stops, secs: Math.round((Date.now() - t0.current) / 1000), correct: s.locks * s.digits, total: stops } : null, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={`${s.locks} lock${s.locks === 1 ? "" : "s"} opened`} sub={`${res.misses} misses · ${res.secs}s`} ring={res.total ? res.correct / res.total : 0} onRestart={onRestart}
+      metrics={[{ label: "Score", value: res.score, sub: "10 per digit − 5 per miss" }, { label: "Stop accuracy", value: K.pct(res.correct / Math.max(1, res.total)) }, { label: "Time", value: res.secs + "s" }]}
+      notes="Watch one full sweep before committing: learn where the needle slows down, and press as it enters the arc rather than when it is already there." />;
+    const C = 110, Rr = 88, a0 = (arc.at - arc.w / 2 - 90) * Math.PI / 180, a1 = (arc.at + arc.w / 2 - 90) * Math.PI / 180;
+    const P = a => [C + Rr * Math.cos(a), C + Rr * Math.sin(a)], [x0, y0] = P(a0), [x1, y1] = P(a1), na = (ang.current - 90) * Math.PI / 180;
+    return (
+      <K.Stage title="Dial Lock" sub={`Lock ${lock + 1} of ${s.locks} · digit ${digit + 1} of ${s.digits}`} stats={[{ label: "Misses", value: misses, tone: misses ? "dn" : "", pop: true }]}>
+        <div className="dl-wrap" onPointerDown={e => { e.preventDefault(); stop(); }}>
+          <div className="dl-code">{Array.from({ length: s.digits }, (_, i) => <i key={i} className={i < digit ? "on" : i === digit ? "cur" : ""} />)}</div>
+          <svg viewBox="0 0 220 220" className={"dl-dial" + (flash ? " " + flash : "")}>
+            <circle cx={C} cy={C} r="100" className="dl-face" />
+            {Array.from({ length: 36 }, (_, i) => { const a = i * 10 * Math.PI / 180; return <path key={i} d={`M${C + 92 * Math.cos(a)},${C + 92 * Math.sin(a)}L${C + (i % 3 ? 97 : 100) * Math.cos(a)},${C + (i % 3 ? 97 : 100) * Math.sin(a)}`} className="dl-tick" />; })}
+            <path d={`M${x0},${y0}A${Rr},${Rr} 0 ${arc.w > 180 ? 1 : 0},1 ${x1},${y1}`} className="dl-arc" />
+            <path d={`M${C},${C}L${C + 84 * Math.cos(na)},${C + 84 * Math.sin(na)}`} className="dl-needle" />
+            <circle cx={C} cy={C} r="7" className="dl-hub" />
+          </svg>
+          <div className="small muted" style={{ textAlign: "center" }}>Press <kbd>Space</kbd> or tap when the needle is inside the gold arc.</div>
+        </div>
+      </K.Stage>
+    );
+  }
+  TIP_TRAINERS.register({
+    id: "dial", name: "Dial Lock", metric: "score", unit: " pts", version: 2, playFilter: K.versioned(2),
+    blurb: "A real-time timing task like the Arctic Shores dial games: a needle sweeps round, speeding up, slowing and reversing. Stop it inside the gold arc for each digit of the code; a miss resets the lock.",
+    fields: [
+      { key: "locks", label: "Locks", type: "num", min: 1, max: 8 },
+      { key: "digits", label: "Digits per lock", type: "num", min: 2, max: 6 },
+      { key: "arc", label: "Arc width", type: "num", min: 10, max: 60, unit: "°" },
+      { key: "speed", label: "Needle speed", type: "num", min: 60, max: 400, unit: "°/s" },
+      { key: "reverse", label: "Needle reverses", type: "bool" },
+    ],
+    presets: { Easy: { locks: 2, digits: 3, arc: 40, speed: 120, reverse: false }, Medium: { locks: 3, digits: 3, arc: 30, speed: 170, reverse: true }, Hard: { locks: 4, digits: 4, arc: 22, speed: 230, reverse: true } },
+    note: "Each digit gets a new arc, speed and rhythm.",
+    component: Game,
+  });
+})();

@@ -1,0 +1,195 @@
+"""Smoke test for Trading Interview Practice.
+
+Opens the built app in a headless browser and walks through every tab, every lesson,
+every trainer and every Market Game (pressing Start and letting each one run a few
+seconds), plus the search boxes and a question modal. It fails if any page error,
+console error or error screen appears, or if a screen renders nothing.
+
+  pip install playwright && playwright install chromium
+  python3 src/smoke_test.py [ARTIFACT_ROOT]   # default: folder above src/
+
+Run it after src/build.py and before every publish. Exit code 0 = pass.
+"""
+import contextlib, functools, http.server, pathlib, socketserver, sys, threading, time
+from playwright.sync_api import sync_playwright
+
+_args = [a for a in sys.argv[1:] if not a.startswith('--')]
+ROOT = pathlib.Path(_args[0] if _args else pathlib.Path(__file__).resolve().parent.parent)
+TABS = ['dashboard', 'trading', 'coding', 'lessons', 'trainers', 'games', 'firms', 'glossary']
+GAMES = ['trading', 'dice', 'events', 'etf', 'cards', 'board', 'fermi', 'hilo', 'oddsbet', 'cardmarket', 'superday']
+# requests to other hosts (fonts, CDNs) may fail offline; that is not an app error
+IGNORE = ('Failed to load resource', 'net::ERR', 'fonts.googleapis', 'fonts.gstatic', 'favicon')
+
+
+@contextlib.contextmanager
+def serve(root):
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+    handler = functools.partial(Quiet, directory=str(root))
+    with socketserver.ThreadingTCPServer(('127.0.0.1', 0), handler) as httpd:
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        yield f'http://127.0.0.1:{httpd.server_address[1]}/'
+        httpd.shutdown()
+
+
+class Run:
+    def __init__(self, page):
+        self.page, self.errors, self.where, self.checked = page, [], 'start', 0
+        page.on('pageerror', lambda e: self.errors.append(f'[{self.where}] page error: {e}'))
+        page.on('console', lambda m: m.type == 'error' and not any(s in m.text for s in IGNORE)
+                and self.errors.append(f'[{self.where}] console: {m.text[:300]}'))
+
+    def go(self, hash_, label=None, wait=350):
+        self.where = label or '#' + hash_
+        self.page.evaluate('h => { location.hash = h }', hash_)
+        self.page.wait_for_timeout(wait)
+        self.ok()
+
+    def ok(self, need_text=True):
+        self.checked += 1
+        p = self.page
+        if p.get_by_role('button', name='Back to dashboard').count():
+            self.errors.append(f'[{self.where}] error screen shown')
+            p.evaluate('() => { location.hash = "dashboard" }'); p.wait_for_timeout(300)
+            p.get_by_role('button', name='Try again').first.click(timeout=2000) if p.get_by_role('button', name='Try again').count() else None
+        elif need_text and len(p.inner_text('#root').strip()) < 40:
+            self.errors.append(f'[{self.where}] screen is empty')
+
+    def expect(self, cond, msg):
+        self.checked += 1
+        if not cond:
+            self.errors.append(f'[{self.where}] {msg}')
+
+
+def pick_filter(page, label, option):
+    """Choose an option in a filter row, whether it shows chips or (when they don't fit) a dropdown."""
+    row = page.locator('.tip-fbar .tf-row').filter(has=page.locator('.flbl', has_text=label))
+    if row.locator('.tf-chips').count():
+        row.locator('.tf-chips').get_by_role('button', name=option, exact=True).click()
+    else:
+        row.locator('.tf-btn').click(); row.get_by_role('option', name=option, exact=True).click()
+
+
+def count_of(page):
+    t = page.locator('.tip-fcount span').first.inner_text()
+    return int(t.split()[0])
+
+
+def run(url, viewport, full):
+    with sync_playwright() as pw:
+        b = pw.chromium.launch()
+        ctx = b.new_context(viewport=viewport, reduced_motion='reduce')
+        page = ctx.new_page()
+        r = Run(page)
+        page.goto(url + '#dashboard')
+        page.wait_for_function('() => window.__TIP && document.querySelector(".tabs")', timeout=20000)
+        page.wait_for_timeout(1500)  # question banks load
+        r.ok()
+        for t in TABS:
+            r.go(t)
+        r.expect(page.locator('.tabs .tab').count() == len(TABS), f'expected {len(TABS)} tabs')
+
+        # trading questions: open a question, check an answer, close
+        r.go('trading')
+        r.expect(page.locator('.qrow').count() > 0, 'no questions listed')
+        if page.locator('.qrow').count():
+            r.where = 'question modal'
+            page.locator('.qrow').first.click(); page.wait_for_timeout(400); r.ok()
+            page.keyboard.press('Escape'); page.wait_for_timeout(200)
+
+        # lessons: search, filters, every lesson page
+        r.go('lessons')
+        r.where = 'lessons search'
+        total = count_of(page)
+        r.expect(total >= 30, f'only {total} lessons listed')
+        page.fill('.tip-fbar input', 'zzzqqq'); page.wait_for_timeout(150)
+        r.expect(count_of(page) == 0 and page.locator('.tip-fempty').count() == 1, 'nonsense search should match nothing')
+        page.fill('.tip-fbar input', 'option'); page.wait_for_timeout(150)
+        r.expect(0 < count_of(page) < total, 'search "option" should narrow the list')
+        page.get_by_role('button', name='Clear filters').first.click(); page.wait_for_timeout(150)
+        r.expect(count_of(page) == total, 'Clear filters should restore all lessons')
+        st_row = page.locator('.tip-fbar .tf-row').filter(has=page.locator('.flbl', has_text='Status'))
+        if st_row.locator('.tf-chips').count():   # chips fit on one line
+            st_row.locator('.tf-chips').get_by_role('button', name='Done').click()
+        else:                                      # narrow screen or wide fallback font: dropdown
+            st_row.locator('.tf-btn').click(); st_row.get_by_role('option', name='Done').click()
+        page.wait_for_timeout(150)
+        r.ok(need_text=True)
+        page.get_by_role('button', name='Clear filters').first.click()
+        ids = page.evaluate('() => window.__TIP.TIP_LEARN.allLessons().map(l => l.id)')
+        for i in (ids if full else ids[:4]):
+            r.go('lessons-' + i, wait=200)
+        r.go('lessons')  # back from a lesson page to the list must keep working
+        r.expect(count_of(page) == total, 'lessons list after visiting a lesson')
+
+        # readiness: list, search, filters, every firm page
+        r.go('firms')
+        r.where = 'firms search'
+        total = count_of(page)
+        r.expect(total >= 35, f'only {total} firms listed')
+        page.fill('.tip-fbar input', 'zzzqqq'); page.wait_for_timeout(150)
+        r.expect(count_of(page) == 0, 'nonsense search should match nothing')
+        page.fill('.tip-fbar input', 'optiver'); page.wait_for_timeout(150)
+        r.expect(count_of(page) == 1, 'search "optiver" should find one firm')
+        page.get_by_role('button', name='Clear filters').first.click(); page.wait_for_timeout(150)
+        pick_filter(page, 'Type', 'Hedge funds'); page.wait_for_timeout(100)
+        r.expect(0 < count_of(page) < total, 'type filter should narrow the list')
+        page.get_by_role('button', name='Clear filters').first.click(); page.wait_for_timeout(150)
+        firms = page.evaluate('() => window.__TIP.TIP_READY.FIRMS.map(f => f.id)')
+        for i in (firms if full else firms[:3]):
+            r.go('firms-' + i, wait=150)
+            r.expect(page.locator('.rd-st').count() > 0, 'firm page has no skill areas')
+        r.go('firms')
+        r.expect(count_of(page) == total, 'firms list after visiting a firm')
+
+        # trainers and games: search + every one started
+        for tab, ids in (('trainers', None), ('games', GAMES)):
+            r.go(tab)
+            r.where = tab + ' search'
+            total = count_of(page)
+            page.fill('.tip-fbar input', 'zzzqqq'); page.wait_for_timeout(150)
+            r.expect(count_of(page) == 0, 'nonsense search should match nothing')
+            page.get_by_role('button', name='Clear filters').first.click(); page.wait_for_timeout(150)
+            for s in ('A–Z', 'Most played', 'Recently played', 'By section'):
+                pick_filter(page, 'Sort', s); page.wait_for_timeout(100)
+                r.expect(count_of(page) == total, f'sort {s} changed the count')
+            pick_filter(page, 'Status', 'Not played'); page.wait_for_timeout(100)
+            r.ok()
+            page.get_by_role('button', name='Clear filters').first.click()
+            if ids is None:
+                ids = page.evaluate('() => Object.keys(window.__TIP.TIP_TRAINERS.DEFS)')
+                r.expect(len(ids) >= 40, f'only {len(ids)} trainers registered')
+            for i in (ids if full else ids[:3]):
+                r.go(f'{tab}-{i}', f'{tab}/{i} settings', wait=300)
+                btn = page.get_by_role('button', name='Start Game')
+                if not btn.count():
+                    r.errors.append(f'[{r.where}] no Start Game button'); continue
+                btn.first.click()
+                r.where = f'{tab}/{i} playing'
+                page.wait_for_timeout(4200)  # 3-2-1 countdown, then a moment of play
+                r.ok()
+                r.expect(not page.get_by_role('button', name='Start Game').count() or page.locator('.tip-cd').count() == 0,
+                         'game did not start')
+            r.go(tab)
+        b.close()
+        return r
+
+
+def main():
+    full = '--quick' not in sys.argv
+    fails = 0
+    with serve(ROOT) as url:
+        for name, vp in (('desktop', {'width': 1280, 'height': 860}), ('phone', {'width': 390, 'height': 844})):
+            t0 = time.time()
+            r = run(url, vp, full=full and name == 'desktop')  # phone: a sample of each list
+            print(f'{name}: {r.checked} checks, {len(r.errors)} problems, {time.time() - t0:.0f}s')
+            for e in r.errors:
+                print('  ', e)
+            fails += len(r.errors)
+    print('PASS' if not fails else 'FAIL')
+    sys.exit(1 if fails else 0)
+
+
+if __name__ == '__main__':
+    main()

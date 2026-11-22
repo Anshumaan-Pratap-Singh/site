@@ -1,0 +1,102 @@
+/* Prediction Markets: lessons, timed drills and a live news-driven trading case. */
+(function () {
+  const { TH, R } = TIP;
+  const { useState, useMemo } = R;
+  const { course, PART, num } = TIP_DRILL;
+  const S_ = String.raw;
+  const pc = v => (v * 100).toFixed(1).replace(/\.0$/, "") + "%";
+
+  /* lessons now live in the Lessons tab (learn_p3) */
+
+
+  const Q = {
+    implied: r => { if (r() < 0.5) { const p = r.int(5, 95); return { q: S_`A contract paying \$100 if YES trades at \$${p}. What probability does the market imply, in %?`, v: p, a: p + "%", tol: 0.01, x: S_`$${p}/100 = ${p}\%$.` }; }
+      const o = r.pick([1.25, 1.5, 1.6, 2, 2.5, 3, 4, 5, 8]); const v = 100 / o; return { q: S_`Decimal odds of ${o}. What probability is implied, in %?`, v, a: v.toFixed(1) + "%", tol: 0.06, x: S_`$1/${o} = ${v.toFixed(1)}\%$.` }; },
+    ev: r => { const p = r.int(10, 90), q = Math.max(1, Math.min(99, p + r.int(-15, 15))), buy = r() < 0.5; const v = buy ? q - p : p - q;
+      return { q: S_`You think YES is ${q}% likely. You can ${buy ? "buy" : "sell"} the \$100 contract at \$${p}. What is your expected value per contract?`, v, a: (v < 0 ? "-$" : "$") + Math.abs(v), tol: 0.01, x: S_`${buy ? `$100(${q / 100} - ${p / 100})` : `$100(${p / 100} - ${q / 100})`} = ${v}$.` }; },
+    overround: r => { const n = r.int(2, 4); let w = Array.from({ length: n }, () => 1 + r() * 3); const W = w.reduce((a, b) => a + b, 0);
+      const extra = r.int(2, 10), ps = w.map(x => Math.max(3, Math.round(x / W * (100 + extra))));
+      let T = ps.reduce((a, b) => a + b, 0); if (T <= 100) { ps[0] += 101 - T; T = 101; } const v = ps[0] / T * 100;
+      return r() < 0.5 ? { q: S_`Mutually exclusive outcomes are priced at ${ps.join("%, ")}%. What is the overround, in %?`, v: T - 100, a: (T - 100) + "%", tol: 0.01, x: S_`They add to ${T}%, so the overround is ${T - 100}%.` }
+        : { q: S_`Mutually exclusive outcomes are priced at ${ps.join("%, ")}%. What is the normalised probability of the first, in %?`, v, a: v.toFixed(1) + "%", tol: 0.06, x: S_`$${ps[0]}/${T} = ${v.toFixed(1)}\%$.` }; },
+    arb: r => { const n = 3; let bids, asks, t = 0;
+      do { const mids = Array.from({ length: n }, () => r.int(15, 50)); const sh = r.int(-6, 6); bids = mids.map(m => m - 1 + Math.round(sh / 3)); asks = bids.map(b => b + r.int(2, 3)); t++; } while (t < 50 && Math.abs(bids.reduce((a, b) => a + b, 0) - 100) > 12);
+      const sb = bids.reduce((a, b) => a + b, 0), sa = asks.reduce((a, b) => a + b, 0);
+      const ans = sb > 100 ? `Sell all, $${sb - 100}` : sa < 100 ? `Buy all, $${100 - sa}` : "No arbitrage";
+      const choices = [ans, sb > 100 ? `Buy all, $${Math.abs(100 - sa) || 1}` : `Sell all, $${Math.abs(sb - 100) || 1}`, ans === "No arbitrage" ? `Buy all, $${Math.abs(100 - sa) || 2}` : "No arbitrage"];
+      return { q: S_`Three outcomes, exactly one pays \$100. Bids \$${bids.join(", \\$")} and asks \$${asks.join(", \\$")}. What do you do?`, choices: [...new Set(choices)], v: ans, a: ans, x: S_`Bids add to \$${sb} and asks to \$${sa}. ${sb > 100 ? `Selling one of each locks in \\$${sb - 100}.` : sa < 100 ? `Buying one of each costs \\$${sa} and pays \\$100.` : "Neither crosses \\$100, so there's nothing to lock in."}` }; },
+    kelly: r => { const p = r.pick([20, 25, 30, 40, 50, 60]), q = p + r.pick([5, 10, 15, 20]); const v = (q - p) / (100 - p) * 100;
+      return { q: S_`A YES contract costs ${p}% of the payout and you believe ${q}%. What Kelly fraction of your bankroll do you stake, in %?`, v, a: v.toFixed(1) + "%", tol: 0.06, x: S_`$(${q / 100} - ${p / 100})/(1 - ${p / 100}) = ${v.toFixed(1)}\%$.` }; },
+    bayes: r => { const p = r.pick([10, 20, 25, 30, 40, 50, 60, 70]), L = r.pick([0.25, 0.5, 2, 3, 4, 5]); const o = p / (100 - p) * L, v = o / (1 + o) * 100;
+      return { q: S_`Prior ${p}%. News arrives that is ${L >= 1 ? `${L} times as likely if YES as if NO` : `only ${L} times as likely if YES as if NO`}. What is the new probability, in %?`, v, a: v.toFixed(1) + "%", tol: 0.06, x: S_`Odds ${p}:${100 - p} $\times$ ${L} = ${(o).toFixed(3)}, so $${o.toFixed(3)}/(1 + ${o.toFixed(3)}) = ${v.toFixed(1)}\%$.` }; },
+  };
+  /* ---------- more drill types (19 Nov) ---------- */
+  const r2 = v => Math.round(v * 100) / 100, f2 = v => (Math.round(v * 100) / 100).toFixed(2);
+  Object.assign(Q, {
+    american: r => { const fav = r() < 0.5, o = fav ? r.pick([110, 120, 125, 150, 200, 250, 300, 400]) : r.pick([100, 110, 120, 150, 200, 250, 300, 400, 500]); const v = fav ? o / (o + 100) * 100 : 100 / (o + 100) * 100;
+      return { q: S_`American odds of ${fav ? "−" : "+"}${o}. What probability is implied, in %?`, v, a: v.toFixed(1) + "%", tol: 0.06, x: fav ? S_`A favourite at −${o} risks ${o} to win 100: $${o}/(${o} + 100) = ${v.toFixed(1)}\%$.` : S_`An underdog at +${o} risks 100 to win ${o}: $100/(${o} + 100) = ${v.toFixed(1)}\%$.` }; },
+    fractional: r => { const a = r.int(1, 9), b = r.int(1, 4); if (a === b) return Q.implied(r); const v = b / (a + b) * 100;
+      return { q: S_`Fractional odds of ${a}/${b}. What probability is implied, in %?`, v, a: v.toFixed(1) + "%", tol: 0.06, x: S_`${a}/${b} means win ${a} for every ${b} staked: $${b}/(${a} + ${b}) = ${v.toFixed(1)}\%$.` }; },
+    fairOdds: r => { const p = r.pick([10, 20, 25, 40, 50, 60, 75, 80, 90]), v = 100 / p;
+      return { q: S_`You think an outcome is ${p}% likely. What decimal odds would be exactly fair?`, v, a: v.toFixed(2), tol: 0.006, x: S_`Fair decimal odds are $1/p = 1/${p / 100} = ${v.toFixed(2)}$.` }; },
+    payout: r => { const st = r.int(1, 20) * 5, o = r.pick([1.5, 1.8, 2, 2.2, 2.5, 3, 4, 6]), v = r2(st * (o - 1));
+      return { q: S_`You stake \$${st} at decimal odds of ${o} and win. What is your profit?`, v, a: "$" + f2(v), tol: 0.01, x: S_`Profit = stake × (odds − 1) = ${st} × ${(o - 1).toFixed(1)} = \$${f2(v)}.` }; },
+    retPct: r => { const p = r.int(10, 80), q = Math.min(99, p + r.int(-10, 25)), v = (q - p) / p * 100;
+      return { q: S_`You buy a \$100 YES contract at \$${p}. You believe YES is ${q}% likely. What is your expected return on the money you put in, in %?`, v, a: v.toFixed(1) + "%", tol: 0.06, x: S_`Expected payout ${q}, cost ${p}: $(${q} - ${p})/${p} = ${v.toFixed(1)}\%$.` }; },
+    noSide: r => { const b = r.int(10, 85), a = b + r.int(1, 5), askNo = r() < 0.5, v = askNo ? 100 - b : 100 - a;
+      return { q: S_`In a binary market YES is bid \$${b} and offered at \$${a} (on \$100). What is the ${askNo ? "offer" : "bid"} for NO?`, v, a: "$" + v, tol: 0.01, x: askNo ? S_`Buying NO is selling YES: you'd sell YES at the \$${b} bid, so NO is offered at 100 − ${b} = \$${v}.` : S_`Selling NO is buying YES at the \$${a} offer, so NO is bid at 100 − ${a} = \$${v}.` }; },
+    crossArb: r => { const y = r.int(30, 70), n = 100 - y + r.int(-6, 6), sum = y + n, ans = sum < 100 ? `Buy both, $${100 - sum}` : "No arbitrage";
+      const ch = [...new Set([ans, sum < 100 ? "No arbitrage" : `Buy both, $${Math.max(1, sum - 100)}`, `Sell both, $${Math.abs(sum - 100) || 2}`])];
+      return { q: S_`Exchange A offers YES at \$${y}. Exchange B offers NO on the same event at \$${n}. Each pays \$100 if right. Is there an arbitrage, and how much does it lock in per pair?`, choices: ch, v: ans, a: ans, x: sum < 100 ? S_`Buying both costs \$${sum} and exactly one pays \$100: a locked-in \$${100 - sum}.` : S_`Buying both costs \$${sum}, at least the \$100 payout, so there's nothing to lock in by buying (and you can't sell at an offer).` }; },
+    parlay: r => { const a = r.pick([20, 30, 40, 50, 60, 70, 80]), b = r.pick([25, 40, 50, 60, 75, 90]), v = a * b / 100;
+      return { q: S_`Two independent events are priced at ${a}% and ${b}%. What is the fair price, in %, of a contract that pays only if both happen?`, v, a: v.toFixed(1) + "%", tol: 0.06, x: S_`Independent, so multiply: $${a / 100} \times ${b / 100} = ${v.toFixed(1)}\%$.` }; },
+    condMkt: r => { const a = r.pick([40, 50, 60, 70, 80]), ab = r.int(10, a - 5), v = ab / a * 100;
+      return { q: S_`"A happens" trades at ${a}% and "A and B both happen" at ${ab}%. What probability of B given A do these prices imply, in %?`, v, a: v.toFixed(1) + "%", tol: 0.06, x: S_`$P(B \mid A) = P(A \cap B)/P(A) = ${ab}/${a} = ${v.toFixed(1)}\%$.` }; },
+    kellyOdds: r => { const o = r.pick([1.8, 2, 2.2, 2.5, 3, 4, 5]), ps = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70].filter(x => x / 100 * o > 1.04 && x / 100 * o < 1.6), p = r.pick(ps), f = (p / 100 * o - 1) / (o - 1) * 100;
+      return { q: S_`Decimal odds of ${o}, and you think the win probability is ${p}%. What Kelly fraction of your bankroll do you bet, in %?`, v: f, a: f.toFixed(1) + "%", tol: 0.06, x: S_`$f = (p\,o - 1)/(o - 1) = (${p / 100} \times ${o} - 1)/${(o - 1).toFixed(1)} = ${f.toFixed(1)}\%$.` }; },
+    twoWay: r => { const a = r.int(45, 70), b = r.int(105 - a, 112 - a), T = a + b, v = a / T * 100;
+      return { q: S_`A two-way market prices YES at ${a}% and NO at ${b}%. Removing the margin proportionally, what is the fair YES probability, in %?`, v, a: v.toFixed(1) + "%", tol: 0.06, x: S_`They add to ${T}%: $${a}/${T} = ${v.toFixed(1)}\%$.` }; },
+    feeBE: r => { const p = r.int(20, 80), fee = r.pick([0.5, 1, 1.5, 2, 3]), v = p + fee;
+      return { q: S_`You can buy YES at \$${p} on \$100 and pay a \$${fee} fee per contract. What probability (in %) must YES have for the trade to break even?`, v, a: v + "%", tol: 0.01, x: S_`Total cost \$${p + fee} against an expected payout of 100p: break even at p = ${v}%.` }; },
+    twoSignals: r => { const p = r.pick([20, 25, 40, 50, 60]), L1 = r.pick([2, 3, 0.5]), L2 = r.pick([2, 4, 0.5, 0.25]), o = p / (100 - p) * L1 * L2, v = o / (1 + o) * 100;
+      return { q: S_`Prior ${p}%. Two independent pieces of news arrive: the first is ${L1} times as likely if YES, the second ${L2} times as likely if YES. What is the new probability, in %?`, v, a: v.toFixed(1) + "%", tol: 0.06, x: S_`Multiply the prior odds by both likelihood ratios: ${p}:${100 - p} × ${L1} × ${L2} → odds ${o.toFixed(3)}, so ${v.toFixed(1)}%.` }; },
+    evSell: r => { const p = r.int(20, 90), q = Math.max(1, p - r.int(3, 20)), n = r.int(1, 50), v = n * (p - q);
+      return { q: S_`You sell ${n} YES contracts at \$${p} (each pays \$100 if YES). You think YES is ${q}% likely. What is your total expected profit?`, v, a: "$" + v, tol: 0.01, x: S_`Per contract ${p} − ${q} = \$${p - q}; × ${n} = \$${v}.` }; },
+  });
+  const TOPICS = { pricing: ["implied", "ev", "overround", "american", "fractional", "fairOdds", "payout", "noSide", "twoWay", "parlay", "condMkt", "retPct", "feeBE"], trading: ["arb", "kelly", "bayes", "ev", "crossArb", "kellyOdds", "twoSignals", "evSell", "retPct", "feeBE", "parlay"], all: Object.keys(Q) };
+  function gen(r, s, i, hist) {
+    const list = TOPICS[s.topics] || TOPICS.all;
+    let k, t = 0; do { k = r.pick(list); t++; } while (hist.length && hist[hist.length - 1].kind === k && t < 6);
+    const g = Q[k](r);
+    const base = { kind: k, text: g.q.replace(/\\\$/g, "$"), prompt: <div className="tip-prob">{TH(Rt, { text: g.q, as: "p", className: "tip-prob-q" })}</div>, answer: g.a, explain: TH(Rt, { text: g.x, as: "span" }) };
+    if (g.choices) return { ...base, input: "choice", choices: g.choices.map(c => ({ value: c, label: c.replace(/\\\$/g, "$") })), check: v => v === g.v };
+    return { ...base, input: "num", placeholder: "Number", check: raw => { const x = num(String(raw).replace(/[$%,\s]/g, "").replace("−", "-")); return isFinite(x) && Math.abs(x - g.v) <= g.tol; } };
+  }
+
+  /* ---------- live case: the shared market-making interview engine ---------- */
+  const Case = props => TH(TIP_MM.Game, { ...props, inst: "binary", mode: "make", title: "Prediction Markets · live case", settings: { ...props.settings, news: props.settings.moves, n: props.settings.moves, story: "rates", size: 1 } });
+
+  TIP_TRAINERS.register(course({
+    version: 2, caseStats: TIP_MM.stats, caseCharts: TIP_MM.charts,
+    id: "pred", name: "Prediction Markets", icon: "chart",
+    blurb: "Drills on odds, overround, arbitrage and Kelly, then a live prediction-market case: make a market in a YES contract, update on each headline with its likelihood ratio, and keep your quotes honest against informed traders.",
+    fields: [
+      PART,
+      { key: "count", label: "Questions", type: "num", min: 3, max: 40, showIf: c => c.part === "drill" },
+      { key: "qtime", label: "Time per question", type: "num", min: 10, max: 180, unit: "s", showIf: c => c.part === "drill" },
+      { key: "topics", label: "Topics", type: "sel", showIf: c => c.part === "drill", choices: [{ value: "pricing", label: "Pricing and overround" }, { value: "trading", label: "Arbitrage, Kelly and Bayes" }, { value: "all", label: "Everything" }] },
+      { key: "rounds", label: "Rounds", type: "num", min: 1, max: 10, showIf: c => c.part === "case" },
+      { key: "moves", label: "Updates per round", type: "num", min: 2, max: 8, showIf: c => c.part === "case" },
+      { key: "width", label: "Max width", type: "num", min: 2, max: 20, step: 1, unit: "¢", showIf: c => c.part === "case" },
+      { key: "time", label: "Time per quote", type: "num", min: 6, max: 90, unit: "s", showIf: c => c.part === "case" },
+      { key: "sharp", label: "Sharp customers", type: "sel", showIf: c => c.part === "case", choices: [{ value: 0, label: "None" }, { value: 0.25, label: "Some" }, { value: 0.45, label: "Many" }] },
+      { key: "showFair", label: "Show fair value", type: "bool", showIf: c => c.part === "case" },
+    ],
+    presets: {
+      Easy: { part: "drill", count: 8, qtime: 90, topics: "pricing", rounds: 3, moves: 3, width: 10, time: 40, sharp: 0, tighten: 0, showFair: true },
+      Medium: { part: "drill", count: 10, qtime: 60, topics: "all", rounds: 4, moves: 4, width: 8, time: 25, sharp: 0.25, tighten: 0.2, showFair: false },
+      Hard: { part: "drill", count: 12, qtime: 45, topics: "all", rounds: 5, moves: 6, width: 6, time: 15, sharp: 0.45, tighten: 0.35, showFair: false },
+    },
+    note: "Drill answers in %, cents or decimals. In the case each headline shows its likelihood ratio: multiply the odds by it.",
+  }, { gen, variety: true, count: s => s.count, perQSecs: s => s.qtime }, Case));
+})();

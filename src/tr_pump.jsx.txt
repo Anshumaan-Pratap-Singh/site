@@ -1,0 +1,63 @@
+/* Pump: the Balloon Analogue Risk Task used in Pymetrics-style games. Each pump adds money to the balloon; bank it
+   any time, or lose it if the balloon pops. Each colour has its own (unknown) pop limit. */
+(function () {
+  const { TH, TF, R, typing } = TIP;
+  const { useState, useEffect, useMemo } = R;
+  const K = TIP_KIT;
+  const COL = { blue: { max: 64, tone: 1, g: ["#a9c8ff", "#3f7ae6", "#1b3f94"] }, amber: { max: 24, tone: 2, g: ["#ffe1a3", "#f0a028", "#a85f06"] }, red: { max: 10, tone: 4, g: ["#ffb3b8", "#e5434f", "#8e1820"] } };
+  function Game({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const [seq] = useState(() => Array.from({ length: s.balloons }, () => { const c = s.colours === "one" ? "blue" : rng.pick(Object.keys(COL)); return { c, pop: rng.int(1, COL[c].max) }; }));
+    const [i, setI] = useState(0), [p, setP] = useState(0), [bank, setBank] = useState(0), [state, setState] = useState("live"), [log, setLog] = useState([]), [done, setDone] = useState(false);
+    const b = seq[i], pot = Math.round(p * s.value * 100) / 100;
+    const next = () => { if (i + 1 >= seq.length) { setDone(true); return; } setI(i + 1); setP(0); setState("live"); };
+    function pump() { if (state !== "live" || done) return; const n = p + 1; setP(n); if (n >= b.pop) { setState("pop"); setLog(l => [...l, { c: b.c, pumps: n, popped: true, won: 0 }]); setTimeout(next, 1000); } }
+    function cash() { if (state !== "live" || done || !p) return; setBank(x => Math.round((x + pot) * 100) / 100); setState("bank"); setLog(l => [...l, { c: b.c, pumps: p, popped: false, won: pot }]); setTimeout(next, 800); }
+    useEffect(() => { const h = e => { if (typing(e)) return; if (e.key === " ") { e.preventDefault(); pump(); } if (e.key === "Enter") { e.preventDefault(); cash(); } }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); });
+    const res = useMemo(() => {
+      if (!done) return null;
+      const by = c => { const L = log.filter(x => x.c === c && !x.popped); return L.length ? L.reduce((a, x) => a + x.pumps, 0) / L.length : null; };
+      const adj = log.filter(x => !x.popped), risk = adj.length ? adj.reduce((a, x) => a + x.pumps, 0) / adj.length : 0;
+      return { score: Math.round(bank * 100) / 100, popped: log.filter(x => x.popped).length, risk: Math.round(risk * 10) / 10, by: Object.keys(COL).map(c => [c, by(c)]).filter(x => x[1] != null) };
+    }, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={K.money(res.score, 2) + " banked"} sub={`${res.popped} of ${s.balloons} balloons popped`} onRestart={onRestart}
+      metrics={[{ label: "Banked", value: K.money(res.score, 2), tone: "up" }, { label: "Avg pumps (banked)", value: res.risk, sub: "your risk level" }, ...res.by.map(([c, v]) => ({ label: c[0].toUpperCase() + c.slice(1), value: v.toFixed(1), sub: `avg pumps; pops by ${COL[c].max}` }))]}
+      notes="With a pop point uniform between 1 and N, the expected-value-maximising plan banks at about N/2 pumps. Most people stop far too early on blue and too late on red; adjust by colour as you learn." />;
+    /* flat balloon drawn like the other games: palette colour, thin outline, grows with each pump */
+    const r = 26 + Math.min(1, p / 64) * 54, tone = COL[b.c].tone, cy = 128 - r * 0.2;
+    return (
+      <K.Stage title="Pump" sub={`Balloon ${i + 1} of ${s.balloons} · ${b.c}`} stats={[{ label: "Pumps", value: p, pop: true }, { label: "In balloon", value: K.money(pot, 2) }, { label: "Banked", value: K.money(bank, 2), tone: "up", pop: true }]} total={s.balloons} results={log.map(x => !x.popped)} at={i}>
+        <div className="pm-wrap">
+          <K.Art w={300} h={250} cls={"pm-art " + state}>
+            <path d="M40,236H260" className="ax" />
+            {state === "pop" ? <g className="pm-burst">{Array.from({ length: 12 }, (_, k) => { const a = k * Math.PI / 6, r0 = r * 0.45, r1 = r * 0.95;
+              return <path key={k} d={`M${(150 + r0 * Math.cos(a)).toFixed(1)},${(cy + r0 * Math.sin(a)).toFixed(1)}L${(150 + r1 * Math.cos(a)).toFixed(1)},${(cy + r1 * Math.sin(a)).toFixed(1)}`} className={"s" + tone} />; })}
+              <circle cx="150" cy={cy} r={r * 0.3} className={"t" + tone} /></g>
+              : <g key={"b" + i} className={"pm-ball " + state}>
+                <path d={`M150,${cy + r + 6}C142,${cy + r + 40} 158,${cy + r + 60} 150,236`} className="pm-line" />
+                <g key={"p" + p} className={p ? "pm-grow" : ""}>
+                  <ellipse cx="150" cy={cy} rx={r * 0.9} ry={r} className={"t" + tone} />
+                  <path d={`M144,${cy + r - 1}L150,${cy + r + 8}L156,${cy + r - 1}Z`} className={"f" + tone} />
+                  <path d={`M${150 - r * 0.5},${cy - r * 0.35}Q${150 - r * 0.45},${cy - r * 0.7} ${150 - r * 0.15},${cy - r * 0.8}`} className="pm-hl" />
+                </g>
+              </g>}
+          </K.Art>
+          <div className="ts-keys"><button className="start" disabled={state !== "live"} onClick={pump}>Pump <kbd>Space</kbd></button><button className="btn" disabled={state !== "live" || !p} onClick={cash}>Bank {K.money(pot, 2)} <kbd>Enter</kbd></button></div>
+        </div>
+      </K.Stage>
+    );
+  }
+  TIP_TRAINERS.register({
+    id: "pump", name: "Pump", metric: "score", unit: "", version: 2, playFilter: K.versioned(2), fmtVal: v => "$" + Number(v).toFixed(2),
+    blurb: "The balloon risk task from Pymetrics-style games: each pump adds money, banking keeps it, a pop loses it. Blue, amber and red balloons pop at different (unknown) limits; learn them and size your risk.",
+    fields: [
+      { key: "balloons", label: "Balloons", type: "num", min: 5, max: 60 },
+      { key: "value", label: "Money per pump", type: "sel", choices: [{ value: 0.05, label: "$0.05" }, { value: 0.1, label: "$0.10" }, { value: 0.25, label: "$0.25" }] },
+      { key: "colours", label: "Balloon colours", type: "sel", choices: [{ value: "one", label: "Blue only" }, { value: "three", label: "Blue, amber and red" }] },
+    ],
+    presets: { Easy: { balloons: 15, value: 0.1, colours: "one" }, Medium: { balloons: 24, value: 0.1, colours: "three" }, Hard: { balloons: 36, value: 0.05, colours: "three" } },
+    note: "Space pumps, Enter banks. Your score is the money banked.",
+    component: Game,
+  });
+})();

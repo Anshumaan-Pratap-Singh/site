@@ -1,0 +1,33 @@
+/* Abstract figure panels shared by Build the Pattern and the Inductive Reasoning Test.
+   A panel is { shape: 0..3, count: 1..6, fill: 0 empty | 1 striped | 2 solid, rot: degrees } */
+var TIP_SHAPES = (function () {
+  const { TH } = TIP;
+  const PATHS = [
+    "M0,-14L10,10L0,4L-10,10Z",                 /* arrowhead */
+    "M0,-13L12,10H-12Z",                        /* triangle */
+    "M-11,-11H4L11,-4V11H-11Z",                 /* square with a cut corner */
+    "M-12,-12H12V-2H2V12H-12Z",                 /* L block */
+  ];
+  const NAMES = ["arrow", "triangle", "cut square", "L block"];
+  const FILLS = ["empty", "striped", "solid"];
+  const SPOTS = { 1: [[50, 50]], 2: [[32, 50], [68, 50]], 3: [[50, 30], [30, 68], [70, 68]], 4: [[32, 32], [68, 32], [32, 68], [68, 68]], 5: [[30, 30], [70, 30], [50, 50], [30, 70], [70, 70]], 6: [[28, 32], [50, 32], [72, 32], [28, 68], [50, 68], [72, 68]] };
+  let uid = 0;
+  function Panel({ p, size, cls, q }) {
+    const id = "tps" + (++uid);
+    const sc = !p ? 1 : p.count >= 5 ? 0.66 : p.count >= 3 ? 0.84 : p.count === 2 ? 1.1 : 1.5;
+    return (
+      <svg viewBox="0 0 100 100" className={"tip-pnl" + (cls ? " " + cls : "")} style={size ? { width: size, height: size } : null} aria-hidden="true">
+        <defs><pattern id={id} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2.2" height="5" className="tip-pnl-hatch" /></pattern></defs>
+        <rect x="1.5" y="1.5" width="97" height="97" rx="10" className="tip-pnl-frame" />
+        {q ? <text x="50" y="62" textAnchor="middle" className="tip-pnl-q">?</text> :
+          (SPOTS[p.count] || []).map(([x, y], k) => (
+            <path key={k} d={PATHS[p.shape]} transform={`translate(${x},${y}) rotate(${p.rot}) scale(${sc})`}
+              className={"tip-pnl-sh f" + p.fill} style={p.fill === 1 ? { fill: `url(#${id})` } : null} />
+          ))}
+      </svg>
+    );
+  }
+  const same = (a, b) => a.shape === b.shape && a.count === b.count && a.fill === b.fill && ((a.rot - b.rot) % 360 + 360) % 360 === 0;
+  const describe = p => `${p.count} ${FILLS[p.fill]} ${NAMES[p.shape]}${p.count > 1 ? "s" : ""} turned ${((p.rot % 360) + 360) % 360}°`;
+  return { Panel, same, describe, NAMES, FILLS };
+})();

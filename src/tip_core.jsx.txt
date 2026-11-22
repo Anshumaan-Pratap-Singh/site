@@ -1,0 +1,599 @@
+/* Trading Interview Practice: shared trainer screen, Trainers tab and the reworked Trading Game.
+   Injected into app.js; uses the bundle's own helpers (Lt, se, yt, Zt, ui, jt, xl, Be, ie, Xe, Jt). */
+var TIP = (function () {
+  const R = oe(vt());
+  const TH = R.createElement, TF = R.Fragment;
+  const { useState, useEffect, useMemo, useRef } = R;
+  const still = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const fmtDate = ts => new Date(ts).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const fmtWhen = ts => new Date(ts).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const DIFFS = ["Easy", "Medium", "Hard", "Custom"];
+  const typing = e => { const t = e.target && e.target.tagName; return t === "INPUT" || t === "TEXTAREA" || t === "SELECT" || t === "BUTTON"; };
+
+  /* ---------- small pieces ---------- */
+  function fieldText(f, v) {
+    if (f.type === "bool") return v ? "On" : "Off";
+    if (f.type === "sel") { const c = f.choices.find(c => c.value === v); return c ? c.label : String(v); }
+    if (f.type === "multi") { const on = f.choices.filter(c => (v || []).includes(c.value)); return on.length === f.choices.length ? "All" : on.length ? on.map(c => c.short || c.label).join(", ") : "None"; }
+    return String(v) + (f.unit === " pts" && Number(v) === 1 ? " pt" : (f.unit || ""));
+  }
+  function clampCfg(game, cfg, diff) {
+    const out = { ...cfg };
+    for (const f of game.fields) {
+      if (f.type !== "num") continue;
+      let v = Number(out[f.key]);
+      if (!isFinite(v)) v = game.presets[diff === "Custom" ? "Medium" : diff][f.key];
+      v = Math.max(f.min, Math.min(f.max, v));
+      if ((f.step || 1) >= 1) v = Math.round(v);
+      out[f.key] = v;
+    }
+    if (game.fix) game.fix(out);
+    return out;
+  }
+
+  function Tile({ f, value, edit, onChange }) {
+    if (!edit) return <div className="tip-tile"><span>{f.label}</span><b>{fieldText(f, value)}</b></div>;
+    let ctl;
+    if (f.type === "bool") ctl = <button type="button" className={"tip-toggle" + (value ? " on" : "")} aria-pressed={!!value} onClick={() => onChange(!value)}><i></i>{value ? "On" : "Off"}</button>;
+    else if (f.type === "multi") ctl = <span className="tip-mchips" role="group" aria-label={f.label}>{f.choices.map(c => { const on = (value || []).includes(c.value);
+      return <button key={c.value} type="button" className={on ? "on" : ""} aria-pressed={on} onClick={() => onChange(on ? (value || []).filter(x => x !== c.value) : f.choices.map(x => x.value).filter(x => x === c.value || (value || []).includes(x)))}>{c.label}</button>; })}</span>;
+    else if (f.type === "sel") ctl = <select className="tip-sel" value={String(value)} onChange={e => { const c = f.choices.find(c => String(c.value) === e.target.value); onChange(c ? c.value : e.target.value); }}>{f.choices.map(c => <option key={String(c.value)} value={String(c.value)}>{c.label}</option>)}</select>;
+    else ctl = <span className="tip-num"><input type="number" inputMode="decimal" min={f.min} max={f.max} step={f.step || 1} value={value} style={{ width: (Math.max(2, String(value).length) + 0.6) + "ch" }} onChange={e => onChange(e.target.value)} />{f.unit ? <em>{f.unit.trim()}</em> : null}</span>;
+    return <label className="tip-tile edit"><span>{f.label}</span>{ctl}</label>;
+  }
+
+  function Bars({ values }) {
+    const vals = values.slice(-30);
+    if (!vals.length) return <div className="tip-empty">Play a session to see your progress</div>;
+    const W = 300, H = 96, n = vals.length, gap = 3;
+    const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), span = hi - lo || 1;
+    const zero = 6 + (hi / span) * (H - 12);
+    const bw = Math.min(16, Math.max(2, (W - gap * (n - 1)) / Math.max(n, 6)));
+    return (
+      <svg className="tip-bars" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Session results">
+        <line x1="0" x2={W} y1={zero} y2={zero} className="tip-zero" />
+        {vals.map((v, i) => {
+          const h = Math.max(1.5, Math.abs(v) / span * (H - 12));
+          const y = v >= 0 ? zero - h : zero;
+          return <rect key={i} x={i * (bw + gap)} y={y} width={bw} height={h} rx="2" className={v >= 0 ? "up" : "dn"} style={{ animationDelay: (i * 0.025) + "s", transformOrigin: `0 ${zero}px` }} />;
+        })}
+      </svg>
+    );
+  }
+
+
+  /* ---------- line chart with hover, styled like the Mental Math Trainer stats ---------- */
+  function niceTicks(lo, hi, n, int) {
+    if (!isFinite(lo) || !isFinite(hi)) return [0, 1];
+    if (lo === hi) { lo -= 1; hi += 1; }
+    const raw = (hi - lo) / Math.max(1, n), mag = 10 ** Math.floor(Math.log10(raw)), f = raw / mag;
+    let step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * mag;
+    if (int) step = Math.max(1, Math.round(step));
+    const a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step, out = [];
+    for (let v = a; v <= b + step * 1e-6; v += step) out.push(Math.round(v / step) * step);
+    return out;
+  }
+  function monotone(pts) {   /* monotone cubic path through points, like d3 curveMonotoneX */
+    const n = pts.length;
+    if (n < 2) return n ? `M${pts[0][0]},${pts[0][1]}` : "";
+    if (n === 2) return `M${pts[0][0]},${pts[0][1]}L${pts[1][0]},${pts[1][1]}`;
+    const dx = [], dy = [], m = [];
+    for (let i = 0; i < n - 1; i++) { dx.push(pts[i + 1][0] - pts[i][0]); dy.push(pts[i + 1][1] - pts[i][1]); m.push(dy[i] / dx[i]); }
+    const t = [m[0]];
+    for (let i = 1; i < n - 1; i++) t.push(m[i - 1] * m[i] <= 0 ? 0 : (3 * (dx[i - 1] + dx[i])) / ((2 * dx[i] + dx[i - 1]) / m[i - 1] + (dx[i] + 2 * dx[i - 1]) / m[i]));
+    t.push(m[n - 2]);
+    let d = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 0; i < n - 1; i++) {
+      const h = dx[i] / 3;
+      d += `C${pts[i][0] + h},${pts[i][1] + h * t[i]} ${pts[i + 1][0] - h},${pts[i + 1][1] - h * t[i + 1]} ${pts[i + 1][0]},${pts[i + 1][1]}`;
+    }
+    return d;
+  }
+  function LineChart({ title, sub, data, fmt, label, height, zero, avgLabel }) {
+    /* data: [{ ts, v, note }] oldest first */
+    const box = useRef(null);
+    const [w, setW] = useState(460);
+    const [hov, setHov] = useState(null);
+    useEffect(() => {
+      if (!box.current || !window.ResizeObserver) return;
+      const ro = new ResizeObserver(es => { const cw = es[0].contentRect.width; if (cw > 0) setW(cw); });
+      ro.observe(box.current);
+      return () => ro.disconnect();
+    }, []);
+    const H = height || 190, ml = 44, mr = 14, mt = 10, mb = 26;
+    const pts = data.filter(d => typeof d.v === "number" && isFinite(d.v));
+    const roll = pts.map((d, i) => { const a = pts.slice(Math.max(0, i - 4), i + 1); return a.reduce((x, y) => x + y.v, 0) / a.length; });
+    const f = fmt || ((v, d) => ie(v, d == null ? 0 : d));
+    if (pts.length === 0) return (
+      <div className="tip-cbox"><div className="tip-ch"><h4>{title}</h4>{sub ? <span>{sub}</span> : null}</div><div className="tip-empty">Play a session to see your progress</div></div>
+    );
+    const all = pts.map(d => d.v).concat(roll);
+    let lo = Math.min(...all), hi = Math.max(...all);
+    if (zero) { lo = Math.min(0, lo); hi = Math.max(0, hi); }
+    if (lo === hi) { const pad = Math.max(1, Math.abs(lo) * 0.2); hi += pad; lo = all.every(v => v >= 0) ? Math.max(0, lo - pad) : lo - pad; }
+    else if (all.every(v => v >= 0)) lo = Math.max(0, lo);
+    const ticks = niceTicks(lo, hi, 4, pts.every(d => Number.isInteger(d.v))), y0 = ticks[0], y1 = ticks[ticks.length - 1];
+    const tstep = ticks.length > 1 ? ticks[1] - ticks[0] : 1, tdec = (String(+tstep.toFixed(6)).split(".")[1] || "").length;
+    const oneDay = pts.length && new Date(pts[0].ts).toDateString() === new Date(pts[pts.length - 1].ts).toDateString();
+    const xl = i => oneDay ? "#" + (i + 1) : fmtDate(pts[i].ts);
+    const iw = Math.max(40, w - ml - mr), ih = H - mt - mb;
+    const X = i => ml + (pts.length === 1 ? iw / 2 : (i / (pts.length - 1)) * iw);
+    const Y = v => mt + ih - ((v - y0) / ((y1 - y0) || 1)) * ih;
+    const line = monotone(pts.map((d, i) => [X(i), Y(d.v)]));
+    const avg = pts.length > 2 ? monotone(roll.map((v, i) => [X(i), Y(v)])) : null;
+    const every = Math.max(1, Math.ceil(pts.length / Math.max(1, Math.floor(iw / 64))));
+    const onMove = e => {
+      const r = e.currentTarget.getBoundingClientRect(), x = (e.clientX - r.left) * (w / r.width);
+      let best = 0, bd = 1e9; pts.forEach((d, i) => { const dd = Math.abs(X(i) - x); if (dd < bd) { bd = dd; best = i; } });
+      setHov(best);
+    };
+    const hp = hov != null ? pts[hov] : null;
+    const TW = 190, tipLeft = hov != null ? Math.max(0, Math.min(X(hov) + 14 + TW > w ? X(hov) - 14 - TW : X(hov) + 14, w - TW)) : 0;
+    return (
+      <div className="tip-cbox">
+        <div className="tip-ch"><h4>{title}</h4>{sub ? <span>{sub}</span> : null}</div>
+        <div className="tip-cwrap" ref={box} style={{ height: H }}>
+          <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} onPointerMove={onMove} onPointerLeave={() => setHov(null)} onPointerDown={onMove}>
+            {ticks.map(t => <g key={t}><line x1={ml} x2={w - mr} y1={Y(t)} y2={Y(t)} className={"tip-grid-l" + (t === 0 && zero ? " zero" : "")} /><text x={ml - 8} y={Y(t) + 4} textAnchor="end" className="tip-axis">{f(t, tdec)}</text></g>)}
+            <line x1={ml} x2={w - mr} y1={mt + ih} y2={mt + ih} className="tip-axis-l" />
+            {pts.map((d, i) => (i % every === 0 && (i + every <= pts.length - 1 || i === pts.length - 1)) || i === pts.length - 1 ? <text key={i} x={X(i)} y={H - 6} textAnchor={pts.length > 1 && i === pts.length - 1 ? "end" : pts.length > 1 && i === 0 ? "start" : "middle"} className="tip-axis">{xl(i)}</text> : null)}
+            {hov != null ? <rect x={X(hov) - Math.max(6, iw / pts.length / 2)} y={mt} width={Math.max(12, iw / pts.length)} height={ih} className="tip-cursor" /> : null}
+            {avg ? <path d={avg} className="tip-l2" pathLength="1" /> : null}
+            <path d={line} className="tip-l1" pathLength="1" />
+            {pts.map((d, i) => <circle key={i} cx={X(i)} cy={Y(d.v)} r={hov === i ? 5 : 3} className={"tip-dot1" + (hov === i ? " on" : "")} style={{ animationDelay: (0.3 + i * 0.02) + "s" }} />)}
+          </svg>
+          {hp ? (
+            <div className="tip-tip" style={{ left: tipLeft, top: 6, width: TW }}>
+              <div className="tip-tip-h">{(oneDay ? "Session " + (hov + 1) + " · " : "") + fmtWhen(hp.ts) + (hp.note ? " · " + hp.note : "")}</div>
+              <div className="tip-tip-r"><i className="c1"></i>{label || "Value"}: <b>{f(hp.v)}</b></div>
+              {avg ? <div className="tip-tip-r"><i className="c2"></i>{avgLabel || "5-session avg"}: <b>{f(roll[hov])}</b></div> : null}
+            </div>
+          ) : null}
+        </div>
+        {avg ? <div className="tip-legend"><span><i className="c1"></i>per session</span><span><i className="c2 dash"></i>{avgLabel || "5-session avg"}</span></div> : null}
+      </div>
+    );
+  }
+
+  /* older Market Games: same settings / statistics screen as the Trading Game */
+  function adaptGames(list, comps) {
+    list.forEach((g, i) => {
+      if (g.tip || !comps[g.id]) return;
+      const fields = (g.fields || []).map(f => {
+        const m = /^(.*?)\s*\(s\)$/.exec(f.label);
+        return { ...f, type: "num", label: m ? m[1] : f.label, unit: m ? "s" : undefined };
+      });
+      const opts = (g.options || []).map(o => ({ key: o.key, label: o.label, type: "sel", choices: o.choices }));
+      list[i] = { ...g, tip: true, fields: [...fields, ...opts], component: comps[g.id] };
+    });
+  }
+
+
+  /* ---------- lessons: short reading with a worked example and a check question ---------- */
+  function loadDone(id) { try { return JSON.parse(localStorage.getItem("tip-lessons-" + id) || "[]"); } catch (e) { return []; } }
+  function saveDone(id, v) { try { localStorage.setItem("tip-lessons-" + id, JSON.stringify(v)); } catch (e) {} }
+  const M = (text, as, cls) => TH(Rt, { text, as: as || "p", className: cls });
+  function Check({ q, onRight }) {
+    const [val, setVal] = useState("");
+    const [res, setRes] = useState(null);
+    const submit = v => {
+      const given = v != null ? v : val;
+      const ok = q.choices ? given === q.answer : Math.abs(TIP_DRILL.num(given) - q.answer) <= (q.tol != null ? q.tol : 1e-6);
+      setRes({ ok, given }); if (ok) onRight();
+    };
+    return (
+      <div className="tip-chk">
+        <div className="tip-lbl">Check yourself</div>
+        {M(q.q, "div", "tip-chk-q")}
+        {q.choices ? (
+          <div className="tip-chk-opts">{q.choices.map(c => <button key={c} type="button" className={"chip" + (res && res.given === c ? (res.ok ? " ok" : " bad") : "")} onClick={() => submit(c)}>{c}</button>)}</div>
+        ) : (
+          <div className="row nowrap"><input className="inp num" value={val} onChange={e => setVal(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); submit(); } }} placeholder="Answer" /><button className="ghost" onClick={() => submit()} disabled={!val.trim()}>Check</button></div>
+        )}
+        {res ? <div className={"box small " + (res.ok ? "okbox" : "errbox")}><b>{res.ok ? "Right. " : "Not quite. "}</b>{M(q.why, "span")}</div> : null}
+      </div>
+    );
+  }
+  function Lessons({ id, lessons }) {
+    const [done, setDone] = useState(() => loadDone(id));
+    const [open, setOpen] = useState(null);
+    const mark = i => setDone(d => { if (d.includes(i)) return d; const n = [...d, i]; saveDone(id, n); return n; });
+    const L = open != null ? lessons[open] : null;
+    return (
+      <section className="card tip-panel tip-lessons">
+        <div className="tip-h-row"><h3 className="tip-h">Lessons</h3><span className="tip-cap">{done.length}/{lessons.length} done</span></div>
+        <div className="tip-lesson-list">
+          {lessons.map((l, i) => (
+            <button key={i} type="button" className={"tip-lesson-btn" + (open === i ? " on" : "") + (done.includes(i) ? " done" : "")} onClick={() => setOpen(open === i ? null : i)}>
+              <span className="n">{done.includes(i) ? "✓" : i + 1}</span><span className="t">{l.title}</span>
+            </button>
+          ))}
+        </div>
+        {L ? (
+          <article className="tip-lesson" key={open}>
+            <h4>{L.title}</h4>
+            {L.body.map((p, k) => <div key={k}>{M(p)}</div>)}
+            {L.formula ? <div className="tip-formula">{M("$$" + L.formula + "$$", "div")}</div> : null}
+            {L.example ? <div className="tip-example"><div className="tip-lbl">Worked example</div>{L.example.map((p, k) => <div key={k}>{M(p)}</div>)}</div> : null}
+            {L.check ? <Check key={"c" + open} q={L.check} onRight={() => mark(open)} /> : null}
+            <div className="row">
+              {!L.check && !done.includes(open) ? <button className="ghost sm" onClick={() => mark(open)}>Mark as done</button> : null}
+              <span className="sp"></span>
+              {open > 0 ? <button className="ghost sm" onClick={() => setOpen(open - 1)}>Previous</button> : null}
+              {open < lessons.length - 1 ? <button className="start sm" onClick={() => setOpen(open + 1)}>Next lesson</button> : <button className="start sm" onClick={() => setOpen(null)}>Close</button>}
+            </div>
+          </article>
+        ) : <p className="small muted tip-lesson-hint">Pick a lesson to read it. Each one ends with a quick check question; answer it right to tick the lesson off.</p>}
+      </section>
+    );
+  }
+
+  let touchSeen = false;
+  try { window.addEventListener("pointerdown", e => { if (e.pointerType === "touch") touchSeen = true; }, true); } catch (e) {}
+  const isTouch = () => { if (touchSeen) return true; try { return window.matchMedia("(pointer: coarse)").matches || (navigator.maxTouchPoints > 0 && window.matchMedia("(hover: none)").matches); } catch (e) { return false; } };
+
+  /* ---------- the shared trainer / game screen ---------- */
+  function Setup({ game, go, back, backLabel }) {
+    const { progress, recordGame, deletePlays } = Lt();
+    /* a lesson's "Drill this" button can hand a config to the next opening of a trainer */
+    const [pend] = useState(() => { const p = TIP.pending; if (p && p.id === game.id) { TIP.pending = null; return p.cfg; } return null; });
+    const [diff, setDiff] = useState(pend ? "Custom" : "Easy");
+    const [cfg, setCfg] = useState(() => ({ ...game.presets.Easy, ...(pend || {}) }));
+    const clean = useMemo(() => clampCfg(game, cfg, diff), [game, cfg, diff]);
+    const part = game.splitBy ? clean[game.splitBy] : null;
+    const metric = game.metricOf ? game.metricOf(clean) : (game.metric || "score");
+    const all = ((progress.games[game.id] && progress.games[game.id].plays) || []);
+    const plays = all.filter(p => (!game.playFilter || game.playFilter(p)) && (!game.splitBy || (p[game.splitBy] || game.presets.Easy[game.splitBy]) === part));
+    const valOf = p => metric === "pnl" ? p.pnl : p.score;
+    const fmtVal = game.fmtVal ? (v => v == null ? "\u2014" : game.fmtVal(v, clean)) : v => v == null ? "—" : metric === "pnl" ? Be(v, 0) : ie(v, 0) + (Math.abs(v) === 1 && (game.unit || " pts") === " pts" ? " pt" : (game.unit || " pts"));
+    const [playing, setPlaying] = useState(false);
+    const [run, setRun] = useState(0);
+    const [ask, setAsk] = useState(null);   /* {all:true} | {play} */
+    const [showAll, setShowAll] = useState(false);
+    const vals = plays.map(valOf).filter(v => typeof v === "number");
+    const best = vals.length ? Math.max(...vals) : null;
+    const latest = vals.length ? vals[vals.length - 1] : null;
+    const top = plays.filter(p => typeof valOf(p) === "number").slice().sort((a, b) => valOf(b) - valOf(a)).slice(0, 5);
+    const choose = d => {
+      setDiff(d);
+      if (d !== "Custom") setCfg(c => { const n = { ...game.presets[d] }; game.fields.forEach(f => { if (f.always) n[f.key] = c[f.key]; }); return n; });
+    };
+    const [cd, setCd] = useState(0);        /* 3-2-1 countdown before every run, as in the Mental Math Trainer */
+    const [cdGone, setCdGone] = useState(true);
+    const err = game.check ? game.check(clean) : null;
+    const start = () => { if (err) return; setRun(k => k + 1); setCd(3); setCdGone(false); setPlaying(true); window.scrollTo({ top: 0 }); };
+    const cancel = () => { setCd(0); setCdGone(true); setPlaying(false); };
+    useEffect(() => { if (!playing || cd <= 0) return; const t = setTimeout(() => setCd(n => n - 1), 1000); return () => clearTimeout(t); }, [playing, cd, run]);
+    useEffect(() => { if (!playing || cd > 0 || cdGone) return; const t = setTimeout(() => setCdGone(true), 320); return () => clearTimeout(t); }, [playing, cd, cdGone]);
+    useEffect(() => {
+      if (!playing || cd <= 0) return;
+      const k = e => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); } else if (e.key.length === 1 || e.key === "Enter" || e.key === "Backspace" || e.key === "Tab") { e.preventDefault(); e.stopPropagation(); } };
+      window.addEventListener("keydown", k, true);
+      return () => window.removeEventListener("keydown", k, true);
+    }, [playing, cd]);
+    const touch = useMemo(() => isTouch(), [playing]);
+    useEffect(() => {
+      if (playing || ask) return;
+      const h = e => { if (e.key === "Enter" && !typing(e)) { e.preventDefault(); start(); } };
+      window.addEventListener("keydown", h);
+      return () => window.removeEventListener("keydown", h);
+    }, [playing, ask]);
+    useEffect(() => {
+      if (!ask) return;
+      const h = e => { if (e.key === "Escape") setAsk(null); };
+      window.addEventListener("keydown", h);
+      return () => window.removeEventListener("keydown", h);
+    }, [ask]);
+
+    if (playing) {
+      const G = game.component;
+      return (
+        <div className="view game-view playing-view tip-play">
+          <div className="hud">
+            <div className="hud-l">
+              <button className="ghost sm" onClick={cancel}>{TH(se, { name: "left" })}Settings</button>
+              <span className="tag">{game.name}</span>
+              {game.fixed ? null : <span className="tag dim">{diff}</span>}
+            </div>
+            <div className="tm-clock clock"></div>
+            <div className="hud-r">
+              <div className="tm-score"></div>
+              <button className="link" onClick={start}>{TH(se, { name: "refresh" })}Restart</button>
+            </div>
+          </div>
+          <div className="bar tm-bar" key={"bar" + run}></div>
+          {cd > 0 ? <div className="card tip-cd-stage" aria-hidden="true"></div> : <G key={run} settings={clean} diff={diff} onRestart={start}
+            onFinish={res => { window.__tmFinish = { prev: best, metric: metric, res }; recordGame(game.id, { diff, v: game.version || 1, ...res }); }} />}
+          {!cdGone ? (
+            <div className={"tip-cd" + (cd <= 0 ? " out" : "")} role="status" aria-live="assertive">
+              {cd > 0 ? <>
+                <div className="tip-cd-lbl">Get ready</div>
+                <div className="tip-cd-n" key={cd}>{cd}</div>
+                {touch ? <button className="ghost tip-cd-q" onPointerDown={e => { e.preventDefault(); cancel(); }}>Cancel</button>
+                  : <div className="tip-cd-hint"><kbd>Esc</kbd> cancel</div>}
+              </> : null}
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
+    const editAll = diff === "Custom";
+    /* customOnly fields are edited in Custom; info tiles summarise them in the presets */
+    const fields = game.fields.filter(f => !f.hidden && (!f.showIf || f.showIf(clean)) && (!f.customOnly || editAll) && (!f.presetOnly || !editAll));
+    const big = fields.filter(f => f.wide);
+    const small = fields.filter(f => !f.wide);
+    return (
+      <div className="view game-view setup-view tip-setup">
+        <div className="row tm-titlebar">
+          <button className="ghost sm" onClick={() => go(back)}>{TH(se, { name: "left" })}{backLabel || "Back"}</button>
+          <h2 className="tm-gname">{game.name}</h2>
+        </div>
+        {game.lessons ? <Lessons id={game.id} lessons={game.lessons} /> : null}
+        <div className="tip-grid">
+          <section className="card tip-panel">
+            <h3 className="tip-h">Settings</h3>
+            {game.blurb ? <p className="lead">{game.blurb}</p> : null}
+            {game.fixed ? null : <TF><div className="tip-lbl">Game difficulty</div>
+            <div className="tip-seg" role="tablist">
+              {DIFFS.map(d => <button key={d} type="button" role="tab" aria-selected={diff === d} className={diff === d ? "on" : ""} onClick={() => choose(d)}>{d}</button>)}
+            </div></TF>}
+            {big.map(f => (
+              <div key={f.key} className="tip-wide">
+                <div className="tip-lbl">{f.label}</div>
+                <Tile f={{ ...f, label: "" }} value={cfg[f.key]} edit={true} onChange={v => setCfg(c => ({ ...c, [f.key]: v }))} />
+              </div>
+            ))}
+            <div className="tip-tiles">
+              {small.map(f => <Tile key={f.key} f={f} value={f.type === "info" ? f.text(clean) : editAll ? cfg[f.key] : clean[f.key]} edit={f.type !== "info" && (editAll || f.always)} onChange={v => setCfg(c => ({ ...c, [f.key]: v }))} />)}
+            </div>
+            {game.note ? <p className="note">{typeof game.note === "function" ? game.note(clean) : game.note}</p> : null}
+            {err ? <p className="note tip-err">{err}</p> : null}
+            <button className="start tip-go" disabled={!!err} onClick={start}>Start Game</button>
+            <span className="hint tip-enter">or press <kbd>Enter</kbd></span>
+          </section>
+          <div className="tip-side">
+            <section className="card tip-panel">
+              <h3 className="tip-h">Statistics</h3>
+              <div className="tip-stats">
+                <div className="tip-stat"><span>Sessions</span><b>{plays.length}</b></div>
+                <div className="tip-stat"><span>Best</span><b className={metric === "pnl" ? Xe(best || 0) : ""}>{fmtVal(best)}</b></div>
+                <div className="tip-stat"><span>Latest</span><b className={metric === "pnl" ? Xe(latest || 0) : ""}>{fmtVal(latest)}</b></div>
+              </div>
+              <LineChart title={metric === "pnl" ? "P&L per session" : "Score progression"} sub={metric === "pnl" ? "dollars" : "points per session"} label={metric === "pnl" ? "P&L" : "Score"} zero={metric === "pnl"}
+                data={plays.map(p => ({ ts: p.ts, v: valOf(p), note: [p.diff, p.modeLabel].filter(Boolean).join(" \u00b7 ") }))}
+                fmt={game.fmtVal ? (v => game.fmtVal(v, clean)) : metric === "pnl" ? ((v, d) => Be(v, d == null ? 0 : d)) : ((v, d) => ie(v, d != null ? d : Number.isInteger(v) ? 0 : 1))} />
+              {game.extraStats ? game.extraStats(plays, clean) : null}
+            </section>
+            {game.charts && plays.length && game.charts(plays, clean).length ? (
+              <section className="card tip-panel">
+                <h3 className="tip-h">Progress</h3>
+                {game.charts(plays, clean).map(c => <LineChart key={c.title} {...c} />)}
+              </section>
+            ) : null}
+            <section className="card tip-panel">
+              <div className="tip-h-row"><h3 className="tip-h">Your best sessions</h3><span className="tip-cap">Top 5</span></div>
+              {top.length ? (
+                <ol className="tip-board">
+                  {top.map((p, i) => (
+                    <li key={p.ts} className={"r" + (i + 1)}>
+                      <span className="tip-rank">{i + 1}</span>
+                      <span className="tip-who"><b>{fmtDate(p.ts)}</b><em>{[p.diff, p.modeLabel].filter(Boolean).join(" · ")}</em></span>
+                      <span className={"tip-amt " + (metric === "pnl" ? Xe(valOf(p)) : "")}>{fmtVal(valOf(p))}</span>
+                      <button className="tip-del" aria-label="Delete this session" title="Delete this session" onClick={() => setAsk({ play: p })}>{TH(se, { name: "x", size: 14 })}</button>
+                    </li>
+                  ))}
+                </ol>
+              ) : <div className="tip-empty small">Your top 10 sessions will show here.</div>}
+            </section>
+            {plays.length ? (
+              <section className="card tip-panel">
+                <div className="tip-h-row"><h3 className="tip-h">Recent sessions</h3><span className="tip-cap">{plays.length} saved</span></div>
+                <ul className="tip-hist">
+                  {(showAll ? plays.slice() : plays.slice(-5)).reverse().map(p => (
+                    <li key={p.ts}>
+                      <span className="tip-hist-when">{fmtWhen(p.ts)}</span>
+                      <span className="tip-hist-d">{[p.diff, p.modeLabel].filter(Boolean).join(" \u00b7 ")}</span>
+                      <span className={"tip-amt " + (metric === "pnl" ? Xe(valOf(p)) : "")}>{fmtVal(valOf(p))}</span>
+                      <button className="tip-del" aria-label="Delete this session" title="Delete this session" onClick={() => setAsk({ play: p })}>{TH(se, { name: "x", size: 14 })}</button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="row">
+                  {plays.length > 5 ? <button className="link" onClick={() => setShowAll(v => !v)}>{showAll ? "Show recent only" : `Show all ${plays.length}`}</button> : null}
+                  <span className="sp"></span>
+                  <button className="link danger-link" onClick={() => setAsk({ all: true })}>Clear history</button>
+                </div>
+              </section>
+            ) : null}
+          </div>
+        </div>
+        {ask && (
+          <div className="tm-scrim" onClick={() => setAsk(null)}>
+            <div className="modal-in danger" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+              <h3 className="h small">{ask.all ? `Clear all ${game.name} history?` : "Delete this session?"}</h3>
+              <div className="del-summary">{ask.all
+                ? [<div key="a">{game.name}</div>, <div key="b" className="big-line">{plays.length} session{plays.length === 1 ? "" : "s"}</div>]
+                : [<div key="a">{fmtWhen(ask.play.ts) + " \u00b7 " + game.name + " \u00b7 " + ask.play.diff}</div>, <div key="b" className="big-line">{fmtVal(valOf(ask.play))}</div>]}</div>
+              <p className="note">{ask.all ? "This permanently removes every saved session for this game." : "This permanently removes the session from your statistics and best sessions."} It can't be undone.</p>
+              <div className="start-row">
+                <button className="start danger-btn" autoFocus onClick={() => { deletePlays(game.id, ask.all ? plays.map(p => p.ts) : [ask.play.ts]); setAsk(null); }}>Delete</button>
+                <button className="ghost" onClick={() => setAsk(null)}>Cancel</button>
+                <span className="hint"><kbd>Esc</kbd> cancels</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ---------- reusable round timer ---------- */
+  function useNow(on, ms) {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+      if (!on) return;
+      const id = setInterval(() => setNow(Date.now()), ms || 100);
+      return () => clearInterval(id);
+    }, [on, ms]);
+    return now;
+  }
+
+  /* ---------- search + filter toolbar (Lessons, Trainers, Market Games) ----------
+     Same look as the Trading Questions bar. Filter state is kept per list for the whole
+     visit, so opening a trainer and coming back keeps the search. */
+  const FILTERS = {};
+  function useFilters(key, defaults) {
+    const [st, setSt] = useState(() => ({ ...defaults, ...(FILTERS[key] || {}) }));
+    const set = (k, v) => setSt(o => { const n = { ...o, [k]: v }; FILTERS[key] = n; return n; });
+    const reset = () => { FILTERS[key] = { ...defaults }; setSt({ ...defaults }); };
+    const active = Object.keys(defaults).some(k => JSON.stringify(st[k]) !== JSON.stringify(defaults[k]));
+    return [st, set, reset, active];
+  }
+  const norm = s => String(s || "").toLowerCase().replace(/[\u2013\u2014]/g, "-").normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  /* every word of the query must appear somewhere in the text */
+  const matches = (q, ...texts) => { const w = norm(q).split(/\s+/).filter(Boolean); if (!w.length) return true; const t = norm(texts.join(" ")); return w.every(x => t.includes(x)); };
+  /* ---------- one filter: chips while they fit on one line, a dropdown once they would wrap ----------
+     multi filters hold an array of chosen values ([] = All); single filters hold one value.
+     Shared look with the Mental Math Trainer (Stats) and the Term 1 Tracker (Lectures). */
+  const optOf = o => typeof o === "object" ? o : { value: o, label: String(o) };
+  const isAll = v => v == null || v === "All" || v === "all" || (Array.isArray(v) && !v.length);
+  /* does a multi filter value let x through? ("All"/"all"/[] let everything through) */
+  const inSel = (v, x) => isAll(v) || (Array.isArray(v) ? v.includes(x) : v === x);
+  const anySel = (v, f) => isAll(v) || (Array.isArray(v) ? v.some(f) : f(v));
+  function Filter({ label, options, value, onChange, multi }) {
+    let opts = options.map(optOf);
+    const allOpt = multi ? opts.find(o => isAll(o.value)) : null;
+    if (multi) opts = opts.filter(o => !isAll(o.value));
+    const sel = multi ? (Array.isArray(value) ? value : isAll(value) ? [] : [value]) : value;
+    const ctl = useRef(null), meas = useRef(null), box = useRef(null);
+    const [fits, setFits] = useState(true), [open, setOpen] = useState(false);
+    R.useLayoutEffect(() => {
+      const c = ctl.current, m = meas.current; if (!c || !m) return;
+      const check = () => setFits(m.scrollWidth <= c.clientWidth + 1);
+      check();
+      if (typeof ResizeObserver === "undefined") { window.addEventListener("resize", check); return () => window.removeEventListener("resize", check); }
+      const ro = new ResizeObserver(check); ro.observe(c); return () => ro.disconnect();
+    }, [options.length]);
+    useEffect(() => {
+      if (!open) return;
+      const d = e => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
+      const k = e => { if (e.key === "Escape") setOpen(false); };
+      document.addEventListener("pointerdown", d); document.addEventListener("keydown", k);
+      return () => { document.removeEventListener("pointerdown", d); document.removeEventListener("keydown", k); };
+    }, [open]);
+    useEffect(() => { if (fits) setOpen(false); }, [fits]);
+    const isOn = v => multi ? sel.includes(v) : sel === v;
+    const pick = v => {
+      if (!multi) { onChange(v); setOpen(false); return; }
+      onChange(sel.includes(v) ? sel.filter(x => x !== v) : opts.map(o => o.value).filter(x => x === v || sel.includes(x)));
+    };
+    const allLbl = allOpt ? allOpt.label : "All";
+    const chipsFor = ghost => <TF>
+      {multi ? <button type="button" tabIndex={ghost ? -1 : undefined} className={sel.length ? "" : "on"} onClick={() => onChange([])} aria-pressed={!sel.length}>{allLbl}</button> : null}
+      {opts.map(o => <button type="button" tabIndex={ghost ? -1 : undefined} key={String(o.value)} className={isOn(o.value) ? "on" : ""} aria-pressed={isOn(o.value)} onClick={() => pick(o.value)}>{o.label}</button>)}
+    </TF>;
+    const lab = v => { const o = opts.find(x => x.value === v); return o ? o.label : String(v); };
+    const sum = multi ? (!sel.length ? allLbl : sel.length === 1 ? lab(sel[0]) : sel.length + " selected") : lab(sel);
+    return (
+      <div className="frow tf-row">
+        <span className="flbl">{label}</span>
+        <div className="tf-ctl" ref={ctl}>
+          <div className="tf-mwrap" aria-hidden="true"><div className="pills tf-measure" ref={meas}>{chipsFor(true)}</div></div>
+          {fits ? <div className="pills tf-chips" role="group" aria-label={label}>{chipsFor(false)}</div> :
+            <div className="tf-dd" ref={box}>
+              <button type="button" className={"tf-btn" + ((multi ? sel.length : opts.length && sel !== opts[0].value) ? " active" : "")} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+                <span className="tf-sum">{sum}</span><span className="tf-car" aria-hidden="true">{"\u25BE"}</span></button>
+              {open ? <div className="tf-pop" role="listbox" aria-multiselectable={!!multi} aria-label={label}>
+                {multi ? <div className="tf-acts"><button type="button" className="link" onClick={() => onChange([])}>All</button>{sel.length ? <span className="muted small">{sel.length} selected</span> : null}</div> : null}
+                {opts.map(o => <button type="button" role="option" aria-selected={isOn(o.value)} key={String(o.value)} className={"tf-opt" + (isOn(o.value) ? " on" : "")} onClick={() => pick(o.value)}>
+                  <span className={"tf-box" + (multi ? "" : " r")} aria-hidden="true">{isOn(o.value) ? TH(se, { name: "check" }) : null}</span><span>{o.label}</span></button>)}
+              </div> : null}
+            </div>}
+        </div>
+      </div>
+    );
+  }
+  function FilterBar({ q, onQ, placeholder, rows, count, noun, active, onReset }) {
+    return (
+      <TF>
+        <div className="card fbar tip-fbar">
+          <div className="search">{TH(se, { name: "search" })}<input className="inp" type="search" placeholder={placeholder} value={q} onChange={e => onQ(e.target.value)}
+            autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-label={placeholder} /></div>
+          {rows.map(r => <Filter key={r.label} {...r} />)}
+        </div>
+        <div className="row small muted tip-fcount"><span>{count} {noun}{count === 1 ? "" : "s"}</span>{active ? <button className="ghost sm" onClick={onReset}>Clear filters</button> : null}</div>
+      </TF>
+    );
+  }
+
+  /* plain text with a/b fractions drawn full size, numerator over denominator */
+  /* a displayed formula wider than its column shrinks to fit (down to 62%) instead of being cut off or scrolling */
+  (function fitMath() {
+    let q = 0;
+    const run = () => { q = 0; document.querySelectorAll(".katex-display").forEach(d => {
+      if (!d.clientWidth) return;
+      d.style.fontSize = "";
+      if (d.scrollWidth > d.clientWidth + 1) d.style.fontSize = Math.max(0.62, (d.clientWidth - 2) / d.scrollWidth).toFixed(3) + "em";
+    }); };
+    const later = () => { if (!q) q = requestAnimationFrame(run); };
+    try { new MutationObserver(later).observe(document.documentElement, { childList: true, subtree: true }); window.addEventListener("resize", later); } catch (e) {}
+  })();
+  /* every formula in the app goes through the same KaTeX renderer (bg) and the same CSS */
+  const Tex = ({ t, d, cls }) => <span className={"tip-tex" + (d ? " d" : "") + (cls ? " " + cls : "")} dangerouslySetInnerHTML={{ __html: bg(String(t), !!d) }} />;
+  const FT = s => { if (typeof s !== "string" && typeof s !== "number") return s; const str = String(s), out = [], re = /(^|[^\w./])(\d+)\/(\d+)(?![\w/])/g; let k = 0, m;
+    while ((m = re.exec(str))) { const st = m.index + m[1].length; if (st > k) out.push(str.slice(k, st)); out.push(<Tex key={st} t={"\\frac{" + m[2] + "}{" + m[3] + "}"} />); k = m.index + m[0].length; }
+    if (!out.length) return str; if (k < str.length) out.push(str.slice(k)); return out; };
+
+  /* ---------- C++ in the browser: Clang (WebAssembly) in a worker, files in clang/ ----------
+     The compiler (about 27 MB compressed) downloads once per visit and stays loaded between runs. */
+  const cpp = (() => {
+    let w = null, busy = null, ready = false;
+    const mk = () => { w = new Worker(new URL("clang/worker.js", document.baseURI), { type: "module" }); w.onmessage = e => busy && busy(e.data); w.onerror = e => busy && busy({ t: "done", fatal: "The C++ compiler could not start" + (e && e.message ? ": " + e.message : ".") }); };
+    const mb = n => (n / 1048576).toFixed(1);
+    function warm() { if (w || typeof Worker === "undefined") return; mk(); busy = m => { if (m.t === "ready") { ready = true; busy = null; } }; w.postMessage({ warm: true }); }
+    /* status(text) while it works; done(result) at the end */
+    function run(code, status, done) {
+      if (!w) mk();
+      let timer = null, stage = ready ? "Compiling\u2026" : "Loading the C++ compiler\u2026";
+      status(stage);
+      const finish = r => { clearTimeout(timer); busy = null; ready = true; done(r); };
+      busy = m => {
+        if (m.t === "fetch") status("Downloading the C++ compiler (" + mb(m.done) + " / " + mb(m.total) + " MB, first run only)\u2026");
+        else if (m.t === "ready") ready = true;
+        else if (m.t === "compile") status(ready ? "Compiling\u2026" : "Loading the C++ compiler\u2026");
+        else if (m.t === "run") { status("Running\u2026"); timer = setTimeout(() => { w.terminate(); w = null; ready = false; finish({ timeout: true, compileMs: m.compileMs }); }, 15000); }
+        else if (m.t === "done") finish(m);
+      };
+      w.postMessage({ code });
+    }
+    return { run, warm };
+  })();
+
+  function CppResult({ r }) {
+    const lines = String(r.stdout || "").replace(/\n$/, "").split("\n").filter(x => x !== "");
+    const tests = lines.filter(x => /^(PASS|FAIL)\b/.test(x)), pass = tests.filter(x => x.startsWith("PASS")).length;
+    const threads = r.compile_error && /\b(thread|mutex|condition_variable|jthread|async)\b/.test(r.compile_error);
+    return (
+      <div className="card col tip-cpp">
+        <div className="row">
+          <h3 style={{ margin: 0 }}>Tests (C++)</h3>
+          {tests.length ? <span className={"chip " + (pass === tests.length && r.exit === 0 ? "easy" : "hard")}>{pass}/{tests.length} passed</span> : null}
+          <span className="sp"></span>
+          <span className="small muted">{r.compileMs != null ? "compiled in " + (r.compileMs / 1000).toFixed(1) + " s" : ""}{r.runMs != null ? " \u00b7 ran in " + r.runMs + " ms" : ""}</span>
+        </div>
+        {r.fatal ? <div className="out neg">{r.fatal}</div> : null}
+        {r.timeout ? <div className="out neg">Stopped after 15 seconds: the program may be stuck in a loop.</div> : null}
+        {r.compile_error ? <TF><div className="small muted">Compiler output</div><div className="out neg">{r.compile_error}</div></TF> : null}
+        {threads ? <div className="small muted">This compiler targets WebAssembly without threads, so <code className="ic">std::thread</code>, mutexes and <code className="ic">std::async</code> are not available here.</div> : null}
+        {tests.length ? <div className="tip-cpp-out">{tests.map((x, i) => { const m = /^(PASS|FAIL)\s*(.*)$/.exec(x);
+          return <div key={i} className="tres"><span className={m[1] === "PASS" ? "badge-ok" : "badge-bad"}>{m[1]}</span><span className="small">{m[2]}</span></div>; })}</div> : null}
+        {!r.compile_error && !r.fatal && !r.timeout ? <TF><div className="small muted">stdout</div><div className="out">{r.stdout ? r.stdout : <span className="muted">(no output)</span>}</div></TF> : null}
+        {r.stderr ? <TF><div className="small muted">stderr</div><div className="out neg">{r.stderr}</div></TF> : null}
+        {!r.compile_error && !r.fatal && !r.timeout ? <div className="small muted">Exit code {r.exit}{r.exit === 0 ? "" : " (main returns the number of failed checks)"} · Clang 22, <code className="ic">-std=c++20 -O2</code>, compiled and run on this device.</div> : null}
+      </div>
+    );
+  }
+
+  return { pending: null, Tex, R, TH, TF, still, fmtWhen, fmtDate, typing, Setup, Bars, LineChart, useNow, adaptGames, FilterBar, Filter, inSel, anySel, useFilters, matches, FT, cpp, CppResult };
+})();

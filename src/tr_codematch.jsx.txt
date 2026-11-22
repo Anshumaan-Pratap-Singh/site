@@ -1,0 +1,45 @@
+/* Code Match: the error-checking task from Cappfinity / SHL-style assessments. Find the exact copy of a code
+   among near-identical decoys (swapped neighbours, lookalike characters), on a clock that shortens each question. */
+(function () {
+  const { TH } = TIP;
+  const { trainer } = TIP_DRILL;
+  const LOOK = { O: "0", "0": "O", I: "1", "1": "I", S: "5", "5": "S", B: "8", "8": "B", Z: "2", "2": "Z", G: "6", "6": "G", Q: "O", D: "0", E: "F", F: "E", M: "N", N: "M", U: "V", V: "U", C: "G", P: "R", R: "P" };
+  const CH = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789";
+  function makeCode(r, len) { let c = ""; for (let i = 0; i < len; i++) c += r.pick(CH.split("")); if (len >= 6) { const k = Math.floor(len / 2); c = c.slice(0, k) + "-" + c.slice(k); } return c; }
+  function decoy(r, code) {
+    const idx = code.split("").map((ch, i) => i).filter(i => code[i] !== "-");
+    for (let t = 0; t < 30; t++) {
+      const kind = r.pick(["swap", "look", "look", "swap", "drop"]), a = code.split("");
+      if (kind === "swap") { const i = r.pick(idx), j = i + 1; if (j >= a.length || a[j] === "-" || a[i] === a[j]) continue; [a[i], a[j]] = [a[j], a[i]]; }
+      else if (kind === "look") { const opts = idx.filter(i => LOOK[a[i]]); if (!opts.length) continue; const i = r.pick(opts); a[i] = LOOK[a[i]]; }
+      else { const i = r.pick(idx); a[i] = r.pick(CH.split("")); }
+      const d = a.join(""); if (d !== code) return d;
+    }
+    return code.slice(0, -1) + (code.slice(-1) === "7" ? "1" : "7");
+  }
+  const mono = (c, ref) => <span className="cm-code">{c.split("").map((ch, i) => <span key={i}>{ch}</span>)}</span>;
+  function gen(r, s) {
+    let code = makeCode(r, s.length);
+    if (!code.split("").some(ch => LOOK[ch])) code = code.slice(0, 1) + r.pick(["O", "0", "8", "B", "5", "S"]) + code.slice(2);
+    const set = new Set([code]); while (set.size < s.options) set.add(decoy(r, code));
+    const opts = r.shuffle([...set]);
+    return {
+      text: `Find ${code}`, answer: code, explain: "Decoys swap two neighbours, swap in a lookalike (0/O, 1/I, 5/S, 8/B, 2/Z, 6/G) or change one character.",
+      prompt: <div className="col" style={{ alignItems: "center", gap: 8 }}><div className="oa-lbl">Find the exact match</div><div className="cm-target">{mono(code)}</div></div>,
+      input: "choice", cols: s.options > 4 ? 2 : 1, choiceCls: "cm-opts", choices: opts.map(o => ({ value: o, label: o, node: mono(o) })), check: v => v === code,
+    };
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "codematch", name: "Code Match", version: 2,
+    blurb: "The error-checking task from Cappfinity and SHL-style assessments: spot the exact copy of a code among decoys with swapped, lookalike or changed characters. The clock shortens every question.",
+    fields: [
+      { key: "count", label: "Questions", type: "num", min: 5, max: 40 },
+      { key: "options", label: "Options", type: "num", min: 3, max: 8 },
+      { key: "length", label: "Code length", type: "num", min: 4, max: 12, unit: " chars" },
+      { key: "start", label: "Starting time", type: "num", min: 2, max: 30, unit: "s" },
+      { key: "shrink", label: "Shrink per question", type: "sel", choices: [{ value: 0, label: "None" }, { value: 0.2, label: "0.2s" }, { value: 0.35, label: "0.35s" }, { value: 0.5, label: "0.5s" }] },
+    ],
+    presets: { Easy: { count: 12, options: 3, length: 6, start: 10, shrink: 0.2 }, Medium: { count: 18, options: 4, length: 8, start: 8, shrink: 0.35 }, Hard: { count: 25, options: 6, length: 10, start: 7, shrink: 0.35 } },
+    note: "The clock never goes below 1.5 seconds. Keys 1–8 or A–H pick an option.",
+  }, { gen, count: s => s.count, perQSecs: (s, i) => Math.max(1.5, s.start - s.shrink * i), fast: true, okMs: 200, badMs: 700 }));
+})();

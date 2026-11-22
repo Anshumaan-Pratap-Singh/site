@@ -1,0 +1,310 @@
+/* Lessons part 2: continuous and stochastic, numbers and mental maths, trading and expected value. */
+var TIP_LP2 = (function () {
+  const S = String.raw;
+  return [
+    /* ---------------- Continuous & stochastic ---------------- */
+    { id: "orderstats", group: "stoch", title: "Continuous distributions and order statistics",
+      desc: "Densities, the uniform, exponential and normal toolkit, and the max, min and k-th smallest of random samples.",
+      tags: ["continuous", "uniform", "exponential", "normal", "order statistics", "minimum", "maximum", "density", "cdf", "memoryless", "variance"],
+      intro: S`A continuous variable has a density $f$ with $\mathbb{P}(a \le X \le b) = \int_a^b f(x)\,dx$ and a CDF $F(x) = \mathbb{P}(X \le x)$. Order statistics (the max, the min, the $k$-th smallest of a sample) are easiest through the CDF.`,
+      sections: [
+        { h: "The three distributions you must know", p: [
+          S`**Uniform** on $[a,b]$: mean $\frac{a+b}{2}$, variance $\frac{(b-a)^2}{12}$.`,
+          S`**Exponential** with rate $\lambda$: $f(x) = \lambda e^{-\lambda x}$, mean $\frac1\lambda$, variance $\frac1{\lambda^2}$, and **memoryless**: $\mathbb{P}(X > s + t \mid X > s) = \mathbb{P}(X > t)$.`,
+          S`**Normal** $N(\mu, \sigma^2)$: $68\%$ within $1\sigma$, $95\%$ within $2\sigma$ ($1.96\sigma$ exactly), $99.7\%$ within $3\sigma$. Sums of independent normals are normal, and variances add.` ] },
+        { h: "Max and min through the CDF", p: [
+          S`For $n$ independent copies:
+$$\mathbb{P}(\max \le x) = F(x)^n, \qquad \mathbb{P}(\min > x) = (1 - F(x))^n.$$
+For uniforms on $[0,1]$, the max has density $n x^{n-1}$ and mean $\frac{n}{n+1}$; the $k$-th smallest has mean $\frac{k}{n+1}$. The min of independent exponentials with rates $\lambda_i$ is exponential with rate $\sum \lambda_i$.` ] },
+        { h: "Expectation from the tail", p: [
+          S`For $X \ge 0$: $\mathbb{E}[X] = \int_0^\infty \mathbb{P}(X > x)\,dx$. This gives the mean of a max or min without finding its density.` ] },
+      ],
+      examples: [
+        { t: "Max of three uniforms", q: S`$X_1, X_2, X_3$ are uniform on $[0,1]$. What is $\mathbb{E}[\max]$?`,
+          a: [S`$\mathbb{E} = \int_0^1 (1 - x^3)\,dx = 1 - \frac14 = \frac34$, matching $\frac{n}{n+1}$.`] },
+        { t: "First of two lightbulbs", q: S`Two bulbs have exponential lifetimes with means 2 and 3 years. When does the first fail, on average?`,
+          a: [S`Rates $\frac12 + \frac13 = \frac56$. The min is exponential with that rate, mean $\frac65 = 1.2$ years.`] },
+      ],
+      traps: [S`Adding standard deviations instead of variances.`, S`Forgetting that a density can exceed 1; only its integral is a probability.`],
+      tips: [S`For any max/min question, write the CDF first.`, S`Memorise $\frac{k}{n+1}$ for uniform order statistics.`],
+      checks: [
+        { q: S`$X_1, \dots, X_4$ uniform on $[0,1]$. What is $\mathbb{E}[\min]$?`, answer: 0.2, tol: 0.001, why: S`$\frac{1}{n+1} = \frac15$.` },
+        { q: S`$X, Y$ uniform on $[0,1]$. What is $\mathbb{P}(\max(X,Y) \le 0.6)$?`, answer: 0.36, tol: 0.001, why: S`$0.6^2 = 0.36$.` },
+        { q: S`What is the variance of a uniform variable on $[0, 6]$?`, answer: 3, tol: 0.001, why: S`$\frac{6^2}{12} = 3$.` },
+        { q: S`Exponential waiting time with mean 10 minutes; you have waited 7 minutes. What is the expected further wait?`, answer: 10, tol: 0.001, why: S`Memoryless: still 10 minutes.` },
+        { q: S`$X \sim N(0, 9)$ and $Y \sim N(0, 16)$ independent. What is the standard deviation of $X + Y$?`, answer: 5, tol: 0.001, why: S`Variances add: $9 + 16 = 25$, so $\sigma = 5$.` },
+        { q: S`Three exponential clocks with rates 1, 2 and 3 run at once. What is the probability the rate-3 clock rings first?`, answer: 0.5, tol: 0.001, why: S`$\frac{3}{1 + 2 + 3} = \frac12$.` },
+        { q: S`$X_1, \dots, X_5$ uniform on $[0,1]$. What is the expected value of the second largest?`, answer: 4 / 6, tol: 0.002, why: S`The 4th smallest of 5: $\frac46 = \frac23$.` },
+        { q: S`Roughly what percentage of a normal distribution lies more than $2\sigma$ above the mean?`, answer: 2.3, tol: 0.25, why: S`About $95\%$ is within $2\sigma$, so about $2.3\%$ (more precisely $2.28\%$) is in each tail.` },
+      ] },
+
+    { id: "markov", group: "stoch", title: "Markov chains",
+      desc: "States, transition matrices, stationary distributions, absorption probabilities and hitting times.",
+      tags: ["markov chains", "markov", "transition matrix", "stationary distribution", "absorbing", "hitting time", "random walk", "first-step analysis"],
+      intro: S`A Markov chain moves between states where the next step depends only on the current state. It is described by a transition matrix $P$ with $P_{ij} = \mathbb{P}(\text{next} = j \mid \text{now} = i)$; each row sums to 1.`,
+      sections: [
+        { h: "Stationary distribution", p: [
+          S`A distribution $\pi$ with $\pi P = \pi$ is unchanged by a step. For an irreducible, aperiodic chain it is also the long-run fraction of time spent in each state, and the mean return time to state $i$ is $\frac{1}{\pi_i}$.` ] },
+        { h: "Absorption and hitting times", p: [
+          S`For absorbing chains use first-step analysis: $h_i = \sum_j P_{ij} h_j$ for absorption probabilities and $k_i = 1 + \sum_j P_{ij} k_j$ for expected steps, with boundary values at the absorbing states.` ] },
+        { h: "Two-state chain", p: [
+          S`With $\mathbb{P}(1 \to 2) = a$ and $\mathbb{P}(2 \to 1) = b$, the stationary distribution is
+$$\pi = \left(\frac{b}{a+b},\ \frac{a}{a+b}\right).$$` ] },
+        { h: "Random walks on graphs", p: [
+          S`A walk that moves to a uniformly random neighbour has $\pi_v = \frac{\deg v}{2|E|}$. On a knight's graph or a cube this gives return times instantly.` ] },
+      ],
+      examples: [
+        { t: "Weather chain", q: S`Sunny stays sunny with probability $0.8$; rainy stays rainy with probability $0.6$. What fraction of days are sunny in the long run?`,
+          a: [S`$a = 0.2$ (sun to rain), $b = 0.4$ (rain to sun).`, S`$\pi_{\text{sun}} = \frac{0.4}{0.6} = \frac23$.`] },
+        { t: "Knight returning", q: S`A knight moves at random on a chessboard from a corner. How many moves does it take to return, on average?`,
+          a: [S`Total degree of the knight's graph is $336$ (twice the 168 edges); the corner has degree 2.`, S`$\pi = \frac{2}{336}$, so the mean return time is $168$.`] },
+      ],
+      traps: [S`Using columns instead of rows of $P$.`, S`Applying stationary results to a periodic or reducible chain.`],
+      tips: [S`For graphs, use degrees: no algebra needed.`, S`Check that rows sum to 1 before you solve.`],
+      checks: [
+        { q: S`Sunny stays sunny with probability $0.9$; rainy turns sunny with probability $0.5$. What long-run fraction of days are sunny?`, answer: 5 / 6, tol: 0.003, why: S`$a = 0.1$, $b = 0.5$: $\pi = \frac{0.5}{0.6} = \frac56$.` },
+        { q: S`A random walk on a cube's vertices (degree 3 each). What is the expected return time to the start?`, answer: 8, why: S`Uniform stationary distribution over 8 vertices: return time $8$.` },
+        { q: S`A walk on $\{0,1,2,3\}$ moves $\pm1$ with probability $\frac12$, absorbing at 0 and 3. Starting at 1, what is the probability of hitting 3?`, answer: 1 / 3, tol: 0.003, why: S`Fair walk: $\frac{k}{N} = \frac13$.` },
+        { q: S`Same walk from 1: what is the expected number of steps to absorption?`, answer: 2, why: S`$k(N-k) = 1 \times 2 = 2$.` },
+        { q: S`A random walk on a star graph: centre joined to 5 leaves. What fraction of time is spent at the centre?`, answer: 0.5, tol: 0.001, why: S`Centre degree 5, total degree 10: $\frac12$.` },
+        { q: S`A two-state chain with $a = 0.3$, $b = 0.3$. What is the mean return time to state 1?`, answer: 2, why: S`$\pi_1 = \frac12$, so return time $2$.` },
+      ] },
+
+    { id: "martingale", group: "stoch", title: "Martingales and optional stopping",
+      desc: "Fair games stay fair under any sensible stopping rule: the fastest route to ruin probabilities and expected values.",
+      tags: ["martingale", "optional stopping", "fair game", "gambler's ruin", "stopping time", "doubling strategy", "wald"],
+      intro: S`A **martingale** is a fair game: $\mathbb{E}[X_{n+1} \mid \text{history}] = X_n$. Your expected wealth tomorrow equals your wealth today, whatever has happened.`,
+      sections: [
+        { h: "Optional stopping", p: [
+          S`If $\tau$ is a stopping time (decided using only the past) and things are bounded (bounded $\tau$, or bounded $X$ up to $\tau$), then
+$$\mathbb{E}[X_\tau] = X_0.$$
+No stopping rule can turn a fair game into a profitable one. The doubling strategy only seems to work because it needs unlimited money and time.` ] },
+        { h: "Gambler's ruin in one line", p: [
+          S`Fair $\pm1$ walk from $k$, stopped at $0$ or $N$: $\mathbb{E}[X_\tau] = k$ gives $N\,\mathbb{P}(\text{hit } N) = k$. Using the martingale $X_n^2 - n$ gives the duration $k(N-k)$.` ] },
+        { h: "Biased walks", p: [
+          S`For a $\pm1$ walk with up-probability $p$, $r^{X_n}$ with $r = \frac{1-p}{p}$ is a martingale. That gives $\mathbb{P}(\text{hit } N) = \frac{1 - r^k}{1 - r^N}$.` ] },
+        { h: "Wald's identity", p: [
+          S`For i.i.d. steps with mean $\mu$ and a stopping time $\tau$ with finite mean, $\mathbb{E}\left[\sum_{i \le \tau} Y_i\right] = \mu\,\mathbb{E}[\tau]$.` ] },
+      ],
+      examples: [
+        { t: "Biased ruin", q: S`You win each $\$1$ bet with probability $0.6$. Starting with $\$2$, what is the chance of reaching $\$5$ before $\$0$?`,
+          a: [S`$r = \frac{0.4}{0.6} = \frac23$.`, S`$\frac{1 - (2/3)^2}{1 - (2/3)^5} = \frac{5/9}{211/243} = \frac{135}{211} \approx 0.640$.`] },
+        { t: "Dice sum to a stop", q: S`Roll a die until the first six. What is the expected total of all the rolls, including the six?`,
+          a: [S`$\mathbb{E}[\tau] = 6$ and each roll averages $3.5$; by Wald, $6 \times 3.5 = 21$.`] },
+      ],
+      traps: [S`Applying optional stopping when the stopping time is unbounded and the walk is unbounded (e.g. "stop when ahead").`],
+      tips: [S`Find a martingale, stop it, and set expectations equal.`],
+      checks: [
+        { q: S`Fair $\pm1$ walk from 3, stopped at 0 or 10. What is $\mathbb{P}(\text{hit } 10)$?`, answer: 0.3, tol: 0.001, why: S`$\frac{3}{10}$.` },
+        { q: S`Same walk: what is the expected duration?`, answer: 21, why: S`$3 \times 7 = 21$.` },
+        { q: S`Bets win with probability $\frac23$. From $\$1$, what is the probability of reaching $\$3$ before $\$0$?`, answer: (1 - 0.5) / (1 - 0.125), tol: 0.003, why: S`$r = \frac12$: $\frac{1 - \frac12}{1 - \frac18} = \frac47 \approx 0.571$.` },
+        { q: S`Roll a die until the first six. What is the expected sum of all rolls including the six?`, answer: 21, why: S`Wald: $6 \times 3.5 = 21$.` },
+        { q: S`An urn has 1 red and 1 blue ball; each draw, return the ball plus another of the same colour (Pólya). What is the expected fraction of red after 100 draws?`, answer: 0.5, tol: 0.001, why: S`The red fraction is a martingale: it stays $\frac12$ in expectation.` },
+        { q: S`A stock follows a fair random walk from \$50. You sell when it first hits \$60 or \$40. What is the probability you sell at \$60?`, answer: 0.5, tol: 0.001, why: S`$\frac{50 - 40}{60 - 40} = \frac12$.` },
+      ] },
+
+    { id: "poisson", group: "stoch", title: "Poisson processes",
+      desc: "Random arrivals at a constant rate: counts, gaps, splitting, merging and the waiting-time paradox.",
+      tags: ["poisson", "poisson process", "exponential", "arrivals", "rate", "memoryless", "inspection paradox", "queue"],
+      intro: S`A Poisson process with rate $\lambda$ models arrivals that happen independently at a constant average rate. The number in time $t$ is Poisson with mean $\lambda t$, and the gaps are exponential with mean $\frac1\lambda$.`,
+      sections: [
+        { h: "Counts", p: [
+          S`$$\mathbb{P}(N_t = k) = e^{-\lambda t}\frac{(\lambda t)^k}{k!}, \qquad \mathbb{E}[N_t] = \operatorname{Var}(N_t) = \lambda t.$$
+Counts in disjoint intervals are independent.` ] },
+        { h: "Merging and splitting", p: [
+          S`Two independent processes with rates $\lambda$ and $\mu$ merge into one with rate $\lambda + \mu$, and each arrival is from the first with probability $\frac{\lambda}{\lambda + \mu}$. Marking each arrival independently with probability $p$ splits a process into independent processes with rates $p\lambda$ and $(1-p)\lambda$.` ] },
+        { h: "Given the count, times are uniform", p: [
+          S`Given $N_t = n$, the arrival times are $n$ independent uniform points on $[0,t]$, sorted.` ] },
+        { h: "The inspection paradox", p: [
+          S`Arrive at a random time at a bus stop with Poisson buses every 10 minutes on average. Your expected wait is still 10 minutes, and the gap you land in averages 20 minutes, because you are more likely to land in a long gap.` ] },
+      ],
+      examples: [
+        { t: "No calls", q: S`Calls arrive at 3 per hour. What is the probability of no calls in 20 minutes?`,
+          a: [S`$\lambda t = 3 \times \frac13 = 1$, so $e^{-1} \approx 0.368$.`] },
+        { t: "Which comes first", q: S`Red cars pass at 2 per minute and blue at 3 per minute. What is the probability the next car is red?`,
+          a: [S`$\frac{2}{2 + 3} = 0.4$.`] },
+      ],
+      traps: [S`Thinking the gap you arrive in is a typical gap.`, S`Mixing rate units (per hour vs per minute).`],
+      tips: [S`Convert to $\lambda t$ first; most answers are $e^{-\lambda t}$ times a short polynomial.`],
+      checks: [
+        { q: S`Arrivals at rate 2 per hour. What is the probability of exactly 2 arrivals in an hour?`, answer: 2 * Math.exp(-2), tol: 0.002, why: S`$e^{-2}\frac{2^2}{2!} = 2e^{-2} \approx 0.271$.` },
+        { q: S`Arrivals at rate 4 per hour. What is the expected time until the third arrival, in minutes?`, answer: 45, tol: 0.01, why: S`Three gaps of mean 15 minutes: 45.` },
+        { q: S`Emails arrive at 6 per hour, 1 in 3 is spam. What is the probability of no spam in 30 minutes?`, answer: Math.exp(-1), tol: 0.002, why: S`Spam rate 2 per hour; $\lambda t = 1$: $e^{-1} \approx 0.368$.` },
+        { q: S`Given exactly 1 arrival in $[0, 10]$, what is the probability it happened in the first 3 minutes?`, answer: 0.3, tol: 0.001, why: S`Uniform on $[0,10]$: $0.3$.` },
+        { q: S`Two Poisson processes with rates 1 and 3. What is the probability the first two arrivals both come from the rate-3 process?`, answer: 9 / 16, tol: 0.002, why: S`Each arrival independently is from it with probability $\frac34$: $\frac9{16}$.` },
+        { q: S`Buses arrive as a Poisson process with mean gap 12 minutes. You arrive at a random time. What is the expected length of the gap you are in, in minutes?`, answer: 24, tol: 0.01, why: S`Size-biased gap: twice the mean, $24$.` },
+      ] },
+
+    { id: "brownian", group: "stoch", title: "Brownian motion",
+      desc: "The continuous random walk behind option pricing: scaling, reflection, hitting times and Itô's correction.",
+      tags: ["brownian motion", "wiener process", "random walk", "reflection principle", "hitting time", "ito", "geometric brownian motion", "variance", "volatility"],
+      intro: S`Brownian motion $W_t$ starts at 0, has independent increments, and $W_t - W_s \sim N(0, t - s)$. It is the limit of a scaled random walk, and the model under Black–Scholes.`,
+      sections: [
+        { h: "Scaling", p: [
+          S`Standard deviation grows like $\sqrt t$: four times the horizon only doubles the typical move. This is why volatility scales with $\sqrt{T}$ (daily vol $\approx$ annual vol $/ \sqrt{252}$, about annual $/16$).` ] },
+        { h: "Useful martingales", p: [
+          S`$W_t$, $W_t^2 - t$ and $e^{\theta W_t - \theta^2 t/2}$ are martingales. With optional stopping they give: from 0, the chance of hitting $a > 0$ before $-b < 0$ is $\frac{b}{a+b}$, and the expected exit time is $ab$.` ] },
+        { h: "Reflection principle", p: [
+          S`For $a > 0$: $\mathbb{P}\left(\max_{s \le t} W_s \ge a\right) = 2\,\mathbb{P}(W_t \ge a)$. A path that hits $a$ is as likely to end above as below it.` ] },
+        { h: "Geometric Brownian motion and Itô", p: [
+          S`Stock model: $dS = \mu S\,dt + \sigma S\,dW$, so
+$$S_T = S_0 \exp\!\left(\left(\mu - \tfrac12\sigma^2\right)T + \sigma W_T\right).$$
+The $-\frac12\sigma^2$ is Itô's correction: the median grows more slowly than the mean, $\mathbb{E}[S_T] = S_0 e^{\mu T}$.` ] },
+      ],
+      examples: [
+        { t: "Hitting before", q: S`Brownian motion from 0. What is the probability of hitting $+1$ before $-3$?`,
+          a: [S`$\frac{b}{a+b} = \frac{3}{4}$.`] },
+        { t: "Reflection", q: S`What is the probability that $\max_{s \le 1} W_s \ge 1$?`,
+          a: [S`$2\,\mathbb{P}(Z \ge 1) \approx 2 \times 0.159 = 0.317$.`] },
+      ],
+      traps: [S`Scaling standard deviation by $t$ instead of $\sqrt t$.`, S`Forgetting Itô's $-\frac12\sigma^2$ in the log-price drift.`],
+      tips: [S`Annual vol $16\%$ is about $1\%$ a day: the "divide by 16" rule.`],
+      checks: [
+        { q: S`What is $\operatorname{Var}(W_3 - W_1)$?`, answer: 2, why: S`Increment over a length-2 interval: variance 2.` },
+        { q: S`From 0, what is the probability Brownian motion hits $2$ before $-1$?`, answer: 1 / 3, tol: 0.003, why: S`$\frac{b}{a+b} = \frac{1}{3}$.` },
+        { q: S`From 0, what is the expected time to exit $(-2, 3)$?`, answer: 6, why: S`$ab = 2 \times 3 = 6$.` },
+        { q: S`Annual volatility $32\%$. Roughly what is the daily volatility, in %?`, answer: 2, tol: 0.05, why: S`$\frac{32}{\sqrt{252}} \approx \frac{32}{16} = 2\%$.` },
+        { q: S`What is $\mathbb{E}[W_2^2]$?`, answer: 2, why: S`$W_t^2 - t$ is a martingale from 0: $\mathbb{E}[W_2^2] = 2$.` },
+        { q: S`What is $\operatorname{Cov}(W_2, W_5)$?`, answer: 2, why: S`$\operatorname{Cov}(W_s, W_t) = \min(s,t) = 2$.` },
+      ] },
+
+    /* ---------------- Numbers & mental maths ---------------- */
+    { id: "numbers", group: "num", title: "Modular arithmetic and number tricks",
+      desc: "Remainders, last digits, divisibility rules, gcds and the number facts behind quick brainteasers.",
+      tags: ["modular arithmetic", "mod", "remainders", "last digit", "divisibility", "gcd", "primes", "number theory", "fermat"],
+      intro: S`Working mod $n$ means keeping only remainders. You can add, subtract and multiply first and reduce at the end, or reduce at every step: the answer is the same.`,
+      sections: [
+        { h: "Last digits and cycles", p: [
+          S`Last digits of powers repeat. $7^1, 7^2, 7^3, 7^4$ end in $7, 9, 3, 1$, then repeat with period 4. So the last digit of $7^{2026}$ is that of $7^{2}$: $9$.` ] },
+        { h: "Fermat's little theorem", p: [
+          S`If $p$ is prime and $p \nmid a$, then $a^{p-1} \equiv 1 \pmod p$. So $2^{100} \bmod 7$: $2^3 = 8 \equiv 1$, and $100 = 3 \cdot 33 + 1$, giving $2$.` ] },
+        { h: "Divisibility rules", p: [
+          S`By 4: last two digits. By 8: last three. By 11: alternating digit sum from the right, which also gives the remainder: $918085 \to 5 - 8 + 0 - 8 + 1 - 9 = -19 \equiv 3 \pmod{11}$. By 7: double the last digit and subtract it from the rest ($343 \to 34 - 6 = 28$ ✓).`,
+          S`These all come from $10 \equiv 1$, $-1$ or $3$ modulo the divisor. The digit-sum rule for 3 and 9 and the 9, 11 and 99 division shortcuts have their own lessons under Mental maths tricks.` ] },
+        { h: "gcd and lcm", p: [
+          S`Euclid: $\gcd(a, b) = \gcd(b, a \bmod b)$. Then $\operatorname{lcm}(a,b) = \frac{ab}{\gcd(a,b)}$. Trailing zeros of $n!$: $\lfloor n/5 \rfloor + \lfloor n/25 \rfloor + \dots$` ] },
+      ],
+      examples: [
+        { t: "Remainder of a big power", q: S`What is $3^{50} \bmod 8$?`,
+          a: [S`$3^2 = 9 \equiv 1 \pmod 8$, so $3^{50} = (3^2)^{25} \equiv 1$.`] },
+        { t: "Trailing zeros", q: S`How many zeros does $100!$ end in?`,
+          a: [S`$\lfloor 100/5 \rfloor + \lfloor 100/25 \rfloor = 20 + 4 = 24$.`] },
+      ],
+      traps: [S`Dividing in modular arithmetic: you can only divide by numbers coprime to the modulus.`],
+      tips: [S`Find the cycle length first, then reduce the exponent mod the cycle.`, S`For speed arithmetic with 9, 11 and 99, use the Mental maths tricks lessons; this lesson is for remainders and divisibility in brainteasers.`],
+      checks: [
+        { q: S`What is the last digit of $3^{2026}$?`, answer: 9, why: S`Cycle $3, 9, 7, 1$; $2026 \equiv 2 \pmod 4$: $9$.` },
+        { q: S`What is $2^{100} \bmod 7$?`, answer: 2, why: S`$2^3 \equiv 1$; $100 = 3 \cdot 33 + 1$: $2$.` },
+        { q: S`How many trailing zeros does $125!$ have?`, answer: 31, why: S`$25 + 5 + 1 = 31$.` },
+        { q: S`What is $\gcd(462, 1071)$?`, answer: 21, why: S`$1071 = 2 \cdot 462 + 147$, $462 = 3 \cdot 147 + 21$, $147 = 7 \cdot 21$: $21$.` },
+        { q: S`What is the remainder when $918085$ is divided by 11?`, answer: 3, why: S`Alternating sum from the right: $5 - 8 + 0 - 8 + 1 - 9 = -19 \equiv 3$.` },
+        { q: S`What is $\operatorname{lcm}(12, 18)$?`, answer: 36, why: S`$\frac{12 \cdot 18}{6} = 36$.` },
+        { q: S`What is the last digit of $7^{2026}$?`, answer: 9, why: S`Cycle $7, 9, 3, 1$; $2026 \equiv 2$: $9$.` },
+        { q: S`What is $17^{17} \bmod 5$?`, answer: 2, why: S`$17 \equiv 2$; $2^4 \equiv 1$; $17 \equiv 1 \pmod 4$: $2^1 = 2$.` },
+      ] },
+
+    { id: "mental", group: "num", title: "Mental maths shortcuts",
+      desc: "General methods for 80-in-8 style tests: anchoring, splitting, squares near 50 and 100, fraction–decimal recall and test technique.",
+      tags: ["mental maths", "mental math", "arithmetic", "multiplication", "fractions", "decimals", "percentages", "squares", "estimation", "80 in 8"],
+      intro: S`Online mental maths tests (Optiver's 80-in-8, Flow Traders and IMC numerical tests) reward speed with exactness. The trick is to rewrite each question into one you already know.`,
+      sections: [
+        { h: "Multiplication", p: [
+          S`**Split**: $47 \times 6 = 240 + 42 = 282$. **Anchor**: $49 \times 26 = 50 \times 26 - 26 = 1274$. **Halve and double**: $15 \times 14 = 30 \times 7 = 210$; $35 \times 16 = 70 \times 8 = 560$. **Difference of squares**: $47 \times 53 = 50^2 - 3^2 = 2491$.` ] },
+        { h: "Squares", p: [
+          S`Near 50: $(50 + a)^2 = 2500 + 100a + a^2$, so $53^2 = 2809$. Near 100: $(100 - a)^2 = 10000 - 200a + a^2$, so $97^2 = 9409$. Ending in 5: see the "Squares ending in 5" lesson.` ] },
+        { h: "Division and fractions", p: [
+          S`Know these cold: $\frac18 = 0.125$, $\frac16 = 0.1\overline6$, $\frac17 = 0.\overline{142857}$, $\frac19 = 0.\overline1$, $\frac1{11} = 0.\overline{09}$, $\frac1{12} = 0.08\overline3$, $\frac1{16} = 0.0625$. Sevenths cycle through $142857$: $\frac37 = 0.428571\ldots$` ] },
+        { h: "Percentages", p: [
+          S`Chain changes multiply: $+20\%$ then $-20\%$ is $1.2 \times 0.8 = 0.96$, a $4\%$ loss. Reverse a rise by dividing: after $+25\%$, divide by $1.25$. Building percentages from 10%, 5% and 1% is in "Percent decomposition".` ] },
+        { h: "Test technique", p: [
+          S`In multiple-choice tests with negative marking, eliminate by last digit and size before calculating. Skip anything taking more than about 10 seconds and come back if time remains.` ] },
+      ],
+      examples: [
+        { t: "Two-digit product", q: S`$68 \times 72$?`, a: [S`$70^2 - 2^2 = 4900 - 4 = 4896$.`] },
+        { t: "Fraction to decimal", q: S`$\frac{5}{16}$ as a decimal?`, a: [S`$5 \times 0.0625 = 0.3125$.`] },
+        { t: "Reverse percentage", q: S`A price rose $25\%$ to \$60. What was it before?`, a: [S`$\frac{60}{1.25} = 48$.`] },
+      ],
+      traps: [S`Losing a factor of 10 when moving decimal points. Estimate the size first.`],
+      tips: [S`Check the last digit and rough size of every answer before submitting.`, S`Practise the fraction table until recall is instant.`],
+      checks: [
+        { q: S`$35 \times 16$?`, answer: 560, why: S`Halve and double: $70 \times 8 = 560$.` },
+        { q: S`$97^2$?`, answer: 9409, why: S`$10000 - 600 + 9 = 9409$.` },
+        { q: S`$43 \times 37$?`, answer: 1591, why: S`$40^2 - 3^2 = 1591$.` },
+        { q: S`$\frac{3}{7}$ to three decimal places?`, answer: 0.429, tol: 0.0006, why: S`$0.428571\ldots \approx 0.429$.` },
+        { q: S`$52^2$?`, answer: 2704, why: S`$2500 + 200 + 4 = 2704$.` },
+        { q: S`A price rose $25\%$ to $75$. What was it before?`, answer: 60, why: S`$\frac{75}{1.25} = 60$.` },
+        { q: S`$7.5 \times 0.24$?`, answer: 1.8, tol: 0.0001, why: S`$7.5 \times 0.24 = 30 \times 0.06 = 1.8$.` },
+        { q: S`$1728 \div 16$?`, answer: 108, why: S`$1728 / 16 = 108$.` },
+        { q: S`$\frac{11}{12}$ as a decimal to 4 places?`, answer: 0.9167, tol: 0.0001, why: S`$1 - 0.0833 = 0.9167$.` },
+        { q: S`A price falls $20\%$ then rises $25\%$. What is the net change in %?`, answer: 0, tol: 0.001, why: S`$0.8 \times 1.25 = 1$: no change.` },
+      ] },
+
+    /* ---------------- Trading & expected value ---------------- */
+    { id: "ev", group: "trade", title: "Expected value and betting",
+      desc: "Pricing games by expected value, optimal stopping, variance and when a positive-EV bet is still a bad idea.",
+      tags: ["expected value", "ev", "betting", "optimal stopping", "dice games", "variance", "risk", "kelly", "games"],
+      intro: S`The fair price of a game is its expected payoff. In interviews you are asked to price games, decide when to stop, and say how much you would pay or bet.`,
+      sections: [
+        { h: "Pricing a game", p: [
+          S`List the outcomes and payoffs, weight by probability, add. Roll a die and receive the face: $\mathbb{E} = 3.5$. Receive the square of the face: $\frac{1 + 4 + 9 + 16 + 25 + 36}{6} = \frac{91}{6} \approx 15.17$, which is more than $3.5^2$ (Jensen's inequality).` ] },
+        { h: "Optimal stopping", p: [
+          S`Work backwards. With one reroll allowed, keep a first roll if it beats the value of rerolling ($3.5$): keep $4, 5, 6$. Value: $\frac36 \cdot 5 + \frac36 \cdot 3.5 = 4.25$. With two rerolls, the threshold rises to $4.25$, so keep only $5, 6$: value $\frac26 \cdot 5.5 + \frac46 \cdot 4.25 = 4.67$.` ] },
+        { h: "Variance and risk", p: [
+          S`Two games with the same EV can have very different risk. $\operatorname{Var}(X) = \mathbb{E}[X^2] - \mathbb{E}[X]^2$. A trader cares about EV per unit of risk and about not losing everything; see Kelly sizing in the prediction-markets lessons.` ] },
+        { h: "Fair odds", p: [
+          S`If something happens with probability $p$, fair odds against are $\frac{1-p}{p} : 1$. A bet paying $b : 1$ has EV per \$1 of $pb - (1 - p)$.` ] },
+      ],
+      examples: [
+        { t: "Reroll once", q: S`Roll a die and receive the face in dollars; you may reroll once (you must keep the second). What is the game worth?`,
+          a: [S`Keep $4, 5, 6$ (average 5); reroll $1, 2, 3$ (worth 3.5).`, S`$\frac12 \cdot 5 + \frac12 \cdot 3.5 = 4.25$.`] },
+        { t: "Pay to play", q: S`Flip until the first tails; you receive \$$2^k$ where $k$ is the number of heads. How much would you pay?`,
+          a: [S`$\mathbb{E} = \sum_k 2^k \cdot 2^{-(k+1)} = \infty$ (St Petersburg).`, S`In practice: finite bankroll, risk aversion. A good answer caps the payout and computes a finite price.`] },
+      ],
+      traps: [S`Confusing $\mathbb{E}[X^2]$ with $\mathbb{E}[X]^2$.`, S`Answering "how much would you pay" with only the EV, ignoring risk and bankroll.`],
+      tips: [S`For stopping games, write the value of continuing first; it becomes the threshold.`],
+      checks: [
+        { q: S`Roll a die; you may reroll once. What is the game worth?`, answer: 4.25, tol: 0.001, why: S`Keep 4+: $\frac12 \cdot 5 + \frac12 \cdot 3.5 = 4.25$.` },
+        { q: S`Roll a die; you may reroll twice. What is the game worth?`, answer: 14 / 3, tol: 0.005, why: S`Keep 5+: $\frac13 \cdot 5.5 + \frac23 \cdot 4.25 = \frac{14}{3} \approx 4.67$.` },
+        { q: S`Roll two dice and receive the larger. What is the expected payoff?`, answer: 161 / 36, tol: 0.005, why: S`$\sum_k k\frac{2k-1}{36} = \frac{161}{36} \approx 4.47$.` },
+        { q: S`You receive the square of a die roll. What is the fair price?`, answer: 91 / 6, tol: 0.01, why: S`$\frac{91}{6} \approx 15.17$.` },
+        { q: S`A bet pays $3:1$ and wins with probability $0.3$. What is the EV per \$1?`, answer: 0.2, tol: 0.001, why: S`$0.3 \times 3 - 0.7 = 0.2$.` },
+        { q: S`What is the variance of a single fair die roll?`, answer: 35 / 12, tol: 0.003, why: S`$\frac{91}{6} - 3.5^2 = \frac{35}{12} \approx 2.92$.` },
+        { q: S`Flip a coin: heads pays \$10, tails pays \$0. You may flip once more and take the second result instead. What is the game worth?`, answer: 7.5, tol: 0.001, why: S`Keep heads; reflip tails (worth 5): $\frac12 \cdot 10 + \frac12 \cdot 5 = 7.5$.` },
+        { q: S`A game pays the number of heads in 10 fair flips, squared. What is its expected value?`, answer: 27.5, tol: 0.001, why: S`$\mathbb{E}[X^2] = \operatorname{Var} + \mathbb{E}^2 = 2.5 + 25 = 27.5$.` },
+      ] },
+
+    { id: "marketmaking", group: "trade", title: "Making a market",
+      desc: "How market-making interviews run: fair value, width, skew, inventory, adverse selection and updating on fills.",
+      tags: ["market making", "making a market", "bid", "ask", "spread", "skew", "inventory", "adverse selection", "two-way price", "quoting", "dice"],
+      intro: S`In a market-making interview you are asked for a two-way price ("make me a market") on something uncertain, such as the sum of three dice or the number of windows in London. You quote a **bid** (where you buy) and an **ask** (where you sell); the interviewer then trades with you and changes the information.`,
+      sections: [
+        { h: "Fair value first", p: [
+          S`Centre the market on your expected value. Three dice: $3 \times 3.5 = 10.5$. When the interviewer reveals a die as 6, your fair moves to $6 + 7 = 13$. Say your fair value out loud: it shows your reasoning.` ] },
+        { h: "Width", p: [
+          S`Your spread should reflect uncertainty and how informed the other side is. Three dice have $\sigma = \sqrt{3 \times 35/12} \approx 2.96$; a market like $9.5$ / $11.5$ is sensible. Too wide is useless; too tight gets picked off. Interviewers often demand a tighter market: narrow it around fair, don't move it.` ] },
+        { h: "Skew for inventory", p: [
+          S`If you are long and want to sell, move **both** prices down: buyers get a better ask and sellers a worse bid. Skewing keeps you two-sided while working your position off.` ] },
+        { h: "Adverse selection and updating", p: [
+          S`If someone who knows more lifts your offer, that is information: fair is probably higher. After a fill, ask "why did they trade?" and move your market accordingly. Repeated hits on the same side mean you are wrong, not unlucky.` ] },
+        { h: "Interview etiquette", p: [
+          S`Quote quickly with round numbers, state your size, keep track of your position and P&L, and explain each adjustment in one sentence.` ] },
+      ],
+      examples: [
+        { t: "Sum of three dice", q: S`Make a market on the sum of three dice. Then the first die is shown as a 2.`,
+          a: [S`Fair $10.5$; quote $9.5$ / $11.5$.`, S`After the 2: fair $2 + 7 = 9$, uncertainty $\sigma \approx 2.4$; quote $8$ / $10$.`] },
+        { t: "Being lifted", q: S`You quote $50$ / $52$ on an unknown quantity and the interviewer buys at $52$ three times.`,
+          a: [S`They keep buying: your offer is too low. Move up, for example to $53$ / $55$, and reduce size until you understand why.`] },
+      ],
+      traps: [S`Moving only one side when you skew.`, S`Ignoring the information in your own fills.`, S`Quoting without saying the size.`],
+      tips: [S`Lead with: "Fair is about X, so I'm Y at Z, size N."`, S`Keep a running position and P&L on paper.`],
+      checks: [
+        { q: S`Fair value is $50.00$ and your usual market is $49.90$ / $50.10$. You are long too much and want to sell. Which way do you skew?`, choices: ["Move both prices down", "Move both prices up", "Widen both sides"], answer: "Move both prices down", why: S`Lowering the ask makes buyers more likely to trade with you; lowering the bid discourages more selling to you.` },
+        { q: S`What is the fair value of the sum of three dice once one die shows a 6?`, answer: 13, tol: 0.001, why: S`$6 + 2 \times 3.5 = 13$.` },
+        { q: S`What is the standard deviation of the sum of two dice? (2 d.p.)`, answer: Math.sqrt(35 / 6), tol: 0.01, why: S`$\sqrt{2 \times \frac{35}{12}} = \sqrt{\frac{35}6} \approx 2.42$.` },
+        { q: S`You quote $10$ / $12$ for 5 lots and get lifted on all 5. Your fair was 11. Final value is 14. What is your P&L?`, answer: -10, why: S`You sold 5 at 12; it settles at 14: $5 \times (12 - 14) = -10$.` },
+        { q: S`An informed trader keeps hitting your bid. What should you do with your market?`, choices: ["Lower it", "Raise it", "Leave it and add size"], answer: "Lower it", why: S`Repeated selling to you suggests fair is lower than you think.` },
+        { q: S`Fair value of the product of two dice?`, answer: 12.25, tol: 0.001, why: S`Independent: $3.5 \times 3.5 = 12.25$.` },
+        { q: S`You are flat with fair 100 and quote 99 / 101. You buy 3 at 99 and sell 1 at 101. Fair is still 100. What is your mark-to-market P&L?`, answer: 4, why: S`Bought 3 at 99: $+3$; sold 1 at 101: $+1$. Total $+4$ marked at 100.` },
+      ] },
+  ];
+})();

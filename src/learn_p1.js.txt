@@ -1,0 +1,347 @@
+/* Lessons part 1: probability toolkit and problem-solving techniques.
+   Lesson shape: { id, group, title, desc, tags, intro, sections:[{h, p:[...]}], examples:[{t, q, a:[steps]}], traps:[...], tips:[...], checks:[...] }
+   Maths: $...$ inline, $$...$$ on its own line. Every formula renders through the same KaTeX settings. */
+var TIP_LP1 = (function () {
+  const S = String.raw;
+  return [
+    /* ---------------- Probability toolkit ---------------- */
+    { id: "counting", group: "prob", title: "Counting and combinations",
+      desc: "Permutations, combinations, stars and bars, inclusion–exclusion and the overcounting traps that interviewers love.",
+      tags: ["counting", "combinatorics", "combinations", "stars and bars", "permutations", "inclusion-exclusion", "inclusion–exclusion", "lattice paths", "catalan", "derangements", "poker", "overcounting", "arrangements", "circular arrangements", "subsets", "burnside", "cards", "binomial"],
+      intro: S`When every outcome is equally likely, probability is counting:
+$$\mathbb{P}(\text{event}) = \frac{\#\,\text{good outcomes}}{\#\,\text{all outcomes}}.$$
+The whole skill is counting both sets the same way: ordered against ordered, unordered against unordered.`,
+      sections: [
+        { h: "Order matters, or it doesn't", p: [
+          S`Choosing $k$ objects from $n$ distinct ones, **in order** and without repeats, gives
+$$n(n-1)\cdots(n-k+1) = \frac{n!}{(n-k)!}$$
+ways. If order does **not** matter, each unordered set was counted $k!$ times, so divide:
+$$\binom nk = \frac{n!}{k!\,(n-k)!}.$$`,
+          S`With repeats allowed and order mattering there are $n^k$ outcomes (for example, $6^3 = 216$ ordered rolls of three dice). Use these as your sample spaces: they make every outcome equally likely, which "unordered with repeats" does not.` ] },
+        { h: "Stars and bars", p: [
+          S`Putting $n$ **identical** items into $k$ **distinct** boxes is the same as arranging $n$ stars and $k-1$ bars in a row:
+$$\#\{x_1 + \dots + x_k = n,\ x_i \ge 0\} = \binom{n+k-1}{k-1}.$$
+If every box needs at least one item, give each box one first and share the remaining $n-k$: $\binom{n-1}{k-1}$.` ] },
+        { h: "Inclusion–exclusion", p: [
+          S`To count things with **at least one** property, add the single counts, subtract the pairs, add back the triples, and so on:
+$$|A_1 \cup \dots \cup A_n| = \sum |A_i| - \sum_{i<j} |A_i \cap A_j| + \sum_{i<j<k} |A_i \cap A_j \cap A_k| - \cdots$$
+The classic use is **derangements** (no one gets their own hat): $D_n = n!\sum_{k=0}^{n} \frac{(-1)^k}{k!}$, so $\mathbb{P}(\text{no match}) \to \frac1e \approx 0.368$.` ] },
+        { h: "Useful identities", p: [
+          S`$\binom nk = \binom n{n-k}$, Pascal's rule $\binom nk = \binom{n-1}{k-1} + \binom{n-1}k$, and $\sum_k \binom nk = 2^n$ (every subset). Lattice paths from $(0,0)$ to $(a,b)$ using right and up steps number $\binom{a+b}{a}$; those that never go above the diagonal (when $a = b = n$) number the **Catalan** count $\frac{1}{n+1}\binom{2n}{n}$.` ] },
+      ],
+      examples: [
+        { t: "Sharing identical chips", q: S`How many ways can 10 identical chips be shared between 4 traders, if some may get none?`,
+          a: [S`Write 10 stars and 3 bars in a row; the bars split the stars into 4 groups.`, S`Choose where the 3 bars go among 13 places: $\binom{13}{3} = 286$.`] },
+        { t: "A full house", q: S`What is the probability of a full house in a 5-card poker hand?`,
+          a: [S`Pick the rank of the triple ($13$) and its suits ($\binom43 = 4$); pick the rank of the pair ($12$) and its suits ($\binom42 = 6$).`,
+            S`Good hands: $13 \cdot 4 \cdot 12 \cdot 6 = 3744$. All hands: $\binom{52}{5} = 2{,}598{,}960$.`, S`$\mathbb{P} = \frac{3744}{2598960} \approx 0.144\%$.`] },
+        { t: "At least one six", q: S`Roll four dice. What is the probability of at least one six?`,
+          a: [S`Count the complement: no six in four rolls has probability $\left(\frac56\right)^4 = \frac{625}{1296}$.`, S`$\mathbb{P} = 1 - \frac{625}{1296} = \frac{671}{1296} \approx 51.8\%$.`] },
+        { t: "Hats back to owners", q: S`Four people throw their hats in a pile and each takes one at random. What is the probability nobody gets their own hat?`,
+          a: [S`$D_4 = 4!\left(1 - 1 + \frac12 - \frac16 + \frac1{24}\right) = 24 \cdot \frac{9}{24} = 9$.`, S`$\mathbb{P} = \frac{9}{24} = \frac38$.`] },
+      ],
+      traps: [
+        S`Mixing ordered and unordered counts between the top and bottom of the fraction.`,
+        S`Treating "unordered with repeats" outcomes as equally likely (rolling two dice: $\{1,2\}$ is twice as likely as $\{1,1\}$).`,
+        S`Double counting in "at least one" problems. Count the complement instead.`],
+      tips: [
+        S`Say out loud which sample space you are using before you start counting.`,
+        S`For "at least one", go straight to $1 - \mathbb{P}(\text{none})$.`,
+        S`Memorise small values: $\binom{5}{2} = 10$, $\binom{6}{3} = 20$, $\binom{8}{4} = 70$, $\binom{10}{3} = 120$, $\binom{52}{5} \approx 2.6\text{m}$.`],
+      checks: [
+        { q: S`How many ways are there to choose a committee of 3 from 10 people?`, answer: 120, why: S`$\binom{10}{3} = \frac{10 \cdot 9 \cdot 8}{6} = 120$.` },
+        { q: S`How many non-negative integer solutions does $x + y + z = 8$ have?`, answer: 45, why: S`Stars and bars: $\binom{8+2}{2} = \binom{10}{2} = 45$.` },
+        { q: S`How many distinct arrangements are there of the letters of MISSISSIPPI?`, answer: 34650, why: S`$\frac{11!}{1!\,4!\,4!\,2!} = 34{,}650$.` },
+        { q: S`How many positive integer solutions does $a + b + c + d = 10$ have?`, answer: 84, why: S`Give each variable 1 first, then share 6: $\binom{6+3}{3} = \binom 93 = 84$.` },
+        { q: S`Two cards are drawn from a standard deck. What is the probability both are aces?`, answer: 1 / 221, tol: 0.0002, why: S`$\frac{\binom42}{\binom{52}2} = \frac{6}{1326} = \frac{1}{221}$.` },
+        { q: S`How many integers from 1 to 100 are divisible by 2, 3 or 5?`, answer: 74, why: S`$50 + 33 + 20 - 16 - 10 - 6 + 3 = 74$.` },
+        { q: S`How many shortest grid paths go from $(0,0)$ to $(4,3)$?`, answer: 35, why: S`Choose which 3 of the 7 steps go up: $\binom73 = 35$.` },
+        { q: S`Five people sit at a round table. How many seatings are there if rotations count as the same?`, answer: 24, why: S`Fix one person's seat and arrange the rest: $4! = 24$.` },
+        { q: S`What is the probability that a 5-card hand is a flush (all one suit, including straight flushes)?`, answer: 5148 / 2598960, tol: 0.00005, why: S`$\frac{4\binom{13}{5}}{\binom{52}{5}} = \frac{5148}{2598960} \approx 0.198\%$.` },
+        { q: S`Five letters go into five addressed envelopes at random. What is the probability that none is in the right envelope?`, answer: 44 / 120, tol: 0.002, why: S`$D_5 = 44$, so $\frac{44}{120} \approx 0.367$.` },
+      ] },
+
+    { id: "bayes", group: "prob", title: "Conditional probability and Bayes",
+      desc: "Conditioning on exactly what you were told, Bayes' rule in odds form, base rates and the classic paradoxes.",
+      tags: ["conditional probability", "bayes", "base rate", "conditioning", "information", "paradox", "conditional expectation", "independence", "simpson's paradox"],
+      intro: S`Conditioning means throwing away the outcomes that did not happen and renormalising:
+$$\mathbb{P}(A \mid B) = \frac{\mathbb{P}(A \cap B)}{\mathbb{P}(B)}.$$
+Most interview traps come from conditioning on the wrong event, so write down exactly what you were told and how you learned it.`,
+      sections: [
+        { h: "Total probability and Bayes' rule", p: [
+          S`If $B_1, \dots, B_n$ split the world into cases, $\mathbb{P}(A) = \sum_i \mathbb{P}(A \mid B_i)\,\mathbb{P}(B_i)$. Bayes' rule flips the conditioning:
+$$\mathbb{P}(B \mid A) = \frac{\mathbb{P}(A \mid B)\,\mathbb{P}(B)}{\mathbb{P}(A \mid B)\,\mathbb{P}(B) + \mathbb{P}(A \mid B^c)\,\mathbb{P}(B^c)}.$$` ] },
+        { h: "The odds form: fastest under pressure", p: [
+          S`Write beliefs as odds. Each piece of evidence multiplies the odds by its **likelihood ratio**:
+$$\underbrace{\frac{\mathbb{P}(H \mid E)}{\mathbb{P}(H^c \mid E)}}_{\text{posterior odds}} = \underbrace{\frac{\mathbb{P}(H)}{\mathbb{P}(H^c)}}_{\text{prior odds}} \times \underbrace{\frac{\mathbb{P}(E \mid H)}{\mathbb{P}(E \mid H^c)}}_{\text{likelihood ratio}}.$$
+Independent pieces of evidence just multiply in turn. This is how you update a price quickly in a market-making interview.` ] },
+        { h: "Base rates", p: [
+          S`A rare condition plus an imperfect test gives mostly false positives, because the unaffected group is so much larger. Always ask "out of how many?" before trusting an accuracy figure.` ] },
+        { h: "How you learned it matters", p: [
+          S`"At least one child is a boy" ($\frac13$ for two boys) differs from "the older child is a boy" ($\frac12$), and from "you met one of the children and it was a boy" ($\frac12$). In Monty Hall, the host **knows** where the car is and always opens a goat door; that knowledge is what makes switching win $\frac23$ of the time.` ] },
+      ],
+      examples: [
+        { t: "The disease test", q: S`A disease affects $1\%$ of people. A test catches $99\%$ of cases and wrongly flags $5\%$ of healthy people. You test positive. How likely are you to be ill?`,
+          a: [S`Prior odds $1 : 99$. Likelihood ratio $\frac{0.99}{0.05} = 19.8$.`, S`Posterior odds $19.8 : 99 = 1 : 5$, so $\mathbb{P}(\text{ill} \mid +) = \frac16 \approx 16.7\%$.`] },
+        { t: "Which coin?", q: S`One coin is fair, one is double-headed. You pick one at random, flip it three times and see three heads. What is the probability it is the double-headed coin?`,
+          a: [S`Prior odds $1:1$. Likelihood ratio $\frac{1}{(1/2)^3} = 8$.`, S`Posterior odds $8:1$, so $\mathbb{P} = \frac89$.`] },
+        { t: "Monty Hall", q: S`You pick door 1; the host, who knows where the car is, opens door 3 to show a goat. Should you switch?`,
+          a: [S`Your first pick is right with probability $\frac13$, and the host's choice tells you nothing about it.`, S`The remaining $\frac23$ moves to door 2, so switching wins $\frac23$ of the time.`] },
+      ],
+      traps: [
+        S`Confusing $\mathbb{P}(A \mid B)$ with $\mathbb{P}(B \mid A)$ (the prosecutor's fallacy).`,
+        S`Ignoring how information was revealed (who chose what to show you, and why).`,
+        S`Assuming independence without being told. Draws without replacement are not independent.`],
+      tips: [
+        S`Use the odds form and a likelihood ratio; it avoids long fractions.`,
+        S`Sanity-check with $1000$ imaginary people and count them.`,
+        S`State your assumptions about the information process before you compute.`],
+      checks: [
+        { q: S`A family has two children and at least one is a boy. What is the probability that both are boys?`, answer: 1 / 3, tol: 0.005, why: S`Of the equally likely BB, BG, GB, only BB has two boys: $\frac13$.` },
+        { q: S`A coin is fair or double-headed, each with probability $\frac12$. You flip it once and see heads. What is the probability it is double-headed?`, answer: 2 / 3, tol: 0.005, why: S`Odds $1:1$ times likelihood ratio $2$ gives $2:1$, so $\frac23$.` },
+        { q: S`A test for a condition with $2\%$ prevalence has sensitivity $90\%$ and false-positive rate $10\%$. What is $\mathbb{P}(\text{condition} \mid +)$? Give a decimal.`, answer: 0.018 / (0.018 + 0.098), tol: 0.003, why: S`$\frac{0.9 \times 0.02}{0.9 \times 0.02 + 0.1 \times 0.98} = \frac{0.018}{0.116} \approx 0.155$.` },
+        { q: S`Urn A has 3 red and 1 blue ball; urn B has 1 red and 3 blue. You pick an urn at random and draw a red ball. What is the probability it came from A?`, answer: 0.75, tol: 0.005, why: S`Likelihood ratio $\frac{3/4}{1/4} = 3$, prior odds $1:1$, so $\frac34$.` },
+        { q: S`Two dice are rolled and the sum is 8. What is the probability that one of them shows a 3?`, answer: 0.4, tol: 0.005, why: S`Sum 8: $(2,6),(3,5),(4,4),(5,3),(6,2)$. Two of the five contain a 3: $\frac25$.` },
+        { q: S`In Monty Hall with 100 doors, you pick one and the host opens 98 goat doors. What is your win probability if you switch?`, answer: 0.99, tol: 0.001, why: S`Your door keeps $\frac1{100}$; the other closed door gets $\frac{99}{100}$.` },
+        { q: S`$\mathbb{P}(A) = 0.3$, $\mathbb{P}(B) = 0.5$, $\mathbb{P}(A \cup B) = 0.65$. What is $\mathbb{P}(A \mid B)$?`, answer: 0.3, tol: 0.001, why: S`$\mathbb{P}(A \cap B) = 0.3 + 0.5 - 0.65 = 0.15$, so $\frac{0.15}{0.5} = 0.3$. (So $A$ and $B$ are independent.)` },
+        { q: S`A trader is right $60\%$ of the time. Two independent traders agree that a stock goes up; with a $50\%$ prior, what is the probability it goes up?`, answer: 0.36 / 0.52, tol: 0.004, why: S`Odds $1 \times 1.5 \times 1.5 = 2.25$, so $\frac{2.25}{3.25} \approx 0.692$.` },
+        { q: S`You draw two cards without replacement. Given that at least one is an ace, what is the probability both are aces?`, answer: 6 / 198, tol: 0.001, why: S`Both aces: $6$ pairs. At least one ace: $\binom{52}2 - \binom{48}2 = 1326 - 1128 = 198$. So $\frac{6}{198} = \frac1{33}$.` },
+      ] },
+
+    { id: "linearity", group: "prob", title: "Linearity of expectation and indicators",
+      desc: "Break a hard count into indicator variables and add their probabilities, even when the events depend on each other.",
+      tags: ["linearity", "linearity of expectation", "indicators", "tail sum", "harmonic", "harmonic numbers", "occupancy", "random graphs", "coupon collector", "expected value"],
+      intro: S`Expectation adds **whether or not** the variables are independent:
+$$\mathbb{E}[X_1 + \dots + X_n] = \mathbb{E}[X_1] + \dots + \mathbb{E}[X_n].$$
+Combined with indicator variables, this solves most "expected number of ..." questions in two lines.`,
+      sections: [
+        { h: "Indicators", p: [
+          S`For an event $A$, let $I_A = 1$ if $A$ happens and $0$ otherwise. Then $\mathbb{E}[I_A] = \mathbb{P}(A)$. To find the expected number of things that happen, write the count as a sum of indicators and add their probabilities:
+$$\mathbb{E}[\#\text{events}] = \sum_i \mathbb{P}(A_i).$$` ] },
+        { h: "Tail sums", p: [
+          S`For a non-negative integer variable, $\mathbb{E}[X] = \sum_{k \ge 1} \mathbb{P}(X \ge k)$. This is often easier than finding the full distribution.` ] },
+        { h: "Waiting times and the coupon collector", p: [
+          S`A trial that succeeds with probability $p$ takes $\frac1p$ attempts on average (geometric distribution). Collecting all $n$ coupons, where the $k$-th new coupon arrives with probability $\frac{n-k+1}{n}$, takes
+$$\mathbb{E}[T] = n\left(1 + \frac12 + \dots + \frac1n\right) = n H_n \approx n(\ln n + 0.577).$$` ] },
+        { h: "Variance needs more", p: [
+          S`Linearity is free for means only. For variance, $\operatorname{Var}\left(\sum I_i\right) = \sum \operatorname{Var}(I_i) + 2\sum_{i<j} \operatorname{Cov}(I_i, I_j)$, so dependence now matters.` ] },
+      ],
+      examples: [
+        { t: "Hats again", q: S`$n$ people take hats at random. What is the expected number who get their own hat?`,
+          a: [S`$I_i = 1$ if person $i$ gets their own hat; $\mathbb{P} = \frac1n$.`, S`$\mathbb{E} = n \cdot \frac1n = 1$, for every $n$.`] },
+        { t: "Runs of heads", q: S`Flip a fair coin 10 times. What is the expected number of runs (maximal blocks of equal faces)?`,
+          a: [S`A new run starts at flip 1, and at flip $i \ge 2$ whenever it differs from flip $i-1$ (probability $\frac12$).`, S`$\mathbb{E} = 1 + 9 \cdot \frac12 = 5.5$.`] },
+        { t: "Dice faces seen", q: S`Roll a die 6 times. What is the expected number of distinct faces that appear?`,
+          a: [S`Face $j$ is missing with probability $\left(\frac56\right)^6$.`, S`$\mathbb{E} = 6\left(1 - \left(\frac56\right)^6\right) \approx 6 \times 0.665 = 3.99$.`] },
+      ],
+      traps: [
+        S`Thinking you need independence. You don't, for expectations.`,
+        S`Using linearity for variance or for probabilities of the total.`,
+        S`Forgetting the first term when counting runs or boundaries.`],
+      tips: [
+        S`Ask "what are the small yes/no events?" and give each an indicator.`,
+        S`Symmetry usually makes all the indicator probabilities equal.`,
+        S`Know $H_n$: $H_4 \approx 2.08$, $H_6 = 2.45$, $H_{10} \approx 2.93$.`],
+      checks: [
+        { q: S`Roll a die repeatedly until you see a six. What is the expected number of rolls?`, answer: 6, why: S`Geometric with $p = \frac16$: $\mathbb{E} = 6$.` },
+        { q: S`How many rolls of a fair die do you expect to need to see all six faces?`, answer: 14.7, tol: 0.05, why: S`$6\left(1 + \frac12 + \frac13 + \frac14 + \frac15 + \frac16\right) = 6 \times 2.45 = 14.7$.` },
+        { q: S`Shuffle a deck. What is the expected number of adjacent pairs (positions $i, i+1$) that are both aces?`, answer: 51 * (4 / 52) * (3 / 51), tol: 0.002, why: S`$51$ adjacent slots, each both-aces with probability $\frac{4}{52}\cdot\frac{3}{51}$: total $\frac{12}{52} \approx 0.231$.` },
+        { q: S`Flip a fair coin 20 times. What is the expected number of occurrences of HH (overlapping allowed)?`, answer: 4.75, tol: 0.001, why: S`$19$ positions, each $\frac14$: $4.75$.` },
+        { q: S`10 balls go independently into 10 boxes. What is the expected number of empty boxes?`, answer: 10 * Math.pow(0.9, 10), tol: 0.01, why: S`$10 \times 0.9^{10} \approx 3.49$.` },
+        { q: S`A random permutation of $1..n$: what is the expected number of $i$ with $\pi(i) > \pi(i-1)$ for $i = 2..n$, when $n = 9$?`, answer: 4, why: S`Each adjacent pair is an ascent with probability $\frac12$: $8 \times \frac12 = 4$.` },
+        { q: S`Draw cards from a shuffled deck until the first ace. What is the expected number of cards drawn, including the ace?`, answer: 53 / 5, tol: 0.01, why: S`Each of the 48 non-aces comes before all 4 aces with probability $\frac15$: $1 + \frac{48}{5} = 10.6$.` },
+        { q: S`Choose 3 of 10 people at random. Ann and Bob are among the 10. What is the expected number of the pair {Ann, Bob} who are chosen?`, answer: 0.6, tol: 0.001, why: S`Each is chosen with probability $\frac3{10}$: $0.6$.` },
+      ] },
+
+    /* ---------------- Problem-solving techniques ---------------- */
+    { id: "symmetry", group: "tech", title: "Symmetry",
+      desc: "Spot equally likely roles, positions or orderings and the answer often drops out with no calculation.",
+      tags: ["symmetry", "exchangeability", "relabelling", "random order", "first ace", "ties", "fair game"],
+      intro: S`If relabelling the objects leaves the problem unchanged, those objects have the same chance of every role. Symmetry turns many long calculations into one line.`,
+      sections: [
+        { h: "Exchangeable positions", p: [
+          S`In a well-shuffled deck, every card is equally likely to be in every position, and every relative order of a chosen set of cards is equally likely. So the chance that the ace of spades comes before the king of hearts is $\frac12$, and the chance a given card of 5 is the highest is $\frac15$.` ] },
+        { h: "Split by symmetry, then fix the remainder", p: [
+          S`Often there are three cases: $A$ wins, $B$ wins, or a tie. If $A$ and $B$ are symmetric, $\mathbb{P}(A \text{ wins}) = \frac{1 - \mathbb{P}(\text{tie})}{2}$. Only the tie needs computing.` ] },
+        { h: "Gaps between random points", p: [
+          S`$k$ uniform random points on $[0,1]$ cut it into $k+1$ gaps, and every gap has the same distribution. So each gap has mean $\frac1{k+1}$. The same works for cards: the $4$ aces split the $48$ other cards into $5$ groups of expected size $\frac{48}{5}$.` ] },
+      ],
+      examples: [
+        { t: "Who has more heads?", q: S`A flips 11 fair coins and B flips 10. What is the probability A gets more heads than B?`,
+          a: [S`A has 11 coins and B has 10, so A must have either more heads or more tails than B, and not both.`, S`Swapping heads and tails turns one case into the other, so each has probability $\frac12$.`] },
+        { t: "Second ace", q: S`What is the expected position of the second ace in a shuffled deck?`,
+          a: [S`The 48 non-aces fall into 5 gaps of expected size $\frac{48}{5}$ each.`, S`Second ace: two gaps plus two aces, $2 \cdot \frac{48}{5} + 2 = 21.2$.`] },
+        { t: "Higher roll", q: S`Two players each roll one die. What is the probability the first is strictly higher?`,
+          a: [S`Tie probability $\frac16$. By symmetry the rest splits evenly.`, S`$\mathbb{P} = \frac{1 - 1/6}{2} = \frac5{12}$.`] },
+      ],
+      traps: [
+        S`Using symmetry when one player has an advantage (order of play, extra information).`,
+        S`Forgetting ties when splitting probability in half.`],
+      tips: [
+        S`Ask "would swapping the names change anything?"`,
+        S`Look for gaps, orders and positions; they are usually exchangeable.`],
+      checks: [
+        { q: S`Three dice are rolled. What is the probability that the first is the strictly largest?`, answer: 55 / 216, tol: 0.002, why: S`$\mathbb{P}(\text{first} = k \text{ and others} < k) = \frac16\left(\frac{k-1}{6}\right)^2$; summing $k=1..6$ gives $\frac{55}{216} \approx 0.255$.` },
+        { q: S`Two players each roll a die. What is the probability the first is strictly higher?`, answer: 5 / 12, tol: 0.002, why: S`$\frac{1 - \frac16}{2} = \frac{5}{12}$.` },
+        { q: S`What is the expected position of the first ace in a shuffled 52-card deck?`, answer: 10.6, tol: 0.01, why: S`One gap of size $\frac{48}{5}$, then the ace: $\frac{48}{5} + 1 = 10.6$.` },
+        { q: S`Five numbers are drawn uniformly from $[0,1]$. What is the expected value of the largest?`, answer: 5 / 6, tol: 0.002, why: S`Six equal gaps of mean $\frac16$; the maximum leaves one gap above it: $\frac56$.` },
+        { q: S`A shuffled deck: what is the probability that the ace of spades is above (before) all four kings?`, answer: 0.2, tol: 0.001, why: S`Among these 5 cards each is equally likely to come first: $\frac15$.` },
+        { q: S`A fair coin is flipped until HH or TH appears. What is the probability that HH comes first?`, answer: 0.25, tol: 0.001, why: S`HH wins only if the first two flips are HH; any T before the first HH means TH arrives first. $\frac14$.` },
+        { q: S`Ten people are in a random queue. What is the probability Ann stands somewhere ahead of both Bob and Cat?`, answer: 1 / 3, tol: 0.003, why: S`Each of the three is equally likely to be first among them: $\frac13$.` },
+      ] },
+
+    { id: "firststep", group: "tech", title: "First-step analysis",
+      desc: "Condition on the first move, write equations for expectations and probabilities, and solve them.",
+      tags: ["first-step analysis", "recursion", "recurrence", "expected time", "gambler's ruin", "patterns", "coin patterns", "markov"],
+      intro: S`Condition on what happens first, then notice the rest of the game looks like a game you have already named. That gives an equation in the unknown, which you solve.`,
+      sections: [
+        { h: "The recipe", p: [
+          S`1. Name the unknowns: one per state ($E_s$ for expected time from state $s$, or $p_s$ for a probability).`,
+          S`2. For each state, add the cost of one step to the average of the next states:
+$$E_s = 1 + \sum_{t} \mathbb{P}(s \to t)\,E_t, \qquad p_s = \sum_t \mathbb{P}(s \to t)\,p_t.$$`,
+          S`3. Set boundary values ($E = 0$ at the finish; $p = 1$ at a win, $0$ at a loss) and solve.` ] },
+        { h: "Waiting for a pattern", p: [
+          S`For coin patterns, the states are "how much of the pattern you have matched". Waiting for HH takes $6$ flips on average, but HT only $4$: after a miss on HH you fall back to the start, while after a miss on HT you keep the H you just threw.` ] },
+        { h: "Gambler's ruin", p: [
+          S`Start with $\$k$, bet $\$1$ at a time on a fair coin, stop at $\$0$ or $\$N$. Then $\mathbb{P}(\text{reach } N) = \frac kN$ and the expected duration is $k(N-k)$. With win probability $p \ne \frac12$ and $r = \frac{1-p}{p}$, $\mathbb{P}(\text{reach } N) = \frac{1 - r^k}{1 - r^N}$.` ] },
+      ],
+      examples: [
+        { t: "Two heads in a row", q: S`How many flips on average until two heads in a row?`,
+          a: [S`States: start $E_0$, one head $E_1$. $E_0 = 1 + \frac12 E_1 + \frac12 E_0$, $E_1 = 1 + \frac12 \cdot 0 + \frac12 E_0$.`, S`From the first, $E_0 = 2 + E_1$; substitute: $E_1 = 1 + \frac12(2 + E_1)$, so $E_1 = 4$ and $E_0 = 6$.`] },
+        { t: "Who wins the race?", q: S`A and B take turns flipping a coin, A first; the first to flip heads wins. What is $\mathbb{P}(A \text{ wins})$?`,
+          a: [S`$p = \frac12 + \frac12 (1 - p)$: A wins now, or misses and then B is in A's position.`, S`$p = \frac23$.`] },
+        { t: "Fair ruin", q: S`You have $\$3$ and bet $\$1$ on fair flips until you hit $\$0$ or $\$10$. How long does it last on average?`,
+          a: [S`Expected duration $k(N-k) = 3 \times 7 = 21$ flips.`] },
+      ],
+      traps: [
+        S`Too few states: "one head" and "start" are different states for HH.`,
+        S`Forgetting the $+1$ for the step you just took.`],
+      tips: [
+        S`Draw the states as circles with arrows before writing equations.`,
+        S`Check with a limiting case (e.g. $p = 1$ or $N = 1$).`],
+      checks: [
+        { q: S`How many flips on average until two heads in a row?`, answer: 6, why: S`$E_0 = 2 + E_1$ and $E_1 = 1 + \frac12 E_0$ give $E_0 = 6$.` },
+        { q: S`How many flips on average until you see HT?`, answer: 4, why: S`Wait for H (2 flips), then wait for T (2 flips): $4$.` },
+        { q: S`How many rolls of a die on average until two sixes in a row?`, answer: 42, why: S`$E_0 = 6 + E_1$ and $E_1 = 1 + \frac56 E_0$ give $E_0 = 42$.` },
+        { q: S`A and B alternate rolling a die, A first; the first to roll a six wins. What is $\mathbb{P}(A \text{ wins})$?`, answer: 6 / 11, tol: 0.002, why: S`$p = \frac16 + \frac56(1 - p)$ gives $p = \frac{6}{11}$.` },
+        { q: S`Fair gambler's ruin from $\$4$ with target $\$10$. What is the probability of reaching $\$10$?`, answer: 0.4, tol: 0.001, why: S`$\frac{k}{N} = \frac4{10}$.` },
+        { q: S`Fair gambler's ruin from $\$4$ with target $\$10$. What is the expected number of bets?`, answer: 24, why: S`$k(N-k) = 4 \times 6 = 24$.` },
+        { q: S`How many flips on average until HHH?`, answer: 14, why: S`$2 + 4 + 8 = 14$ (the HH...H pattern has $\mathbb{E} = 2^{n+1} - 2$).` },
+        { q: S`You win each point with probability $0.6$. From deuce (need two in a row), what is your probability of winning the game?`, answer: 0.36 / 0.52, tol: 0.003, why: S`$p = 0.36 + 0.48p$, so $p = \frac{0.36}{0.52} \approx 0.692$.` },
+      ] },
+
+    { id: "geometric", group: "tech", title: "Geometric probability",
+      desc: "When points are uniform, probability is area (or length, or volume): draw the region and measure it.",
+      tags: ["geometric probability", "uniform", "area", "broken stick", "meeting problem", "random points", "continuous"],
+      intro: S`If a point is uniform in a region, the probability it lands in a sub-region is the ratio of their sizes. With two uniform numbers $X, Y \in [0,1]$, the pair is a uniform point in the unit square, so every question becomes "what area?".`,
+      sections: [
+        { h: "Turn conditions into a picture", p: [
+          S`Write each condition as an inequality in $x$ and $y$, shade it in the square, and find the area. Lines like $y = x$, $x + y = 1$ and $|x - y| \le t$ cut the square into triangles and strips you can measure by eye.` ] },
+        { h: "The meeting problem", p: [
+          S`Two people arrive uniformly in an hour and each waits $t$ of the hour. They meet when $|X - Y| \le t$, whose area is $1 - (1-t)^2$. For $t = \frac14$: $1 - \frac9{16} = \frac7{16}$.` ] },
+        { h: "Broken sticks", p: [
+          S`Break a stick at two uniform points. The three pieces form a triangle when no piece exceeds $\frac12$, which has probability $\frac14$. With $n$ pieces, the chance that no piece exceeds half is $1 - \frac{n}{2^{n-1}}$.` ] },
+      ],
+      examples: [
+        { t: "Sum below one", q: S`$X, Y$ uniform on $[0,1]$. What is $\mathbb{P}(X + Y < 1)$? And $\mathbb{P}(X + Y + Z < 1)$ for three?`,
+          a: [S`Below the line $x + y = 1$: a triangle of area $\frac12$.`, S`In 3D the region is a corner tetrahedron of volume $\frac16$ (in general $\frac1{n!}$).`] },
+        { t: "Product above a half", q: S`$\mathbb{P}(XY > \frac12)$?`,
+          a: [S`Area above $y = \frac{1}{2x}$ for $x \in [\frac12, 1]$: $\int_{1/2}^1 \left(1 - \frac1{2x}\right) dx = \frac12 - \frac12 \ln 2 \approx 0.153$.`] },
+      ],
+      traps: [S`Assuming "random chord" or "random point" without saying how it is chosen; different choices give different answers (Bertrand's paradox).`],
+      tips: [S`Always sketch the square; most answers are $\frac12$, $\frac14$, $\frac38$, or $1 - (1-t)^2$.`],
+      checks: [
+        { q: S`$X, Y$ uniform on $[0,1]$. What is $\mathbb{P}(|X - Y| < \frac12)$?`, answer: 0.75, tol: 0.001, why: S`$1 - \left(\frac12\right)^2 = \frac34$.` },
+        { q: S`Two people arrive uniformly in an hour and each waits 10 minutes. What is the probability they meet?`, answer: 11 / 36, tol: 0.002, why: S`$1 - \left(\frac56\right)^2 = \frac{11}{36} \approx 0.306$.` },
+        { q: S`A stick is broken at two uniform points. What is the probability the pieces form a triangle?`, answer: 0.25, tol: 0.001, why: S`No piece may exceed $\frac12$: probability $\frac14$.` },
+        { q: S`$X, Y, Z$ uniform on $[0,1]$. What is $\mathbb{P}(X + Y + Z < 1)$?`, answer: 1 / 6, tol: 0.002, why: S`Volume of the corner simplex: $\frac1{3!}$.` },
+        { q: S`$X, Y$ uniform on $[0,1]$. What is $\mathbb{P}(Y > X^2)$?`, answer: 2 / 3, tol: 0.003, why: S`$1 - \int_0^1 x^2\,dx = \frac23$.` },
+        { q: S`A point is uniform in the unit square. What is the probability it is within distance 1 of the corner $(0,0)$?`, answer: Math.PI / 4, tol: 0.003, why: S`A quarter disc of area $\frac{\pi}{4} \approx 0.785$.` },
+        { q: S`$X, Y$ uniform on $[0,1]$. What is $\mathbb{E}|X - Y|$?`, answer: 1 / 3, tol: 0.002, why: S`$2\int_0^1\!\!\int_0^x (x-y)\,dy\,dx = \frac13$.` },
+      ] },
+
+    { id: "pigeonhole", group: "tech", title: "Pigeonhole principle",
+      desc: "If you have more items than boxes, some box holds two: a one-line proof behind many brainteasers.",
+      tags: ["pigeonhole", "pigeonhole principle", "existence", "brainteaser", "proof", "socks"],
+      intro: S`Put $n + 1$ objects into $n$ boxes and some box gets at least two. More generally, $N$ objects in $k$ boxes force a box with at least $\lceil N/k \rceil$.`,
+      sections: [
+        { h: "Choose the boxes cleverly", p: [
+          S`The hard part is deciding what the boxes are: remainders mod $n$, colours, pairs that sum to a target, or regions of a shape.` ] },
+        { h: "Worst case thinking", p: [
+          S`"How many must you draw to be sure of ..." questions ask for the worst case: imagine an adversary handing you the least helpful items, then add one.` ] },
+      ],
+      examples: [
+        { t: "Socks in the dark", q: S`A drawer has 10 black and 10 white socks. How many must you take to be sure of a matching pair?`,
+          a: [S`Two colours are the boxes. Three socks force two in one colour: $3$.`] },
+        { t: "Divisible difference", q: S`Show that among any 11 integers, two have a difference divisible by 10.`,
+          a: [S`Boxes: the 10 remainders mod 10. Eleven numbers put two in one box; their difference is divisible by 10.`] },
+      ],
+      traps: [S`Answering the expected case instead of the guaranteed (worst) case.`],
+      tips: [S`Name the boxes out loud; the rest is usually one sentence.`],
+      checks: [
+        { q: S`A drawer has 10 black and 10 white socks. How many must you draw to be sure of a pair?`, answer: 3, why: S`Two colours: three socks force a pair.` },
+        { q: S`A drawer has 10 black and 10 white socks. How many must you draw to be sure of a **black** pair?`, answer: 12, why: S`Worst case: all 10 white first, then two black: $12$.` },
+        { q: S`How many people must be in a room to be sure two share a birth month?`, answer: 13, why: S`12 months as boxes: $13$ people.` },
+        { q: S`From $\{1, \dots, 10\}$, how many numbers must you pick to be sure two of them sum to 11?`, answer: 6, why: S`Boxes $\{1,10\},\{2,9\},\{3,8\},\{4,7\},\{5,6\}$: six picks force a full pair.` },
+        { q: S`A deck of 52 cards: how many must you draw to be sure of 3 cards of one suit?`, answer: 9, why: S`$2 \times 4 = 8$ can avoid it; the 9th forces three of a suit.` },
+        { q: S`At least how many people are needed to be sure that 4 share a birth month?`, answer: 37, why: S`$3 \times 12 + 1 = 37$.` },
+      ] },
+
+    { id: "invariants", group: "tech", title: "Invariants and parity",
+      desc: "Find a quantity that never changes (or only moves one way) to prove what is possible and what is not.",
+      tags: ["invariants", "parity", "monovariant", "colouring", "chessboard", "proof", "brainteaser"],
+      intro: S`An **invariant** is a quantity that every allowed move keeps fixed. If the start and the goal have different values, the goal is impossible, however clever the moves.`,
+      sections: [
+        { h: "Parity", p: [
+          S`Adding or removing two at a time keeps parity. Flipping two coins keeps the parity of the number of heads. Swapping two items changes the parity of a permutation.` ] },
+        { h: "Colourings", p: [
+          S`Colour a board so each piece covers a fixed mix of colours. A domino always covers one black and one white square, so a board with the two opposite corners removed (which removes two squares of the same colour) can't be tiled.` ] },
+        { h: "Monovariants", p: [
+          S`A quantity that only goes one way (and can't do so forever) proves a process ends. Example: a sum of positive integers that strictly decreases each move.` ] },
+      ],
+      examples: [
+        { t: "Mutilated chessboard", q: S`Remove two opposite corners of a chessboard. Can 31 dominoes cover the rest?`,
+          a: [S`Opposite corners have the same colour, so 30 of one colour remain against 32 of the other.`, S`Every domino covers one of each. Impossible.`] },
+        { t: "Numbers on a board", q: S`$1, 2, \dots, 10$ are written down. Repeatedly erase two numbers and write their difference. Can the last number be 0?`,
+          a: [S`Replacing $a, b$ by $|a - b|$ keeps the parity of the total.`, S`The total $55$ is odd, so the last number is odd: never 0.`] },
+      ],
+      traps: [S`Showing a few attempts fail is not a proof; find the invariant.`],
+      tips: [S`Try parity first, then colourings, then sums or products mod small numbers.`],
+      checks: [
+        { q: S`A row of 7 coins, all heads. A move flips exactly two coins. Can you reach all tails? Answer 1 for yes, 0 for no.`, answer: 0, why: S`Each move changes the number of heads by $-2$, $0$ or $+2$, so it stays odd. All tails has 0 heads: no.` },
+        { q: S`Numbers $1..10$; erase two and write their sum minus 1. What is the final number?`, answer: 46, why: S`Each move lowers the total by 1. Nine moves: $55 - 9 = 46$.` },
+        { q: S`A $5 \times 5$ board with the centre square removed: can it be tiled with $1 \times 2$ dominoes? Answer 1 for yes, 0 for no.`, answer: 1, why: S`24 squares remain: 12 black, 12 white (the centre has the majority colour). A spiral tiling works.` },
+        { q: S`A knight starts on a corner of a chessboard. After 7 moves, can it be on the same colour square it started on? 1 yes, 0 no.`, answer: 0, why: S`Every knight move changes square colour, so after an odd number of moves it is on the other colour.` },
+        { q: S`A sequence of 15 people shake hands. Can each shake hands with exactly 3 others? 1 yes, 0 no.`, answer: 0, why: S`The sum of handshake counts is twice the number of handshakes, so it is even; $15 \times 3 = 45$ is odd.` },
+      ] },
+
+    { id: "genfun", group: "tech", title: "Generating functions",
+      desc: "Encode a sequence or distribution as a polynomial, multiply to combine, and read off coefficients.",
+      tags: ["generating functions", "polynomials", "dice sums", "partitions", "recurrence", "moment generating function", "probability generating function"],
+      intro: S`A generating function packs a sequence $a_0, a_1, \dots$ into a power series $\sum a_k x^k$. Adding independent quantities multiplies their generating functions, so hard counting turns into polynomial algebra.`,
+      sections: [
+        { h: "Probability generating functions", p: [
+          S`For a non-negative integer variable $X$, $G(x) = \mathbb{E}[x^X] = \sum_k \mathbb{P}(X = k)\,x^k$. Then $G(1) = 1$, $G'(1) = \mathbb{E}[X]$ and $G''(1) = \mathbb{E}[X(X-1)]$. For independent $X, Y$: $G_{X+Y} = G_X\,G_Y$.` ] },
+        { h: "Dice sums", p: [
+          S`One die is $\frac16(x + x^2 + \dots + x^6)$. The number of ways two dice sum to $s$ is the coefficient of $x^s$ in $(x + \dots + x^6)^2$. This also proves the Sicherman dice: faces $\{1,2,2,3,3,4\}$ and $\{1,3,4,5,6,8\}$ give the same sum distribution as two normal dice.` ] },
+        { h: "Counting with restrictions", p: [
+          S`Each item type contributes a factor listing its allowed amounts. Using any number of coins worth 1 and 2 to make $n$: $\frac{1}{(1-x)(1-x^2)}$, and the coefficient of $x^n$ is $\lfloor n/2 \rfloor + 1$.` ] },
+      ],
+      examples: [
+        { t: "Even number of heads", q: S`Flip a coin with heads probability $p$ ten times. What is the probability of an even number of heads?`,
+          a: [S`$G(x) = (1 - p + px)^{10}$. $\mathbb{P}(\text{even}) = \frac{G(1) + G(-1)}{2} = \frac{1 + (1-2p)^{10}}{2}$.`] },
+        { t: "Sum of three dice", q: S`In how many ways can three dice sum to 10?`,
+          a: [S`Coefficient of $x^{10}$ in $(x + \dots + x^6)^3$: equivalently, solutions of $a + b + c = 7$ with $0 \le a, b, c \le 5$.`, S`$\binom92 - 3\binom32 = 36 - 9 = 27$.`] },
+      ],
+      traps: [S`Forgetting that only independent variables multiply.`],
+      tips: [S`Use $x = -1$ to separate even and odd terms; use $x = 1$ to check totals.`],
+      checks: [
+        { q: S`In how many ways can three dice sum to 10?`, answer: 27, why: S`Inclusion–exclusion on $a + b + c = 7$ with caps at 5: $36 - 9 = 27$.` },
+        { q: S`In how many ways can you pay 10p using 1p and 2p coins (order doesn't matter)?`, answer: 6, why: S`Number of 2p coins: $0$ to $5$: $6$ ways.` },
+        { q: S`A fair coin is flipped 7 times. What is the probability of an even number of heads?`, answer: 0.5, tol: 0.001, why: S`$\frac{1 + 0^7}{2} = \frac12$.` },
+        { q: S`If $G(x) = \left(\frac{1 + x}{2}\right)^{8}$ is the PGF of $X$, what is $\mathbb{E}[X]$?`, answer: 4, why: S`$G'(1) = 8 \cdot \frac12 = 4$ (binomial with $n = 8$, $p = \frac12$).` },
+        { q: S`How many ways can two dice sum to 7?`, answer: 6, why: S`Coefficient of $x^7$ in $(x + \dots + x^6)^2$: $6$.` },
+        { q: S`A coin with heads probability $0.3$ is flipped 4 times. What is the probability of an even number of heads?`, answer: (1 + Math.pow(0.4, 4)) / 2, tol: 0.001, why: S`$\frac{1 + (1 - 0.6)^4}{2} = \frac{1 + 0.0256}{2} = 0.5128$.` },
+      ] },
+  ];
+})();

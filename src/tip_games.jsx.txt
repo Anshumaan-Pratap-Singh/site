@@ -1,0 +1,350 @@
+/* Market Games, rebuilt to run like the real interview and assessment-day exercises.
+   Trading Game, Market Making Dice and Event Contracts use the shared market-making engine (TIP_MM).
+   ETF Arbitrage, Card Game, Betting Board, Fermi Estimation and Higher or Lower are defined here.
+   Every game records v: 3, so older sessions are kept but not compared with the new scoring. */
+var TIP_GAMES = (function () {
+  const { TH, TF, R, typing } = TIP;
+  const K = TIP_KIT;
+  const { useState, useEffect, useMemo, useRef } = R;
+  const V = 3, PF = p => (p.v || 1) === V;
+  const sel = (key, label, choices, extra) => ({ key, label, type: "sel", choices: choices.map(c => Array.isArray(c) ? { value: c[0], label: c[1] } : { value: c, label: String(c) }), ...(extra || {}) });
+  const num = (key, label, min, max, unit, extra) => ({ key, label, type: "num", min, max, unit, ...(extra || {}) });
+  const SHARP = sel("sharp", "Sharp counterparties", [[0, "None"], [0.25, "Some"], [0.45, "Many"]]);
+  const mmGame = (inst, mode) => props => TH(TIP_MM.Game, { ...props, inst, mode, title: props.title });
+  const base = { tip: true, version: V, playFilter: PF, metric: "pnl" };
+
+  /* ================= ETF Arbitrage ================= */
+  function Etf({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const W = useMemo(() => rng.pick([[0.5, 0.3, 0.2], [0.4, 0.4, 0.2], [0.6, 0.25, 0.15], [0.5, 0.25, 0.25]]), []);
+    const [px, setPx] = useState(() => [rng.int(40, 60), rng.int(80, 120), rng.int(20, 35)]);
+    const [q, setQ] = useState(null);       /* {bid, ask, mis} */
+    const [t0] = useState(() => Date.now());
+    const [pos, setPos] = useState(0), [pnl, setPnl] = useState(0), [log, setLog] = useState([]), [stats, setStats] = useState({ hit: 0, miss: 0, bad: 0, ops: 0 });
+    const [done, setDone] = useState(false);
+    const nav = px.reduce((a, p, i) => a + W[i] * p, 0);
+    const now = K.useTick(!done, 200);
+    const left = Math.max(0, s.duration - (now - t0) / 1000);
+    const live = useRef(null);
+    useEffect(() => {
+      if (done) return;
+      const t = setInterval(() => {
+        setPx(p => p.map(v => Math.max(5, Math.round((v + v * 0.004 * rng.normal()) * 100) / 100)));
+        setQ(prev => {
+          if (prev && prev.mis && !prev.taken) setStats(x => ({ ...x, miss: x.miss + 1 }));
+          return null;
+        });
+        live.current = Date.now();
+      }, s.tick * 1000);
+      return () => clearInterval(t);
+    }, [done]);
+    useEffect(() => {   /* the market maker requotes after every price update */
+      if (done) return;
+      const mis = rng() < s.freq, half = 0.05;
+      const gap = mis ? (rng() < 0.5 ? -1 : 1) * (s.minGap + rng() * (s.maxGap - s.minGap)) : rng.normal() * 0.02;
+      const mid = Math.round((nav + gap) * 100) / 100;
+      setQ({ bid: Math.round((mid - half) * 100) / 100, ask: Math.round((mid + half) * 100) / 100, mis, taken: false });
+      if (mis) setStats(x => ({ ...x, ops: x.ops + 1 }));
+    }, [px]);
+    useEffect(() => { if (left <= 0 && !done) setDone(true); }, [left <= 0]);
+    function trade(side) {
+      if (!q || q.taken || done) return;
+      const u = s.units, edge = side === "buy" ? nav - q.ask : q.bid - nav, gain = Math.round((edge - s.fee) * u * 100) / 100;
+      setPnl(v => v + gain);
+      setQ(x => ({ ...x, taken: side }));
+      setStats(x => ({ ...x, hit: x.hit + (edge - s.fee > 0 ? 1 : 0), bad: x.bad + (edge - s.fee > 0 ? 0 : 1) }));
+      setLog(l => [{ txt: `${side === "buy" ? "Bought" : "Sold"} ${u} ETF at ${(side === "buy" ? q.ask : q.bid).toFixed(2)}, ${side === "buy" ? "sold" : "bought"} the basket at NAV ${nav.toFixed(2)}: ${K.signed(gain, 2)}`, tone: gain >= 0 ? "up" : "dn" }, ...l].slice(0, 8));
+    }
+    useEffect(() => {
+      if (done) return;
+      const h = e => { if (typing(e)) return; if (e.key === "b" || e.key === "ArrowUp") { e.preventDefault(); trade("buy"); } if (e.key === "s" || e.key === "ArrowDown") { e.preventDefault(); trade("sell"); } };
+      window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
+    });
+    const res = useMemo(() => done ? { pnl: Math.round(pnl * 100) / 100, hit: stats.hit, miss: stats.miss, bad: stats.bad, ops: stats.ops } : null, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={K.money(res.pnl, 2) + " P&L"} sub={`${res.hit} arbitrages taken out of ${res.ops} offered`} onRestart={onRestart} ring={res.ops ? res.hit / res.ops : 0}
+      metrics={[{ label: "P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" }, { label: "Caught", value: res.hit }, { label: "Missed", value: res.miss }, { label: "Bad trades", value: res.bad, tone: res.bad ? "dn" : "" }]}
+      notes="NAV is the weighted sum of the components. Buy the ETF when its ask is below NAV by more than the fee, sell when its bid is above NAV by more than the fee, and leave everything else." />;
+    const gapNow = q ? (q.bid + q.ask) / 2 - nav : 0;
+    return (
+      <K.Stage title="ETF Arbitrage" sub="Trade the ETF when it is away from NAV" clock={left} clockFrac={left / s.duration}
+        stats={[{ label: "Trades", value: stats.hit + stats.bad }, { label: "P&L", value: K.signed(pnl, 2), tone: pnl >= 0 ? "up" : "dn", pop: true }]}>
+        <div className="etf-grid">
+          <div className="etf-basket">
+            <div className="oa-lbl">Basket QNT = {W.map((w, i) => `${w}·${"ABC"[i]}`).join(" + ")}</div>
+            {px.map((p, i) => <div key={i} className="etf-comp"><span className="etf-tk">{"ABC"[i]}</span><b key={p} className="oa-pop">{p.toFixed(2)}</b><em>weight {W[i]}</em></div>)}
+            <div className={"etf-nav" + (s.showNav ? "" : " hide")}><span>NAV</span><b>{s.showNav ? nav.toFixed(2) : "work it out"}</b></div>
+          </div>
+          <div className="etf-quote">
+            <div className="oa-lbl">Market maker's ETF quote · {s.units} units · fee {s.fee.toFixed(2)}/unit</div>
+            {q ? <div className={"etf-q" + (q.taken ? " taken" : "")} key={q.bid + ":" + q.ask}>
+              <button className="mm-px bid" disabled={!!q.taken} onClick={() => trade("sell")}>Sell <b>{q.bid.toFixed(2)}</b><kbd>S</kbd></button>
+              <button className="mm-px ask" disabled={!!q.taken} onClick={() => trade("buy")}>Buy <b>{q.ask.toFixed(2)}</b><kbd>B</kbd></button>
+            </div> : <div className="etf-q wait">requoting…</div>}
+            {s.showNav && q ? <div className="etf-gap"><K.Meter v={Math.min(1, Math.abs(gapNow) / (s.maxGap || 1))} max={1} tone={Math.abs(gapNow) > s.fee + 0.05 ? "k2" : ""} label={`ETF mid vs NAV: ${K.signed(gapNow, 2)}`} /></div> : null}
+            <div className="mm-tape">{log.map((t, i) => <div key={log.length - i} className={"mm-tick " + t.tone}>{t.txt}</div>)}</div>
+          </div>
+        </div>
+      </K.Stage>
+    );
+  }
+
+  /* ================= Card Game: which desk is off conditional EV? ================= */
+  function Desks({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const deck = useMemo(() => rng.shuffle(Array.from({ length: 52 }, (_, i) => ({ v: i % 13 + 1, s: Math.floor(i / 13) }))).slice(0, s.n), []);
+    const [k, setK] = useState(0);
+    const [q, setQ] = useState(null);
+    const [key, setKey] = useState(0);
+    const [score, setScore] = useState(0), [hist, setHist] = useState([]), [fb, setFb] = useState(null), [done, setDone] = useState(false);
+    const fair = kk => { const seen = deck.slice(0, kk).reduce((a, c) => a + c.v, 0); return seen + (364 - seen) / (52 - kk) * (s.n - kk); };
+    const left = K.useCountdown(s.time, !fb && !done, key);
+    function deal(kk) {
+      const f = fair(kk), sd = Math.sqrt((s.n - kk) * 14) + 0.5;
+      const off = rng() < s.offShare ? rng.int(0, 2) : -1, side = rng() < 0.5 ? 1 : -1;
+      const desks = ["North", "East", "West"].map((n, i) => {
+        const hw = Math.max(0.5, Math.round(sd * (0.25 + rng() * 0.2) * 2) / 2);
+        let mid = Math.round((f + rng.normal() * hw * 0.25) * 2) / 2;
+        if (i === off) mid = Math.round((f + side * (hw + 1 + rng() * sd * 0.4)) * 2) / 2;
+        return { n, bid: mid - hw, ask: mid + hw };
+      });
+      const ans = off < 0 ? "none" : off + (side > 0 ? ":sell" : ":buy");
+      setQ({ desks, ans, f }); setKey(x => x + 1); setFb(null);
+    }
+    useEffect(() => { deal(0); }, []);
+    function pick(v) {
+      if (fb || done || !q) return;
+      let gain = 0;
+      if (v !== "none") { const [i, side] = v.split(":"), d = q.desks[+i]; gain = side === "buy" ? q.f - d.ask : d.bid - q.f; }
+      const ok = v === q.ans;
+      const pts = ok ? (v === "none" ? 1 : 2 + Math.max(0, Math.round(gain))) : -2;
+      setScore(x => x + pts);
+      setHist(h => [...h, { ok, text: `Card ${k + 1} of ${s.n}: fair ${q.f.toFixed(2)}`, shown: v === "none" ? "no trade" : v.replace(":", " "), answer: q.ans === "none" ? "no trade" : q.desks[+q.ans.split(":")[0]].n + " " + q.ans.split(":")[1], ms: null }]);
+      setFb({ ok, v, pts });
+      setTimeout(() => { if (k + 1 >= s.n) setDone(true); else { setK(k + 1); deal(k + 1); } }, ok ? 650 : 1400);
+    }
+    useEffect(() => { if (!fb && !done && left <= 0 && q) pick("timeout"); }, [left <= 0]);
+    const res = useMemo(() => done ? { pnl: score, score, correct: hist.filter(h => h.ok).length, total: hist.length } : null, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={res.score + " points"} sub={`${res.correct} of ${res.total} calls right`} ring={res.total ? res.correct / res.total : 0} onRestart={onRestart}
+      metrics={[{ label: "Points", value: res.score, tone: res.score >= 0 ? "up" : "dn" }, { label: "Right calls", value: `${res.correct}/${res.total}` }]} review={hist}
+      notes="Fair value of the sum = cards shown + the average of the unseen 52-card deck for each card still face down. Trade the desk whose bid is above fair or whose offer is below it; otherwise pass." />;
+    if (!q) return null;
+    const ch = [...q.desks.flatMap((d, i) => [{ value: i + ":sell", node: <span>Sell to {d.n} at <b>{d.bid.toFixed(1)}</b></span> }, { value: i + ":buy", node: <span>Buy from {d.n} at <b>{d.ask.toFixed(1)}</b></span> }]), { value: "none", node: <span>No trade</span> }];
+    return (
+      <K.Stage title="Card Game" sub={`Card ${k + 1} of ${s.n} revealed`} clock={fb ? null : left} clockFrac={left / s.time} stats={[{ label: "Points", value: score, pop: true }]} total={s.n} results={hist.map(h => h.ok)} at={k}>
+        <div className="oa-q">
+          <div className="oa-prompt">
+            <div className="oa-lbl">Contract: sum of {s.n} cards dealt from one deck (A=1 … K=13)</div>
+            <div className="mm-row">{deck.map((c, i) => <K.Card key={i + (i <= k ? "u" : "d")} v={c.v} s={c.s} hidden={i > k} flip={i === k} size={44} />)}</div>
+            <div className="desk-row">{q.desks.map((d, i) => <div key={i} className="desk"><span>{d.n}</span><b>{d.bid.toFixed(1)} / {d.ask.toFixed(1)}</b></div>)}</div>
+          </div>
+          <K.Choices items={ch} cols={2} disabled={!!fb} onPick={pick} picked={fb ? fb.v : null} correct={q.ans} />
+          {fb ? <K.Banner ok={fb.ok} title={fb.ok ? `+${fb.pts}` : `${fb.pts}`}>Fair after this card: {q.f.toFixed(2)}.</K.Banner> : null}
+        </div>
+      </K.Stage>
+    );
+  }
+
+  /* ================= Betting Board: Dutch-book arbitrage ================= */
+  function Board({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const mk = () => {
+      const n = rng() < 0.5 ? 2 : 3, arb = rng() < s.arbShare;
+      const p = n === 2 ? [0.35 + rng() * 0.3] : [0.2 + rng() * 0.25, 0.2 + rng() * 0.2];
+      p.push(1 - p.reduce((a, b) => a + b, 0));
+      const tot = arb ? 1 - s.edge / 100 * (0.6 + rng() * 0.8) : 1 + 0.02 + rng() * 0.06;
+      const odds = p.map(x => Math.round(100 / (x * tot)) / 100);
+      const books = odds.map(() => rng.pick(["Alpha", "Bravo", "Delta", "Echo"]));
+      const names = n === 2 ? ["Home", "Away"] : ["Home", "Draw", "Away"];
+      const imp = odds.reduce((a, d) => a + 1 / d, 0);
+      return { odds, books, names, imp, arb: imp < 1 };
+    };
+    const [m, setM] = useState(() => mk());
+    const [i, setI] = useState(0), [key, setKey] = useState(0);
+    const [stake, setStake] = useState(null);
+    const [pnl, setPnl] = useState(0), [hist, setHist] = useState([]), [fb, setFb] = useState(null), [done, setDone] = useState(false);
+    const left = K.useCountdown(s.time, !fb && !done, key);
+    function answer(isArb) {
+      if (fb || done) return;
+      let gain = 0;
+      if (isArb) {
+        /* stake the budget in proportion to 1/odds so every outcome pays the same */
+        const pay = s.budget / m.imp; gain = Math.round((pay - s.budget) * 100) / 100;
+      }
+      const ok = isArb === m.arb;
+      setPnl(x => x + gain);
+      setHist(h => [...h, { ok, text: `${m.names.map((n, j) => n + " " + m.odds[j].toFixed(2)).join(", ")} · implied ${(m.imp * 100).toFixed(1)}%`, shown: isArb ? "arb, " + K.signed(gain, 2) : "pass", answer: m.arb ? "arbitrage" : "no arbitrage" }]);
+      setFb({ ok, gain, isArb });
+    }
+    function next() { if (i + 1 >= s.markets) { setDone(true); return; } setI(i + 1); setM(mk()); setFb(null); setKey(x => x + 1); }
+    useEffect(() => { if (!fb && !done && left <= 0) answer(false); }, [left <= 0]);
+    const res = useMemo(() => done ? { pnl: Math.round(pnl * 100) / 100, correct: hist.filter(h => h.ok).length, total: hist.length } : null, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={K.money(res.pnl, 2) + " locked in"} sub={`${res.correct} of ${res.total} boards read right`} ring={res.total ? res.correct / res.total : 0} onRestart={onRestart}
+      metrics={[{ label: "P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" }, { label: "Right calls", value: `${res.correct}/${res.total}` }]} review={hist}
+      notes="Add 1/odds across the best price for every outcome. Below 100% there is an arbitrage: stake in proportion to 1/odds and every outcome pays budget ÷ total. At 100% or more, betting all outcomes loses the overround." />;
+    const pays = m.odds.map(d => s.budget / m.imp / d);
+    return (
+      <K.Stage title="Betting Board" sub={`Market ${i + 1} of ${s.markets} · budget ${K.money(s.budget)}`} clock={fb ? null : left} clockFrac={left / s.time}
+        stats={[{ label: "P&L", value: K.signed(pnl, 2), tone: pnl >= 0 ? "up" : "dn", pop: true }]} total={s.markets} results={hist.map(h => h.ok)} at={i}>
+        <div className="oa-q">
+          <div className="oa-prompt">
+            <div className="oa-lbl">Best decimal odds across books</div>
+            <div className="bb-row">{m.names.map((n, j) => <div key={j} className="bb-cell" style={{ animationDelay: j * 0.06 + "s" }}><span>{n}</span><b>{m.odds[j].toFixed(2)}</b><em>{m.books[j]}</em>
+              {fb && fb.isArb ? <i>stake {K.money(pays[j], 2)}</i> : null}</div>)}</div>
+            {fb ? <div className="bb-imp">Implied total: <b className={m.arb ? "up" : "dn"}>{(m.imp * 100).toFixed(1)}%</b></div> : null}
+          </div>
+          {!fb ? <K.Choices items={[{ value: true, node: <span>Arbitrage: stake to lock it in</span> }, { value: false, node: <span>No arbitrage: pass</span> }]} cols={2} onPick={answer} />
+            : <K.Banner ok={fb.ok} onNext={next} title={fb.ok ? "Right." : "Wrong."}>{m.arb ? `The prices imply ${(m.imp * 100).toFixed(1)}%, so staking in proportion to 1/odds pays ${K.money(s.budget / m.imp, 2)} whatever happens.` : `The prices imply ${(m.imp * 100).toFixed(1)}%: covering every outcome loses money.`}{fb.isArb ? ` You locked ${K.signed(fb.gain, 2)}.` : ""}</K.Banner>}
+        </div>
+      </K.Stage>
+    );
+  }
+
+  /* ================= Fermi Estimation: 90% intervals, interval score ================= */
+  const fmtN = v => { const a = Math.abs(v); return a >= 1e9 ? (v / 1e9).toPrecision(3) + " bn" : a >= 1e6 ? (v / 1e6).toPrecision(3) + " m" : a >= 1e4 ? Math.round(v).toLocaleString("en-GB") : String(+v.toPrecision(4)); };
+  function parseN(t) { t = String(t || "").trim().toLowerCase().replace(/,/g, ""); const m = /^(-?[\d.]+(?:e[-+]?\d+)?)\s*(k|m|bn|b|thousand|million|billion)?$/.exec(t); if (!m) return NaN; return parseFloat(m[1]) * ({ k: 1e3, thousand: 1e3, m: 1e6, million: 1e6, b: 1e9, bn: 1e9, billion: 1e9 }[m[2]] || 1); }
+  function Fermi({ settings: s, onFinish, onRestart }) {
+    const [list] = useState(() => {
+      let S = {}; try { S = JSON.parse(localStorage.getItem("tip-seen-fermi") || "{}") || {}; } catch (e) {}
+      const r = jt(), o = r.shuffle(Ff.slice()).sort((x, y) => (S[x[0]] || 0) - (S[y[0]] || 0)).slice(0, Math.min(s.rounds, Ff.length));
+      try { const t = Date.now(); o.forEach((q, k) => S[q[0]] = t + k); localStorage.setItem("tip-seen-fermi", JSON.stringify(S)); } catch (e) {}
+      return o;
+    });
+    const [i, setI] = useState(0), [lo, setLo] = useState(""), [hi, setHi] = useState(""), [pt, setPt] = useState(""), [fb, setFb] = useState(null), [hist, setHist] = useState([]), [done, setDone] = useState(false), [key, setKey] = useState(0);
+    const left = K.useCountdown(s.time, !fb && !done, key);
+    const q = list[i];
+    function submit(timeout) {
+      if (fb) return;
+      const a = parseN(lo), b = parseN(hi), p = parseN(pt), v = q[2];
+      if (!timeout && (!(a > 0) || !(b > 0) || b < a)) return;
+      const inside = !timeout && v >= a && v <= b;
+      /* log-scale interval score: width in orders of magnitude, plus a penalty for missing (alpha = 10%) */
+      const L = Math.log10(Math.max(a, 1e-9)), U = Math.log10(Math.max(b, 1e-9)), x = Math.log10(v);
+      const isc = timeout ? 25 : (U - L) + (x < L ? 20 * (L - x) : 0) + (x > U ? 20 * (x - U) : 0);
+      const pts = Math.max(0, Math.round(100 - 22 * isc)) + (p > 0 && Math.abs(Math.log10(p / v)) < 0.15 ? 10 : 0);
+      setHist(h => [...h, { ok: inside, text: q[1], shown: timeout ? "no answer" : `${fmtN(a)} – ${fmtN(b)}`, answer: fmtN(v) + " " + q[3], explain: `Interval score ${isc.toFixed(2)} (orders of magnitude of width + 20× any miss): ${pts} points.`, pts, inside }]);
+      setFb({ inside, pts, timeout });
+    }
+    function next() { if (i + 1 >= list.length) { setDone(true); return; } setI(i + 1); setLo(""); setHi(""); setPt(""); setFb(null); setKey(x => x + 1); }
+    useEffect(() => { if (!fb && left <= 0 && !done) submit(true); }, [left <= 0]);
+    const res = useMemo(() => done ? { score: hist.reduce((a, h) => a + h.pts, 0), hits: hist.filter(h => h.inside).length, total: hist.length } : null, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={res.score + " points"} sub={`${res.hits} of ${res.total} intervals contained the answer (aim for about 90%)`} ring={res.total ? res.hits / res.total : 0} onRestart={onRestart}
+      metrics={[{ label: "Score", value: res.score }, { label: "Hit rate", value: K.pct(res.hits / Math.max(1, res.total)), sub: "target 90%" }]} review={hist}
+      notes="Interviewers want calibrated, narrow intervals built from a clear decomposition. Too narrow and you miss; too wide and the interval says nothing." />;
+    const box = (v, set, ph) => <div className="oa-num-box"><input inputMode="decimal" value={v} placeholder={ph} disabled={!!fb} onChange={e => set(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submit(); } }} /></div>;
+    return (
+      <K.Stage title="Fermi Estimation" sub={`Question ${i + 1} of ${list.length}`} clock={fb ? null : left} clockFrac={left / s.time}
+        stats={[{ label: "Score", value: hist.reduce((a, h) => a + h.pts, 0), pop: true }, { label: "Hit rate", value: hist.length ? K.pct(hist.filter(h => h.inside).length / hist.length) : "—" }]} total={list.length} results={hist.map(h => h.inside)} at={i}>
+        <div className="oa-q" key={i}>
+          <div className="oa-prompt"><div className="oa-lbl">Give a 90% confidence interval{q[3] ? " in " + q[3] : ""}</div><div className="oa-mid">{q[1]}</div></div>
+          <div className="fe-row">{box(lo, setLo, "Low")}{box(pt, setPt, "Best guess (optional)")}{box(hi, setHi, "High")}</div>
+          <div className="small muted" style={{ textAlign: "center" }}>You can type 3.5m, 120k or 2bn.</div>
+          {!fb ? <button className="start" style={{ alignSelf: "center" }} onClick={() => submit()}>Submit</button>
+            : <K.Banner ok={fb.inside} onNext={next} title={fb.inside ? "Inside your interval." : "Outside your interval."}>Answer: <b>{fmtN(q[2])} {q[3]}</b> · {fb.pts} points.</K.Banner>}
+        </div>
+      </K.Stage>
+    );
+  }
+
+  /* ================= Higher or Lower with Kelly sizing ================= */
+  function HiLo({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const [deck] = useState(() => rng.shuffle(Array.from({ length: 52 }, (_, i) => ({ v: i % 13 + 2, s: Math.floor(i / 13) }))));
+    const [i, setI] = useState(0), [bank, setBank] = useState(s.bankroll), [stake, setStake] = useState(""), [fb, setFb] = useState(null), [hist, setHist] = useState([]), [done, setDone] = useState(false);
+    const cur = deck[i], rest = deck.slice(i + 1);
+    const hiN = rest.filter(c => c.v > cur.v).length, loN = rest.filter(c => c.v < cur.v).length, n = rest.length;
+    const pHi = hiN / n, pLo = loN / n;
+    const kelly = p => Math.max(0, p - (1 - p) / s.odds);
+    function bet(side) {
+      if (fb || done) return;
+      const amt = Math.max(0, Math.min(bank, parseFloat(stake) || 0));
+      const nxt = deck[i + 1], p = side === "hi" ? pHi : pLo, kf = kelly(p);
+      const win = side === "hi" ? nxt.v > cur.v : nxt.v < cur.v, tie = nxt.v === cur.v;
+      const d = tie ? -amt : win ? amt * s.odds : -amt;
+      setBank(b => Math.round((b + d) * 100) / 100);
+      const best = Math.max(pHi, pLo), kb = kelly(best), rightSide = p >= best - 1e-9 || kb === 0;
+      setHist(h => [...h, { ok: rightSide && Math.abs(amt / bank - kb) <= 0.05 + kb * 0.25, text: `${K.rankName(cur.v)} → called ${side === "hi" ? "higher" : "lower"} (p = ${p.toFixed(2)})`, shown: `staked ${(amt / bank * 100).toFixed(0)}%`, answer: `Kelly ${(kb * 100).toFixed(0)}% on ${pHi >= pLo ? "higher" : "lower"}`, explain: `Next card ${K.rankName(nxt.v)}: ${tie ? "tie loses" : win ? "won" : "lost"} ${K.money(Math.abs(d), 2)}.` }]);
+      setFb({ win: win && !tie, d, nxt, kf, frac: amt / bank });
+    }
+    function next() { if (i + 2 >= Math.min(deck.length, s.cards + 1) || bank <= 0) { setDone(true); return; } setI(i + 1); setFb(null); setStake(""); }
+    useEffect(() => { if (!fb || done) return; const h = e => { if (e.key === "Enter") { e.preventDefault(); next(); } }; const t = setTimeout(() => window.addEventListener("keydown", h), 150); return () => { clearTimeout(t); window.removeEventListener("keydown", h); }; }, [fb]);
+    const res = useMemo(() => done ? { pnl: Math.round((bank - s.bankroll) * 100) / 100, bank, kellyOk: hist.filter(h => h.ok).length, total: hist.length } : null, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={K.money(res.bank, 2) + " bankroll"} sub={`${K.signed(res.pnl, 2)} from ${K.money(s.bankroll)} · ${res.kellyOk} of ${res.total} stakes within range of Kelly`} ring={res.total ? res.kellyOk / res.total : 0} onRestart={onRestart}
+      metrics={[{ label: "P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" }, { label: "Near-Kelly stakes", value: `${res.kellyOk}/${res.total}` }]} review={hist}
+      notes="Count the cards left above and below the current one, take the side with the higher probability, and stake the Kelly fraction p − (1 − p)/b. Ties lose." />;
+    const quick = [0, kelly(Math.max(pHi, pLo)) / 2, kelly(Math.max(pHi, pLo))].map(f => Math.floor(f * bank));
+    return (
+      <K.Stage title="Higher or Lower" sub={`Card ${i + 1} of ${s.cards} · pays ${s.odds}:1 · ties lose`} stats={[{ label: "Bankroll", value: K.money(bank, 0), pop: true, tone: bank >= s.bankroll ? "up" : "dn" }]} total={s.cards} results={hist.map(h => h.ok)} at={i}>
+        <div className="oa-q">
+          <div className="oa-prompt">
+            <div className="hl-row"><K.Card v={cur.v} s={cur.s} size={78} />{fb ? <K.Card key={"n" + i} v={fb.nxt.v} s={fb.nxt.s} size={78} flip /> : <K.Card hidden size={78} />}</div>
+            {s.counter ? <div className="hl-count"><span>Higher <b>{hiN}</b></span><span>Same <b>{n - hiN - loN}</b></span><span>Lower <b>{loN}</b></span><span>of {n} left</span></div> : null}
+          </div>
+          {!fb ? <TF>
+            <div className="oa-num"><div className="oa-num-box"><span>$</span><input inputMode="decimal" value={stake} placeholder="Stake" onChange={e => setStake(e.target.value)} /></div>
+              {quick.map((v, j) => <button key={j} className="btn sm" onClick={() => setStake(String(v))}>{["$0", "½ Kelly", "Kelly"][j]}{s.counter || j === 0 ? "" : "?"}</button>)}</div>
+            <K.Choices items={[{ value: "hi", node: <span>▲ Higher</span> }, { value: "lo", node: <span>▼ Lower</span> }]} cols={2} onPick={bet} />
+          </TF> : <K.Banner ok={fb.d >= 0 && fb.win} onNext={next} title={fb.win ? `Won ${K.money(fb.d, 2)}.` : fb.d < 0 ? `Lost ${K.money(-fb.d, 2)}.` : "No stake."}>You staked {(fb.frac * 100).toFixed(0)}% of bankroll; Kelly was {(fb.kf * 100).toFixed(0)}%.</K.Banner>}
+        </div>
+      </K.Stage>
+    );
+  }
+
+  /* ================= definitions ================= */
+  const mmStats = { extraStats: TIP_MM.stats, charts: TIP_MM.charts };
+  const defs = [
+    { ...base, ...mmStats, id: "trading", name: "Trading Game", icon: "chart",
+      blurb: "The assessment-day trading game used by Optiver, IMC and SIG: four traders show two-way prices on the sum of a hand of cards dealt from one deck. Buy what is cheap and sell what is rich as each card is turned, inside a position limit.",
+      fields: [num("n", "Cards in the hand", 3, 6), num("rounds", "Rounds", 1, 8), num("time", "Time per card", 8, 90, "s"), num("bots", "Traders", 2, 6), num("size", "Lot size", 1, 10), num("limit", "Position limit", 2, 40), sel("misprice", "Mispriced quotes", [[0.25, "Few"], [0.4, "Some"], [0.55, "Many"]])],
+      presets: { Easy: { n: 3, rounds: 3, time: 40, bots: 3, size: 1, limit: 6, misprice: 0.55 }, Medium: { n: 4, rounds: 4, time: 25, bots: 4, size: 2, limit: 10, misprice: 0.4 }, Hard: { n: 5, rounds: 5, time: 15, bots: 5, size: 2, limit: 10, misprice: 0.25 } },
+      note: "Cards are dealt without replacement, so fair value uses the average of the cards you have not seen. P&L is marked at the final sum.",
+      component: props => TH(TIP_MM.Game, { ...props, inst: "cards", mode: "take", title: "Trading Game" }) },
+    { ...base, ...mmStats, id: "dice", name: "Market Making Dice", icon: "dice",
+      blurb: "The classic market-making interview: make a two-way price on the sum (or product) of hidden dice inside the interviewer's maximum width. They trade on your quote, sometimes knowing more, then reveal a die and you requote.",
+      fields: [num("n", "Dice", 2, 6), sel("target", "Contract", [["sum", "Sum"], ["product", "Product"]]), num("rounds", "Rounds", 1, 8), num("width", "Max width", 1, 8), num("time", "Time per quote", 6, 60, "s"), SHARP, sel("tighten", "Tighter-market requests", [[0, "Off"], [0.25, "Sometimes"], [0.45, "Often"]]), { key: "showFair", label: "Show fair value", type: "bool" }],
+      presets: { Easy: { n: 3, target: "sum", rounds: 3, width: 3, time: 30, sharp: 0, tighten: 0, showFair: true, size: 1 }, Medium: { n: 4, target: "sum", rounds: 4, width: 2, time: 20, sharp: 0.25, tighten: 0.25, showFair: false, size: 1 }, Hard: { n: 5, target: "sum", rounds: 5, width: 1.5, time: 12, sharp: 0.45, tighten: 0.45, showFair: false, size: 1 } },
+      note: "Enter a bid and an ask (multiples of 0.5). If you don't quote in time, the interviewer moves on and you miss the round's edge.",
+      component: props => TH(TIP_MM.Game, { ...props, inst: "dice", mode: "make", title: "Market Making Dice" }) },
+    { ...base, ...mmStats, id: "events", name: "Event Contracts", icon: "newspaper",
+      blurb: "Make markets in a binary contract that pays 100 if the event happens. Headlines arrive with known strength; update with Bayes, requote, and survive informed traders, as in SIG and Jane Street prediction-market rounds.",
+      fields: [num("news", "Headlines per round", 2, 8), num("rounds", "Rounds", 1, 8), num("width", "Max width", 2, 20, "¢"), num("time", "Time per quote", 6, 60, "s"), SHARP, sel("story", "Event", [["rates", "Central bank"], ["election", "Election"]]), sel("tighten", "Tighter-market requests", [[0, "Off"], [0.25, "Sometimes"]]), { key: "showFair", label: "Show fair value", type: "bool" }],
+      presets: { Easy: { news: 3, rounds: 3, width: 10, time: 30, sharp: 0, story: "rates", tighten: 0, showFair: true, size: 1 }, Medium: { news: 4, rounds: 4, width: 8, time: 20, sharp: 0.25, story: "election", tighten: 0.25, showFair: false, size: 1 }, Hard: { news: 6, rounds: 5, width: 6, time: 14, sharp: 0.45, story: "rates", tighten: 0.25, showFair: false, size: 1 } },
+      note: "Each headline shows its likelihood ratio: multiply the odds by it. The outcome is drawn first and the news is generated from it, so updating correctly really is the edge.",
+      component: props => TH(TIP_MM.Game, { ...props, inst: "binary", mode: "make", title: "Event Contracts" }) },
+    { ...base, id: "etf", name: "ETF Arbitrage", icon: "scale",
+      blurb: "A live screen like an IMC or Flow Traders ETF exercise: three components tick, a market maker quotes the ETF, and you trade only when its price is away from NAV by more than the fee.",
+      fields: [num("duration", "Duration", 30, 300, "s"), num("tick", "Seconds per update", 1, 6, "s"), num("units", "Units per trade", 1, 100), num("fee", "Fee per unit", 0, 0.2, "", { step: 0.01 }), num("freq", "Mispricing chance", 0.05, 0.6, "", { step: 0.05 }), { key: "showNav", label: "Show NAV", type: "bool" }],
+      presets: { Easy: { duration: 60, tick: 3, units: 10, fee: 0, freq: 0.4, minGap: 0.4, maxGap: 1.0, showNav: true }, Medium: { duration: 90, tick: 2, units: 10, fee: 0.05, freq: 0.3, minGap: 0.2, maxGap: 0.7, showNav: true }, Hard: { duration: 90, tick: 1.5, units: 10, fee: 0.05, freq: 0.25, minGap: 0.12, maxGap: 0.45, showNav: false } },
+      note: "Keys: B buys the ETF, S sells it. Each trade is hedged with the basket at NAV, so profit = gap − fee per unit.",
+      component: Etf },
+    { ...base, id: "cards", name: "Card Game", icon: "cards", metric: "score", unit: " pts",
+      blurb: "A speed-arbitrage round: cards are turned one at a time and three desks quote the sum. Spot the desk that is off conditional fair value and trade it before the next card, or pass. Fast, exact conditional EV is the skill.",
+      fields: [num("n", "Cards in contract", 3, 8), num("time", "Time per card", 4, 30, "s"), sel("offShare", "How often a desk is off", [[0.5, "Half the time"], [0.7, "Usually"], [0.85, "Almost always"]])],
+      presets: { Easy: { n: 4, time: 20, offShare: 0.85 }, Medium: { n: 5, time: 12, offShare: 0.7 }, Hard: { n: 6, time: 7, offShare: 0.5 } },
+      note: "+2 (plus the edge) for the right trade, +1 for a correct pass, −2 for a wrong call or running out of time.",
+      component: Desks },
+    { ...base, id: "board", name: "Betting Board", icon: "grid",
+      blurb: "Read a board of best prices across bookmakers, decide in seconds whether it is a Dutch book, and stake to lock in the profit. Mirrors the odds and arbitrage questions in SIG and Jane Street interviews.",
+      fields: [num("markets", "Markets", 4, 20), num("time", "Time per market", 5, 40, "s"), num("budget", "Budget per market ($)", 100, 10000), sel("arbShare", "Share with an arbitrage", [[0.3, "30%"], [0.5, "50%"], [0.7, "70%"]]), sel("edge", "Arbitrage size", [[1, "about 1%"], [2.5, "about 2.5%"], [5, "about 5%"]])],
+      presets: { Easy: { markets: 6, time: 25, budget: 1000, arbShare: 0.5, edge: 5 }, Medium: { markets: 8, time: 15, budget: 1000, arbShare: 0.5, edge: 2.5 }, Hard: { markets: 12, time: 8, budget: 1000, arbShare: 0.3, edge: 1 } },
+      note: "Calling an arbitrage that isn't there costs the overround on your whole budget.",
+      component: Board },
+    { ...base, id: "fermi", name: "Fermi Estimation", icon: "target", metric: "score", unit: " pts",
+      blurb: "Estimation questions as Jane Street and Optiver ask them: give a 90% confidence interval (and optionally a point estimate) against the clock. Scored with a proper interval score on a log scale, so calibration and precision both count.",
+      fields: [num("rounds", "Questions", 3, 20), num("time", "Time per question", 20, 180, "s")],
+      presets: { Easy: { rounds: 5, time: 90 }, Medium: { rounds: 8, time: 60 }, Hard: { rounds: 12, time: 40 } },
+      note: "100 points minus 22 per order of magnitude of width, with a heavy penalty for missing; +10 for a best guess within about 40%.",
+      component: Fermi },
+    { ...base, id: "hilo", name: "Higher or Lower", icon: "updown",
+      blurb: "Call the next card higher or lower and choose your stake. The cards left are counted for you on Easy; the review compares every stake with the Kelly fraction, the sizing question every trading interview asks.",
+      fields: [num("bankroll", "Starting bankroll ($)", 100, 100000), num("cards", "Cards to play", 10, 50), sel("odds", "Payout", [[1, "1:1"], [1.5, "1.5:1"], [2, "2:1"]]), { key: "counter", label: "Show card count", type: "bool" }],
+      presets: { Easy: { bankroll: 1000, cards: 15, odds: 1, counter: true }, Medium: { bankroll: 1000, cards: 25, odds: 1, counter: true }, Hard: { bankroll: 1000, cards: 35, odds: 1, counter: false } },
+      note: "Aces are high. A tie with the current card loses the stake.",
+      component: HiLo },
+  ];
+  return { defs };
+})();

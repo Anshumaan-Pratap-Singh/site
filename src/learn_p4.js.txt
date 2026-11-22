@@ -1,0 +1,210 @@
+/* Lessons part 4: the nine mental maths tricks from the Mental Math Trainer, one lesson each (22 Nov 2026).
+   Each lesson has `drill`: the Mental Math Trainer settings its "Drill this" button opens with (÷11 has none:
+   the trainer has no ÷11 generator). Same lesson shape as learn_p1. */
+var TIP_LP4 = (function () {
+  const S = String.raw;
+  const T = (id, title, rest) => ({ id, group: "tricks", title, ...rest });
+  return [
+    T("tx11", "Multiplying by 11", {
+      desc: "Write the outer digits and put the sums of neighbouring digits in between.",
+      tags: ["mental maths", "multiplication", "x11", "times 11", "tricks"],
+      drill: { mode: "tricks", tricks: ["x11"], types: ["int"] },
+      intro: S`Multiplying by 11 is multiplying by 10 and adding the number once more, so each digit of the answer is the sum of two neighbouring digits.`,
+      sections: [
+        { h: "The rule", p: [S`For a two-digit number $ab$: write $a$, then $a + b$, then $b$. So $53 \times 11$: $5\,|\,8\,|\,3 = 583$.`,
+          S`If the middle sum is 10 or more, carry the 1 into the left digit: $78 \times 11$: $7\,|\,15\,|\,8 \to 858$.`] },
+        { h: "Longer numbers", p: [S`Keep the first and last digits and add each neighbouring pair in between, carrying from right to left: $324 \times 11 = 3\,|\,(3+2)\,|\,(2+4)\,|\,4 = 3564$.`] },
+        { h: "Why it works", p: [S`$11 = 10 + 1$, so $11x = 10x + x$: the number shifted one place left, plus itself. Each column then holds a digit plus its right-hand neighbour.`] },
+      ],
+      examples: [
+        { t: "Carry", q: S`$87 \times 11$?`, a: [S`$8\,|\,15\,|\,7$: carry 1 into the 8.`, S`$957$.`] },
+        { t: "Three digits", q: S`$462 \times 11$?`, a: [S`$4\,|\,(4+6)\,|\,(6+2)\,|\,2 = 4\,|\,10\,|\,8\,|\,2$.`, S`Carry: $5082$.`] },
+        { t: "Decimal", q: S`$3.6 \times 11$?`, a: [S`$36 \times 11 = 396$, one decimal place: $39.6$.`] },
+      ],
+      traps: [S`Forgetting to carry when a neighbouring pair sums to 10 or more.`, S`Adding the carry to the wrong side: it always goes left.`],
+      tips: [S`Work from the right so carries are already known when you reach them.`],
+      checks: [
+        { q: S`$64 \times 11$?`, answer: 704, why: S`$6\,|\,10\,|\,4$: carry gives $704$.` },
+        { q: S`$725 \times 11$?`, answer: 7975, why: S`$7\,|\,9\,|\,7\,|\,5 = 7975$.` },
+        { q: S`$4.8 \times 11$?`, answer: 52.8, tol: 1e-9, why: S`$48 \times 11 = 528$, so $52.8$.` },
+      ] }),
+
+    T("td11", "Dividing by 11", {
+      desc: "Undo the ×11 pattern by peeling digits, and read k/11 as repeating 09s.",
+      tags: ["mental maths", "division", "divide by 11", "repeating decimals", "tricks"],
+      intro: S`Division by 11 runs the multiplication trick backwards. And the elevenths have a decimal pattern worth knowing by heart.`,
+      sections: [
+        { h: "Exact division", p: [S`If $n$ is a multiple of 11, build the quotient from the left. The first digit of $n$ (or first two) gives the first quotient digit; each next quotient digit is the next digit of $n$ minus the quotient digit before it.`,
+          S`$583 \div 11$: first digit 5, then $8 - 5 = 3$: quotient $53$ (check $5 + 3 = 8$). $858 \div 11$: the 8 already includes a carry, so take $8 - 1 = 7$, then $15 - 7 = 8$: $78$.`] },
+        { h: "Elevenths as decimals", p: [S`$\frac{1}{11} = 0.\overline{09}$ and $\frac{k}{11} = 0.\overline{(9k)}$ written as two digits: $\frac{3}{11} = 0.\overline{27}$, $\frac{7}{11} = 0.\overline{63}$.`] },
+        { h: "Why it works", p: [S`$\frac{1}{11} = \frac{9}{99}$, and $\frac{m}{99}$ repeats the two digits of $m$. So $\frac{k}{11} = \frac{9k}{99}$.`] },
+      ],
+      examples: [
+        { t: "Exact", q: S`$4972 \div 11$?`, a: [S`$4$; $9 - 4 = 5$; $7 - 5 = 2$: $452$.`, S`Check: $452 \times 11 = 4\,|\,9\,|\,7\,|\,2$. ✓`] },
+        { t: "Decimal", q: S`$\frac{5}{11}$?`, a: [S`$9 \times 5 = 45$: $0.\overline{45} = 0.4545\ldots$`] },
+      ],
+      traps: [S`A middle digit that came from a carry: if a step gives a negative or a two-digit result, borrow 1 from the left.`],
+      tips: [S`Check any ÷11 answer by multiplying back with the ×11 rule.`],
+      checks: [
+        { q: S`$737 \div 11$?`, answer: 67, why: S`$7$; $3 - 7 < 0$, so the 7 came from $6 + $ carry: $67 \times 11 = 737$.` },
+        { q: S`$\frac{6}{11}$ to four decimal places?`, answer: 0.5455, tol: 0.00006, why: S`$9 \times 6 = 54$: $0.5454\ldots \approx 0.5455$.` },
+        { q: S`$2541 \div 11$?`, answer: 231, why: S`$2$; $5 - 2 = 3$; $4 - 3 = 1$: $231$.` },
+      ] }),
+
+    T("td9", "Dividing by 9", {
+      desc: "Digit sums give the remainder; repeating digits give the decimal.",
+      tags: ["mental maths", "division", "divide by 9", "digit sum", "remainder", "tricks"],
+      drill: { mode: "tricks", tricks: ["d9"], types: ["int"] },
+      intro: S`Nine is one less than ten, which makes it the easiest awkward divisor: remainders come from digit sums and ninths are repeating single digits.`,
+      sections: [
+        { h: "Remainders", p: [S`The remainder of $n$ on division by 9 is its digit sum, reduced again until it is a single digit (with 9 meaning remainder 0). $47$: $4 + 7 = 11 \to 2$, so $47 = 9 \times 5 + 2$.`] },
+        { h: "Ninths as decimals", p: [S`$\frac{1}{9} = 0.\overline{1}$, so $\frac{k}{9} = 0.\overline{k}$ for $k = 1..8$. Then $\frac{47}{9} = 5 + \frac{2}{9} = 5.\overline{2}$.`] },
+        { h: "Exact division", p: [S`Split into easy multiples of 9: $378 = 360 + 18$, so $378 \div 9 = 40 + 2 = 42$.`] },
+        { h: "Why it works", p: [S`$10 \equiv 1 \pmod 9$, so every power of 10 leaves remainder 1, and a number leaves the same remainder as the sum of its digits.`] },
+      ],
+      examples: [
+        { t: "Decimal", q: S`$\frac{68}{9}$?`, a: [S`Digit sum $14 \to 5$: $68 = 63 + 5$.`, S`$7 + \frac{5}{9} = 7.\overline{5}$.`] },
+        { t: "Exact", q: S`$1053 \div 9$?`, a: [S`$900 + 153$; $153 = 144 + 9$.`, S`$100 + 16 + 1 = 117$.`] },
+      ],
+      traps: [S`A digit sum of 9 means remainder 0, not 9.`],
+      tips: [S`Use the digit-sum check to catch slips on any multiplication: the check digits must match.`],
+      checks: [
+        { q: S`Remainder of $5728$ divided by 9?`, answer: 4, why: S`$5 + 7 + 2 + 8 = 22 \to 4$.` },
+        { q: S`$\frac{50}{9}$ to three decimal places?`, answer: 5.556, tol: 0.0006, why: S`$50 = 45 + 5$: $5.\overline{5}$.` },
+        { q: S`$612 \div 9$?`, answer: 68, why: S`$540 + 72$: $60 + 8 = 68$.` },
+      ] }),
+
+    T("td99", "Dividing by 99", {
+      desc: "Two-digit blocks repeat, and dividing by 99 is dividing by 100 plus a nudge.",
+      tags: ["mental maths", "division", "divide by 99", "repeating decimals", "tricks"],
+      drill: { mode: "tricks", tricks: ["d99"], types: ["int"] },
+      intro: S`What 9 does for single digits, 99 does for pairs of digits.`,
+      sections: [
+        { h: "Decimals", p: [S`$\frac{m}{99} = 0.\overline{mm}$ for a two-digit $m$: $\frac{47}{99} = 0.4747\ldots$, $\frac{5}{99} = 0.\overline{05}$.`] },
+        { h: "Exact division", p: [S`Divide by 100 first, then nudge up: $4752 \div 99 \approx 47.5$, and $99 \times 48 = 4800 - 48 = 4752$, so the answer is $48$.`] },
+        { h: "Why it works", p: [S`$100 \equiv 1 \pmod{99}$, so each pair of digits acts like a single "digit" in base 100. And $\frac{x}{99} = \frac{x}{100} \cdot \frac{100}{99} \approx \frac{x}{100}(1 + 0.0101)$.`] },
+      ],
+      examples: [
+        { t: "Exact", q: S`$6633 \div 99$?`, a: [S`$\approx 66.3$; try $67$: $6700 - 67 = 6633$. ✓`] },
+        { t: "Remainder", q: S`Remainder of $2468$ divided by 99?`, a: [S`Pairs: $24 + 68 = 92$.`] },
+      ],
+      traps: [S`$\frac{5}{99}$ is $0.0505\ldots$, not $0.555\ldots$: always write two digits.`],
+      tips: [S`$99 \times k = 100k - k$ makes every check one subtraction.`],
+      checks: [
+        { q: S`$\frac{23}{99}$ to four decimal places?`, answer: 0.2323, tol: 0.00006, why: S`$0.\overline{23}$.` },
+        { q: S`$3366 \div 99$?`, answer: 34, why: S`$3400 - 34 = 3366$.` },
+        { q: S`Remainder of $1357$ divided by 99?`, answer: 70, why: S`$13 + 57 = 70$.` },
+      ] }),
+
+    T("tx5", "Multiplying by 5", {
+      desc: "Halve the number, then multiply by 10.",
+      tags: ["mental maths", "multiplication", "times 5", "halve", "tricks"],
+      drill: { mode: "tricks", tricks: ["x5"], types: ["int"] },
+      intro: S`Five is half of ten. Halving and shifting a decimal point is faster than multiplying by 5 digit by digit.`,
+      sections: [
+        { h: "The rule", p: [S`$x \times 5 = \frac{x}{2} \times 10$. $68 \times 5 = 34 \times 10 = 340$; $47 \times 5 = 23.5 \times 10 = 235$.`] },
+        { h: "Decimals", p: [S`Same rule: $3.44 \times 5 = 1.72 \times 10 = 17.2$.`] },
+        { h: "Why it works", p: [S`$5 = \frac{10}{2}$.`] },
+      ],
+      examples: [
+        { t: "Odd number", q: S`$83 \times 5$?`, a: [S`$41.5 \times 10 = 415$.`] },
+        { t: "Dividing by 5", q: S`$370 \div 5$?`, a: [S`The reverse: $\div 10$ then $\times 2$: $37 \times 2 = 74$.`] },
+      ],
+      traps: [S`Halving an odd number gives .5: shift it with the rest, don't drop it.`],
+      tips: [S`Dividing by 5 is doubling then dividing by 10.`],
+      checks: [
+        { q: S`$96 \times 5$?`, answer: 480, why: S`$48 \times 10$.` },
+        { q: S`$127 \times 5$?`, answer: 635, why: S`$63.5 \times 10$.` },
+        { q: S`$4.62 \times 5$?`, answer: 23.1, tol: 1e-9, why: S`$2.31 \times 10$.` },
+      ] }),
+
+    T("tx25", "Multiplying by 25", {
+      desc: "Quarter the number, then multiply by 100.",
+      tags: ["mental maths", "multiplication", "times 25", "quarters", "tricks"],
+      drill: { mode: "tricks", tricks: ["x25"], types: ["int"] },
+      intro: S`Twenty-five is a quarter of a hundred, and quarters end in .25, .5 or .75.`,
+      sections: [
+        { h: "The rule", p: [S`$x \times 25 = \frac{x}{4} \times 100$. $36 \times 25 = 9 \times 100 = 900$; $46 \times 25 = 11.5 \times 100 = 1150$.`] },
+        { h: "Decimals", p: [S`$2.3 \times 25 = 0.575 \times 100 = 57.5$.`] },
+        { h: "Why it works", p: [S`$25 = \frac{100}{4}$. Dividing by 25 is the reverse: $\div 100$ then $\times 4$.`] },
+      ],
+      examples: [
+        { t: "Remainder 3", q: S`$63 \times 25$?`, a: [S`$63 \div 4 = 15.75$.`, S`$1575$.`] },
+        { t: "Dividing by 25", q: S`$1350 \div 25$?`, a: [S`$13.5 \times 4 = 54$.`] },
+      ],
+      traps: [S`Mixing up quarters: $\frac14 = .25$, $\frac34 = .75$.`],
+      tips: [S`Quarter a number by halving it twice.`],
+      checks: [
+        { q: S`$84 \times 25$?`, answer: 2100, why: S`$21 \times 100$.` },
+        { q: S`$58 \times 25$?`, answer: 1450, why: S`$14.5 \times 100$.` },
+        { q: S`$3.2 \times 25$?`, answer: 80, tol: 1e-9, why: S`$0.8 \times 100$.` },
+      ] }),
+
+    T("tx125", "Multiplying by 125", {
+      desc: "Take an eighth, then multiply by 1000; know the eighths as decimals.",
+      tags: ["mental maths", "multiplication", "times 125", "eighths", "tricks"],
+      drill: { mode: "tricks", tricks: ["x125"], types: ["int"] },
+      intro: S`$125 = \frac{1000}{8}$, so the whole trick rests on knowing the eighths.`,
+      sections: [
+        { h: "The rule", p: [S`$x \times 125 = \frac{x}{8} \times 1000$. $64 \times 125 = 8 \times 1000 = 8000$; $36 \times 125 = 4.5 \times 1000 = 4500$.`] },
+        { h: "Eighths to know", p: [S`$\frac18 = 0.125$, $\frac38 = 0.375$, $\frac58 = 0.625$, $\frac78 = 0.875$. So $43 \times 125$: $43 = 5 \times 8 + 3$, giving $5.375 \times 1000 = 5375$.`] },
+        { h: "Why it works", p: [S`$125 \times 8 = 1000$. The same idea gives $12.5\% = \frac18$ and $37.5\% = \frac38$.`] },
+      ],
+      examples: [
+        { t: "Remainder", q: S`$29 \times 125$?`, a: [S`$29 = 3 \times 8 + 5$: $3.625$.`, S`$3625$.`] },
+        { t: "Percentage", q: S`$12.5\%$ of $360$?`, a: [S`An eighth: $45$.`] },
+      ],
+      traps: [S`Eighths have three decimal places; keep all three before shifting.`],
+      tips: [S`Eighth a number by halving three times.`],
+      checks: [
+        { q: S`$72 \times 125$?`, answer: 9000, why: S`$9 \times 1000$.` },
+        { q: S`$21 \times 125$?`, answer: 2625, why: S`$2.625 \times 1000$.` },
+        { q: S`$37.5\%$ of $96$?`, answer: 36, why: S`$\frac38 \times 96 = 36$.` },
+      ] }),
+
+    T("tsq5", "Squares ending in 5", {
+      desc: "Multiply the leading part by one more than itself, then append 25.",
+      tags: ["mental maths", "squares", "ending in 5", "tricks"],
+      drill: { mode: "tricks", tricks: ["sq5"], types: ["int"] },
+      intro: S`Any number ending in 5 squares in two moves: one small multiplication and writing 25.`,
+      sections: [
+        { h: "The rule", p: [S`For $n5$: compute $n(n+1)$, then append $25$. $35^2$: $3 \times 4 = 12 \to 1225$. $85^2$: $8 \times 9 = 72 \to 7225$. $115^2$: $11 \times 12 = 132 \to 13225$.`] },
+        { h: "Halves", p: [S`The same rule squares numbers ending in .5: $6.5^2 = 6 \times 7 + 0.25 = 42.25$.`] },
+        { h: "Why it works", p: [S`$(10n + 5)^2 = 100n^2 + 100n + 25 = 100\,n(n+1) + 25$.`] },
+      ],
+      examples: [
+        { t: "Three digits", q: S`$135^2$?`, a: [S`$13 \times 14 = 182$.`, S`$18225$.`] },
+        { t: "Half", q: S`$9.5^2$?`, a: [S`$9 \times 10 + 0.25 = 90.25$.`] },
+      ],
+      traps: [S`Using $n^2$ instead of $n(n+1)$: $45^2$ is $2025$, not $1625$.`],
+      tips: [S`For squares near 50 or 100, use the expansions in "Mental maths shortcuts" instead.`],
+      checks: [
+        { q: S`$65^2$?`, answer: 4225, why: S`$6 \times 7 = 42$.` },
+        { q: S`$95^2$?`, answer: 9025, why: S`$9 \times 10 = 90$.` },
+        { q: S`$7.5^2$?`, answer: 56.25, tol: 1e-9, why: S`$7 \times 8 + 0.25$.` },
+      ] }),
+
+    T("tpct", "Percent decomposition", {
+      desc: "Build any percentage from 10%, 5% and 1%, and swap x% of y for y% of x.",
+      tags: ["mental maths", "percentages", "percent", "tricks"],
+      drill: { mode: "normal", types: ["pct"], pctOps: ["comp"] },
+      intro: S`Percentages are linear, so an awkward percentage is a sum of easy ones.`,
+      sections: [
+        { h: "Building blocks", p: [S`$10\%$: move the decimal point. $5\%$: half of that. $1\%$: move it twice. For $240$: $10\% = 24$, $5\% = 12$, $1\% = 2.4$.`,
+          S`So $35\% = 3 \times 24 + 12 = 84$, and $19\% = 20\% - 1\% = 48 - 2.4 = 45.6$.`] },
+        { h: "The swap", p: [S`$x\%$ of $y$ = $y\%$ of $x$, because both are $\frac{xy}{100}$. $8\%$ of $25$ = $25\%$ of $8$ = $2$; $16\%$ of $50$ = $50\%$ of $16$ = $8$.`] },
+        { h: "Why it works", p: [S`$p\%$ of $y$ is $\frac{p}{100} y$, linear in $p$, so the parts add up.`] },
+      ],
+      examples: [
+        { t: "Composite", q: S`$45\%$ of $360$?`, a: [S`$10\% = 36$, $5\% = 18$.`, S`$4 \times 36 + 18 = 162$.`] },
+        { t: "Swap", q: S`$4\%$ of $75$?`, a: [S`$75\%$ of $4 = 3$.`] },
+      ],
+      traps: [S`Building with subtraction is often faster: $95\% = 100\% - 5\%$.`],
+      tips: [S`Reverse percentages (a price after a rise) are in "Mental maths shortcuts".`],
+      checks: [
+        { q: S`$35\%$ of $180$?`, answer: 63, why: S`$3 \times 18 + 9 = 63$.` },
+        { q: S`$12\%$ of $25$?`, answer: 3, why: S`$25\%$ of $12 = 3$.` },
+        { q: S`$95\%$ of $340$?`, answer: 323, why: S`$340 - 17 = 323$.` },
+      ] }),
+  ];
+})();

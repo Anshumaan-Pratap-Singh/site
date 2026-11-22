@@ -1,0 +1,483 @@
+/* Readiness (per-firm preparation scores), the Daily Challenge with streaks, and mistake tagging.
+   Readiness reads every tab that records a score: Trainers, Market Games, Trading Questions (attempt grades),
+   mock interviews, the Daily Challenge and, for firms with a coding round, the Coding Bank. Lessons and the
+   Glossary are left out on purpose. Firm processes come from TraderMaths firm guides and candidate reports
+   (checked 22 Nov 2026); the stage weights are this app's own judgement of what each process leans on. */
+var TIP_READY = (function () {
+  const { TH, TF, R } = TIP;
+  const { useState, useEffect, useMemo, useRef } = R;
+  const clamp = v => Math.max(0, Math.min(1, v));
+  const DAY = 86400000;
+
+  /* ---------------- stages and where their data comes from ---------------- */
+  const COG = ["taskswitch", "conflict", "pincode", "cube", "codematch", "gridrecall", "intercept", "holdfire", "boxsearch", "dial", "trust", "hidden", "pattern", "target", "pump", "skyline", "mystery", "sweet", "signal", "shapeshift", "keypress", "easyhard", "decks", "lengths", "change"];
+  const STAGES = {
+    arith: { name: "Mental arithmetic", games: ["frac", "mmt"], daily: "arith", go: ["trainers", "mmt"] },
+    seq: { name: "Number sequences", games: ["seq"], daily: "seq", go: ["trainers", "seq"] },
+    prob: { name: "Probability and EV", games: ["prob", "bto", "likelihood", "intervals"], daily: "prob", bank: ["Probability", "Statistics"], go: ["trainers", "bto"] },
+    cog: { name: "Cognitive games", games: COG, go: ["trainers"] },
+    reason: { name: "Reasoning tests", games: ["numreason", "diagram", "inductive"], go: ["trainers", "numreason"] },
+    mm: { name: "Market making", games: ["trading", "dice", "events", "cardmarket", "orderbook", "cards", "options", "futures", "pred"], daily: "ob", go: ["games", "cardmarket"] },
+    bet: { name: "Betting and sizing", games: ["oddsbet", "hilo", "board"], go: ["games", "oddsbet"] },
+    est: { name: "Estimation", games: ["fermi"], go: ["games", "fermi"] },
+    brain: { name: "Interview questions", bank: ["Brainteasers", "Math", "Market Making / EV"], mocks: true, go: ["trading"] },
+    code: { name: "Coding", coding: true, go: ["coding"] },
+    sim: { name: "Trading simulations", games: ["superday", "etf"], go: ["games", "superday"] },
+  };
+
+  /* ---------------- firms ---------------- */
+  const MM = "Market maker", PT = "Prop trading", HF = "Hedge fund";
+  const F = (id, name, type, process, w) => ({ id, name, type, process, w });
+  const FIRMS = [
+    F("optiver", "Optiver", MM, ["80 in 8 mental maths", "NumberLogic sequences", "Beat the Odds probability", "Likelihood list, Intervals and Orderbooks (2026/27)", "Zap-N cognitive games", "Interviews with market-making games"], { arith: 20, seq: 15, prob: 20, cog: 15, mm: 15, brain: 10, bet: 5 }),
+    F("imc", "IMC", MM, ["SHL test: personality and inductive reasoning (2027 cycle); NeurOlympics games in earlier cycles", "Recorded video interview", "Technical interviews: brainteasers and probability", "Superday: probability, game theory, Fermi estimation"], { reason: 20, cog: 10, prob: 20, brain: 20, est: 10, mm: 15, sim: 5 }),
+    F("flow", "Flow Traders", MM, ["Mental maths and sequences online assessment", "ETF case study", "Interviews"], { arith: 25, seq: 20, sim: 20, mm: 15, prob: 10, brain: 10 }),
+    F("akuna", "Akuna Capital", MM, ["80-in-8 style maths test", "Sequences", "VidCruiter game", "Trader interviews"], { arith: 25, seq: 20, cog: 10, prob: 20, mm: 15, brain: 10 }),
+    F("janestreet", "Jane Street", MM, ["Phone interviews: probability, expected value, game theory", "Final round in person, including market making"], { prob: 30, brain: 30, mm: 20, est: 10, bet: 10 }),
+    F("sig", "SIG (Susquehanna)", MM, ["Problem Solving Assessment", "Trader interviews", "Market-making games with cards, dice and coins"], { prob: 25, brain: 20, mm: 25, bet: 20, arith: 10 }),
+    F("citsec", "Citadel Securities", MM, ["Track-dependent online test", "First round: probability and market making", "Onsite Superday"], { arith: 15, prob: 25, mm: 25, brain: 20, sim: 15 }),
+    F("drw", "DRW", PT, ["Timed probability and logic challenge", "Zoom interview", "Superday: Python coding, trading simulation, technical interviews"], { prob: 25, brain: 20, sim: 20, code: 15, mm: 20 }),
+    F("maven", "Maven Securities", MM, ["Online assessments (numerical test)", "Video interview", "Technical round", "Final"], { arith: 25, reason: 15, prob: 20, brain: 20, mm: 20 }),
+    F("davinci", "Da Vinci Trading", MM, ["AI trading challenge", "Online quiz (one attempt)", "Onsite finals"], { prob: 25, mm: 25, brain: 25, sim: 25 }),
+    F("belvedere", "Belvedere Trading", MM, ["At-home probability and logic test", "Virtual first round", "Half-day Superday"], { prob: 30, brain: 30, mm: 20, arith: 20 }),
+    F("ctc", "Chicago Trading Company", MM, ["Aptitude test or coding exercise", "Interviews", "Superday with a trading simulation"], { reason: 15, prob: 20, brain: 25, sim: 20, mm: 20 }),
+    F("peak6", "PEAK6", PT, ["Assessment", "One-hour Zoom interview", "Half-day final"], { reason: 20, prob: 25, brain: 30, mm: 25 }),
+    F("fiverings", "Five Rings", PT, ["Online assessment: about 19 fast maths, estimation and probability questions", "Trader interviews, probability and betting games"], { arith: 20, prob: 30, est: 15, brain: 25, bet: 10 }),
+    F("mako", "Mako", MM, ["Aptitude tests", "Interviews"], { arith: 25, reason: 25, prob: 20, mm: 15, brain: 15 }),
+    F("wintermute", "Wintermute", MM, ["Online assessments", "Trader assessment day", "Final interview"], { arith: 20, prob: 25, mm: 30, brain: 25 }),
+    F("keyrock", "Keyrock", MM, ["Two interviews", "Recruitment challenge on order books, perpetuals and DeFi"], { mm: 50, brain: 50 }),
+    F("jump", "Jump Trading", PT, ["Online assessment", "Technical Zoom interview: algorithms and probability", "Onsite"], { prob: 30, code: 30, brain: 30, est: 10 }),
+    F("hrt", "Hudson River Trading", PT, ["Coding test", "Phone screens", "Three to five onsite rounds"], { code: 50, prob: 25, brain: 25 }),
+    F("tower", "Tower Research Capital", PT, ["Online assessment: probability and statistics (trader track)", "Team-matched rounds, no market-making game"], { prob: 35, code: 25, brain: 40 }),
+    F("xtx", "XTX Markets", PT, ["Online test: 20 questions on probability, linear algebra, calculus and algorithms (60 min)", "Phone screen with a researcher", "Onsite"], { prob: 35, brain: 35, code: 30 }),
+    F("virtu", "Virtu Financial", MM, ["Resume screen", "HackerRank programming test", "Interviews"], { code: 60, prob: 20, brain: 20 }),
+    F("geneva", "Geneva Trading", PT, ["CV review, HackerRank for some roles", "15-minute call", "Interviews"], { code: 30, brain: 40, prob: 30 }),
+    F("graviton", "Graviton Research Capital", PT, ["Online assessment", "Campus test and interview rounds"], { prob: 35, code: 30, brain: 35 }),
+    F("twosigma", "Two Sigma", HF, ["HackerRank: coding and data", "Phone screen with a researcher", "Onsite: statistics, coding, behavioural"], { code: 40, prob: 30, brain: 30 }),
+    F("gresearch", "G-Research", HF, ["Online quant quiz", "Triage interview", "Mentor interviews", "Final round"], { prob: 35, brain: 35, code: 30 }),
+    F("deshaw", "D. E. Shaw", HF, ["Phone interview", "Virtual interviews on probability and statistics"], { prob: 50, brain: 50 }),
+    F("squarepoint", "Squarepoint Capital", HF, ["HackerRank test (up to seven days)", "Interviews"], { code: 50, prob: 25, brain: 25 }),
+    F("qrt", "QRT", HF, ["Written answers", "Coding challenge", "Interviews"], { code: 40, prob: 30, brain: 30 }),
+    F("point72", "Point72 / Cubist", HF, ["Academy questionnaire", "Case study", "Online test", "Interviews"], { reason: 25, prob: 20, est: 20, brain: 35 }),
+    F("marshallwace", "Marshall Wace", HF, ["In-person Pearson exam with negative marking", "Assessment day"], { reason: 40, arith: 20, brain: 40 }),
+    F("man", "Man Group", HF, ["Online tests", "Interviews", "London assessment centre"], { reason: 35, prob: 25, brain: 40 }),
+    F("brevan", "Brevan Howard", HF, ["Virtual assessments", "Interviews"], { reason: 40, brain: 60 }),
+    F("balyasny", "Balyasny", HF, ["Phone interview", "Team interviews and technical assessments"], { prob: 40, brain: 60 }),
+    F("millennium", "Millennium", HF, ["Screening", "Team-matching assessments", "Interviews"], { reason: 30, prob: 30, brain: 40 }),
+    F("maverick", "Maverick Derivatives", MM, ["CV screen", "60-minute aptitude test"], { arith: 35, reason: 35, prob: 30 }),
+    F("rothesay", "Rothesay", "Insurer", ["Online test", "Trader interview", "Assessment centre"], { reason: 40, prob: 20, brain: 40 }),
+  ];
+
+  /* ---------------- turning plays into 0..1 quality points ---------------- */
+  const winQ = p => p.pnl > 0 ? 1 : p.pnl === 0 ? 0.5 : 0;
+  const accQ = p => clamp(((p.correct || 0) / p.total - 0.4) / 0.5);
+  const OVER = {
+    fermi: p => p.n ? clamp(p.score / (p.n * 100) * 1.4) : null,
+    superday: p => clamp(p.score / 100),
+    keypress: p => clamp(p.score / 8),
+    decks: p => clamp(0.5 + p.score / 1000),
+    oddsbet: p => p.gap != null ? clamp(1 - p.gap / 25) * 0.7 + winQ(p) * 0.3 : winQ(p),
+    intervals: p => p.ipts != null && p.total ? clamp(p.ipts / (p.total * 7)) : accQ(p),
+    // speed, not accuracy: at Medium (Zetamac default ranges) 10 a minute is 0 and 35 a minute (70 in 2 min) is 100.
+    // Easy needs 25% more for the same points, Hard 30% less; wrong answers scale it down; trick drills don't count.
+    mmt: p => {
+      if (p.mode === "tricks" || typeof p.qpm !== "number") return null;
+      const k = p.diff === "Easy" ? 1.25 : p.diff === "Hard" ? 0.7 : 1, n = (p.correct || 0) + (p.wrong || 0);
+      return n ? clamp((p.qpm / k - 10) / 25) * (p.correct || 0) / n : 0;
+    },
+  };
+  const MMQ = p => p.quoteErr != null ? clamp(1 - p.quoteErr / 4) * 0.6 + winQ(p) * 0.4 : winQ(p);
+  function gamePoints(progress, id) {
+    const g = progress.games && progress.games[id], plays = (g && g.plays) || [];
+    const def = (TIP_TRAINERS.DEFS[id]) || _n.find(x => x.id === id);
+    const keep = plays.filter(p => (!def || !def.playFilter || def.playFilter(p)) && (id !== "options" && id !== "futures" && id !== "pred" || p.part === "case"));
+    const best = Math.max(0, ...keep.map(p => typeof p.score === "number" ? p.score : 0));
+    return keep.map(p => {
+      let q = null;
+      if (OVER[id]) q = OVER[id](p);
+      else if (typeof p.total === "number" && p.total > 0 && typeof p.correct === "number") q = accQ(p);
+      else if (typeof p.pnl === "number") q = MMQ(p);
+      else if (typeof p.score === "number" && best > 0) q = clamp(p.score / best);
+      return q == null || !isFinite(q) ? null : { ts: p.ts, q, src: id };
+    }).filter(Boolean);
+  }
+  function stagePoints(key, ctx) {
+    const S = STAGES[key], { progress, trading, coding } = ctx, pts = [];
+    (S.games || []).forEach(id => pts.push(...gamePoints(progress, id)));
+    if (S.daily) { const pl = (progress.games && progress.games.daily && progress.games.daily.plays) || []; pl.forEach(p => { const x = p.parts && p.parts[S.daily]; if (x && x[1]) pts.push({ ts: p.ts, q: clamp((x[0] / x[1] - 0.4) / 0.5), src: "daily" }); }); }
+    if (S.bank) { const att = progress.att || {}; trading.forEach(q => { const a = att[q.id]; if (a && S.bank.includes(q.topic)) pts.push({ ts: a.t, q: a.g === "c" ? 1 : a.g === "h" ? 0.5 : 0, src: "bank" }); }); }
+    if (S.mocks) (progress.mocks || []).forEach(m => pts.push({ ts: m.ts, q: m.n ? m.right / m.n : 0, src: "mock" }));
+    if (S.coding) { const n = Object.keys(progress.solvedC || {}).filter(k => progress.solvedC[k]).length; for (let i = 0; i < n; i++) pts.push({ ts: Date.now() - i, q: 1, src: "coding", coding: true }); }
+    return pts.sort((a, b) => b.ts - a.ts);
+  }
+  const MIN = 3, KEEP = 12;
+  function stageScore(key, ctx, at) {
+    const now = at || Date.now();
+    let pts = stagePoints(key, ctx).filter(p => p.ts <= now);
+    if (STAGES[key].coding) { const tot = Math.max(1, ctx.coding.length), n = pts.length; return { n, score: n < MIN ? null : Math.round(100 * Math.min(1, n / (tot / 2))), last: n ? now : null, coding: true }; }
+    if (pts.length < MIN) return { n: pts.length, score: null, last: pts.length ? pts[0].ts : null };
+    pts = pts.slice(0, KEEP);
+    let w = 0, s = 0; pts.forEach((p, k) => { const wk = Math.pow(0.88, k); w += wk; s += wk * p.q; });
+    const idle = (now - pts[0].ts) / DAY, decay = idle > 30 ? 0.75 : idle > 14 ? 0.9 : 1;
+    return { n: pts.length, score: Math.round(100 * s / w * decay), last: pts[0].ts, decay };
+  }
+  function allStages(ctx, at) { const o = {}; Object.keys(STAGES).forEach(k => o[k] = stageScore(k, ctx, at)); return o; }
+  function firmScore(f, st) {
+    const tot = Object.values(f.w).reduce((a, b) => a + b, 0);
+    const s = Object.entries(f.w).reduce((a, [k, w]) => a + w * (st[k].score || 0), 0) / tot;
+    return Math.round(s);
+  }
+  const tone = v => v == null || v === 0 ? "" : v >= 70 ? "hi" : v >= 45 ? "mid" : "lo";
+  function useCtx() {
+    const ctx = Lt();
+    const st = useMemo(() => allStages(ctx), [ctx.progress, ctx.trading, ctx.coding]);
+    const wk = useMemo(() => allStages(ctx, Date.now() - 7 * DAY), [ctx.progress, ctx.trading, ctx.coding]);
+    return { ctx, st, wk };
+  }
+  const STARS = "tip-ready-stars";
+  const readStars = () => { try { const a = JSON.parse(localStorage.getItem(STARS) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+
+  /* ---------------- pieces ---------------- */
+  function Bar({ v }) { return <div className={"tip-wbar rd-bar " + tone(v)}><i style={{ width: (v || 0) + "%" }}></i></div>; }
+  function Ring({ v, size }) {
+    const SZ = size || 72, SW = 7, RR = (SZ - SW) / 2, CC = 2 * Math.PI * RR;
+    return <div className={"tip-ring rd-ring " + tone(v)} style={{ position: "relative", width: SZ, height: SZ, flex: "0 0 auto" }}>
+      <svg width={SZ} height={SZ} role="img" aria-label={"Readiness " + v + " out of 100"}><circle cx={SZ / 2} cy={SZ / 2} r={RR} fill="none" strokeWidth={SW} stroke="var(--empty)" />
+        <circle cx={SZ / 2} cy={SZ / 2} r={RR} fill="none" strokeWidth={SW} className="rd-arc" strokeLinecap="round" strokeDasharray={(v > 0 ? CC * v / 100 : 0) + " " + CC} transform={`rotate(-90 ${SZ / 2} ${SZ / 2})`} /></svg>
+      <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: SZ > 60 ? 18 : 13, fontWeight: 700 }}>{v}</div>
+    </div>;
+  }
+  function Star({ on, onClick, name }) {
+    return <button type="button" className={"rd-star" + (on ? " on" : "")} aria-pressed={on} aria-label={(on ? "Unstar " : "Star ") + name} title={on ? "Starred" : "Star this firm"} onClick={e => { e.stopPropagation(); onClick(); }}>{on ? "★" : "☆"}</button>;
+  }
+  const trendTxt = d => d === 0 ? "No change this week" : (d > 0 ? "Up " : "Down ") + Math.abs(d) + " this week";
+
+  /* ---------------- Firms tab (was Readiness; old #readiness links still open it) ---------------- */
+  try { if (/^#readiness/.test(location.hash)) location.hash = location.hash.replace("#readiness", "#firms"); } catch (e) {}
+  const TYPE_K = t => t === MM ? "mm" : t === PT ? "pt" : t === HF ? "hf" : "ins";
+  const initials = name => { const w = name.replace(/\(.*?\)/g, "").split(/[\s\/.\-]+/).filter(x => /^[A-Z0-9]/.test(x)); return (w.length > 1 ? w.slice(0, 2).map(x => x[0]).join("") : (w[0] || name)[0]).toUpperCase(); };
+  /* logo from the firm's own site icon (Google's favicon service); a tiny or missing icon falls back to initials */
+  function Logo({ f, size }) {
+    const src = TIP_FIRMINFO.logo(f.id);
+    const [ok, setOk] = useState(null);
+    return <span className={"rd-logo lg-" + f.id + (ok ? " ok" : "")} style={{ ...(size ? { width: size, height: size } : {}), "--lg": src ? "url(" + src + ")" : "none" }}>
+      <span className="rd-mono" aria-hidden={ok ? "true" : undefined}>{initials(f.name)}</span>
+      {src && ok !== false ? <img src={src} alt={ok ? f.name + " logo" : ""} loading="lazy" referrerPolicy="no-referrer"
+        onLoad={e => setOk(e.currentTarget.naturalWidth >= 32)} onError={() => setOk(false)} /> : null}
+    </span>;
+  }
+  /* ---------- application tracker: status per programme (synced in progress.apps) and deadline countdowns ---------- */
+  const FI = TIP_FIRMINFO;
+  const fmtDay = ts => new Date(ts).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  function Countdown({ p, status }) {
+    if (status && status !== "todo") return null;
+    const d = FI.nextDeadline(p);
+    if (!d) return (p.deadlines || []).length ? <span className="rd-cd closed">Closed</span> : <span className="rd-cd none">No deadline listed</span>;
+    const mid = t => { const x = new Date(t); x.setHours(0, 0, 0, 0); return x.getTime(); };
+    const days = Math.round((mid(d.ts) - mid(Date.now())) / DAY);   /* calendar days, like "3 Jan is 42 days away" */
+    const cls = days <= 7 ? "lo" : days <= 30 ? "mid" : "hi";
+    return <span className={"rd-cd " + cls} title={(d.l && d.l !== "Applications" ? d.l + " deadline " : "Deadline ") + fmtDay(d.ts)}>
+      {TH(se, { name: "clock" })}{days <= 0 ? "Closes today" : days === 1 ? "1 day left" : days + " days left"}{d.l && d.l !== "Applications" ? <em> · {d.l}</em> : null}</span>;
+  }
+  function Track({ k }) {
+    const { progress, tipUpdate } = Lt(), cur = (progress.apps && progress.apps[k] && progress.apps[k].s) || "";
+    const set = v => tipUpdate(G => { G.apps = G.apps || {}; if (v) G.apps[k] = { s: v, t: Date.now() }; else delete G.apps[k]; });
+    return <select className={"tip-sel rd-track" + (cur ? " on s-" + cur : "")} value={cur} aria-label="Application status" onClick={e => e.stopPropagation()} onChange={e => set(e.target.value)}>
+      {FI.STATUS.map(o => <option key={o.v} value={o.v}>{o.v ? o.l : "Track application"}</option>)}</select>;
+  }
+  function MyApps({ go }) {
+    const { progress } = Lt(), apps = progress.apps || {};
+    const rows = FI.allProgrammes().filter(p => apps[p.key]).map(p => ({ ...p, s: apps[p.key].s, nd: FI.nextDeadline(p) }))
+      .sort((a, b) => ((a.s === "todo" && a.nd ? a.nd.ts : Infinity) - (b.s === "todo" && b.nd ? b.nd.ts : Infinity)) || a.name.localeCompare(b.name));
+    if (!rows.length) return null;
+    return (
+      <section className="card tip-panel rd-apps">
+        <div className="row"><h3 className="tip-h" style={{ margin: 0 }}>Your applications</h3><span className="sp"></span><span className="small muted">{rows.length} tracked</span></div>
+        {rows.map(p => { const f = FIRMS.find(x => x.id === p.fid); return (
+          <div key={p.key} className="rd-app">
+            <Logo f={f} size={30} />
+            <button type="button" className="rd-app-n" onClick={() => go("firms", p.fid)}><b>{p.name}</b><em>{f.name}</em></button>
+            <div className="rd-app-t"><Countdown p={p} status={p.s} /><Track k={p.key} /></div>
+          </div>); })}
+      </section>
+    );
+  }
+  function FirmCard({ x, star, toggle, go }) {
+    const n = x.process.length, info = TIP_FIRMINFO.INFO[x.id];
+    return (
+      <article className={"card tcard rd-card t-" + TYPE_K(x.type)} onClick={() => go("firms", x.id)}>
+        <div className="tart rd-art lgx-on" style={{ "--lg": "url(logos/" + x.id + ".png)" }}>
+          <div className={"lgx lgx-" + x.id + (TIP_FIRMINFO.HAVE.includes(x.id) ? "" : " txt")} aria-hidden="true">
+            {[0, 1, 2, 3, 4, 5, 6, 7].map(k => <i key={k} style={{ "--k": k }}>{TIP_FIRMINFO.HAVE.includes(x.id) ? null : x.name.replace(/[^A-Z]/g, "").slice(0, 3)}</i>)}</div>
+          <span className="rd-cstar"><Star on={star} onClick={toggle} name={x.name} /></span>
+        </div>
+        <div className="tbody">
+          <h3>{x.name}</h3>
+          <p>{x.type} · {n} stage{n === 1 ? "" : "s"}{info ? " · full guide" : ""}</p>
+          {info && info.programmes.some(p => FI.nextDeadline(p)) ? <div><Countdown p={info.programmes.map(p => ({ ...p, nd: FI.nextDeadline(p) })).filter(p => p.nd).sort((a, b) => a.nd.ts - b.nd.ts)[0]} /></div> : null}
+          <div className="tfoot">
+            <span className="tmeta rd-cmeta"><Bar v={x.s} /><b className={"rd-num " + tone(x.s)}>{x.s}</b>{x.d ? <em className={"rd-d " + (x.d > 0 ? "up" : "dn")}>{(x.d > 0 ? "+" : "") + x.d}</em> : null}</span>
+            <button className="start sm" onClick={e => { e.stopPropagation(); go("firms", x.id); }}>Open</button>
+          </div>
+        </div>
+      </article>
+    );
+  }
+  const TYPES = ["All", MM, PT, HF];
+  const SORTS = [{ value: "score", label: "Readiness" }, { value: "az", label: "A–Z" }];
+  const DEF_F = { q: "", type: "All", show: "All", sort: "score" };
+  function View({ sub, go }) {
+    const { ctx, st, wk } = useCtx();
+    const [stars, setStars] = useState(readStars);
+    const toggle = id => setStars(s => { const n = s.includes(id) ? s.filter(x => x !== id) : [...s, id]; try { localStorage.setItem(STARS, JSON.stringify(n)); } catch (e) {} return n; });
+    const firm = sub && FIRMS.find(f => f.id === sub);
+    const [f, set, reset, active] = TIP.useFilters("readiness", DEF_F);
+    useEffect(() => { const t = document.querySelector(".tabs .tab.on"); if (t && t.scrollIntoView) t.scrollIntoView({ inline: "center", block: "nearest" }); }, []);
+    if (firm) return <Firm f={firm} st={st} wk={wk} go={go} star={stars.includes(firm.id)} toggle={() => toggle(firm.id)} />;
+    const rows = FIRMS.map(x => ({ ...x, s: firmScore(x, st), d: firmScore(x, st) - firmScore(x, wk) }));
+    let shown = rows.filter(x => (f.type === "All" || x.type === f.type || (f.type === HF && x.type === "Insurer")) && (f.show === "All" || stars.includes(x.id)) && TIP.matches(f.q, x.name, x.type, x.process.join(" ")));
+    shown = f.sort === "az" ? shown.sort((a, b) => a.name.localeCompare(b.name)) : shown.sort((a, b) => b.s - a.s || a.name.localeCompare(b.name));
+    const counted = Object.values(st).filter(x => x.score != null).length;
+    return (
+      <div className="view rd-view">
+        <div className="card rd-head">
+          <div><h2 className="tip-h" style={{ margin: 0 }}>Firms</h2>
+            <p className="small muted" style={{ margin: "4px 0 0" }}>Each firm's process and how prepared your practice makes you for it, out of 100. {counted} of {Object.keys(STAGES).length} skill areas have enough data.</p></div>
+          <Grading />
+        </div>
+        <MyApps go={go} />
+        <TIP.FilterBar q={f.q} onQ={v => set("q", v)} placeholder="Search firms or stages…" count={shown.length} noun="firm" active={active} onReset={reset}
+          rows={[{ label: "Type", options: TYPES.map(t => ({ value: t, label: t === "All" ? "All" : t === MM ? "Market makers" : t === PT ? "Prop trading" : "Hedge funds" })), value: f.type, onChange: v => set("type", v) },
+            { label: "Show", options: [{ value: "All", label: "All" }, { value: "Starred", label: "Starred" }], value: f.show, onChange: v => set("show", v) },
+            { label: "Sort", options: SORTS, value: f.sort, onChange: v => set("sort", v) }]} />
+        {!shown.length ? <div className="card empty tip-fempty">{f.show === "Starred" && !stars.length ? "Star a firm to keep it here." : "Nothing matches these filters."}<div><button className="btn sm" onClick={reset}>Clear filters</button></div></div> :
+          <div className="tgrid rd-cards">{shown.map(x => <FirmCard key={x.id} x={x} go={go} star={stars.includes(x.id)} toggle={() => toggle(x.id)} />)}</div>}
+        <p className="small muted rd-foot">Estimate of preparation, not a pass prediction. Processes are from TraderMaths firm guides and candidate reports, checked 22 Nov 2026; firms change them between cycles.</p>
+      </div>
+    );
+  }
+  function Grading() {
+    return (
+      <details className="rd-how">
+        <summary>{TH(se, { name: "info" })}How it's graded</summary>
+        <ul className="small">
+          <li>Each firm's process is split into skill areas, each with a weight. The firm score is the weighted average; an area with no data counts as 0.</li>
+          <li>An area uses your 12 most recent results from the tabs that feed it, newer ones counting more. It needs at least 3 results.</li>
+          <li>Drills count from accuracy: 40% or less is 0, 90% or more is 100. Trading Questions count 1 for clean, ½ for hinted, 0 for missed. Market games use quote error and whether you made money.</li>
+          <li>The Mental Math Trainer counts speed: at Medium, 10 questions a minute is 0 and 35 a minute (70 in 2 minutes) is 100. Easy needs 25% more for the same points, Hard 30% less, and wrong answers scale it down. Trick drills don't count.</li>
+          <li>An area you haven't practised for 14 days loses 10%, and after 30 days 25%.</li>
+          <li>Coding counts only for firms with a coding round: solving half the Coding Bank gives 100. Lessons and the Glossary are not counted.</li>
+        </ul>
+      </details>
+    );
+  }
+  function Firm({ f, st, wk, go, star, toggle }) {
+    const s = firmScore(f, st), d = s - firmScore(f, wk);
+    const tot = Object.values(f.w).reduce((a, b) => a + b, 0);
+    const parts = Object.entries(f.w).sort((a, b) => b[1] - a[1]).map(([k, w]) => ({ k, w: Math.round(100 * w / tot), ...st[k], name: STAGES[k].name }));
+    const n = parts.reduce((a, p) => a + (p.n || 0), 0);
+    const weak = parts.filter(p => p.score != null).concat(parts.filter(p => p.score == null)).sort((a, b) => (a.score || 0) - (b.score || 0) || b.w - a.w).slice(0, 2);
+    const goTo = k => { const g = STAGES[k].go; go(g[0], g[1]); };
+    const info = TIP_FIRMINFO.INFO[f.id];
+    return (
+      <div className="view rd-view">
+        <div className="row tm-titlebar"><button className="ghost sm" onClick={() => go("firms")}>{TH(se, { name: "left" })}All firms</button><Logo f={f} size={34} /><h2 className="tm-gname">{f.name}</h2><span className="sp"></span><Star on={star} onClick={toggle} name={f.name} /></div>
+        <div className="tip-grid rd-grid">
+          <section className="card tip-panel">
+            <div className="rd-top"><Ring v={s} size={84} /><div><div className="stat-lbl">Readiness</div><div className="stat-big">{s}<span className="muted" style={{ fontSize: 16 }}> / 100</span></div>
+              <div className={"small " + (d > 0 ? "pos" : d < 0 ? "neg" : "muted")}>{trendTxt(d)} · {n} result{n === 1 ? "" : "s"} counted</div></div></div>
+            <div className="tip-lbl">By skill area</div>
+            <div className="rd-stages">{parts.map(p => (
+              <div key={p.k} className="rd-st">
+                <span className="rd-st-n"><b>{p.name}</b><em>{p.w}% of the score</em></span>
+                {p.score == null ? <span className="small muted rd-nd">{p.coding ? `Solve ${MIN} coding problems to start (${p.n} so far)` : `Not enough data (${p.n} of ${MIN})`}</span> : <Bar v={p.score} />}
+                <span className={"rd-num " + tone(p.score)}>{p.score == null ? "–" : p.score}</span>
+              </div>))}</div>
+            <div className="box rd-weak">
+              <b>Work on these next</b>
+              <div className="row" style={{ marginTop: 8 }}>{weak.map(p => <button key={p.k} className="btn sm" onClick={() => goTo(p.k)}>{p.name}{TH(se, { name: "right" })}</button>)}</div>
+            </div>
+            <p className="small muted" style={{ margin: 0 }}>Estimate of preparation, not a pass prediction.</p>
+          </section>
+          <div className="tip-side">
+            {info ? null : <section className="card tip-panel">
+              <h3 className="tip-h">Reported process</h3>
+              <ol className="rd-proc">{f.process.map((x, i) => <li key={i}>{x}</li>)}</ol>
+              <p className="small muted" style={{ margin: 0 }}>From TraderMaths firm guides and candidate reports, checked 22 Nov 2026. Formats vary by role, office and cycle.</p>
+            </section>}
+            {info ? <Stages info={info} go={go} /> : null}
+            <section className="card tip-panel"><Grading /></section>
+          </div>
+        </div>
+        {info ? <Guide info={info} go={go} fid={f.id} /> : null}
+      </div>
+    );
+  }
+  /* researched guide: buttons open the matching trainer, game or lesson here */
+  const Links = ({ links, go }) => links && links.length ? <div className="rd-links">{links.map((l, i) => <button key={i} type="button" className="btn sm" onClick={() => go(l.go[0], l.go[1])}>{l.label}{TH(se, { name: "right" })}</button>)}</div> : null;
+  function Stages({ info, go }) {
+    return (
+      <section className="card tip-panel rd-guide">
+        <h3 className="tip-h">Assessment, stage by stage</h3>
+        <ol className="rd-gstages">{info.stages.map((x, i) => <li key={i}><b>{x.name}</b><p>{x.detail}</p><Links links={x.links} go={go} /></li>)}</ol>
+        <p className="small muted" style={{ margin: 0 }}>From the firm's pages and candidate reports, checked {info.checked}. Formats vary by role, office and cycle.</p>
+      </section>
+    );
+  }
+  function Guide({ info, go, fid }) {
+    const { progress } = Lt();
+    return (
+      <TF>
+        <section className="card tip-panel rd-guide">
+          <h3 className="tip-h">Programmes and dates</h3>
+          <div className="rd-progs">{info.programmes.map((x, i) => (
+            <div key={i} className="box rd-prog">
+              <b>{x.name}</b>
+              <div className="rd-prog-t"><Track k={fid + ":" + x.id} /><Countdown p={x} status={(progress.apps && progress.apps[fid + ":" + x.id] || {}).s} /></div>
+              <dl><dt>Who</dt><dd>{x.who}</dd><dt>When</dt><dd>{x.when}</dd><dt>Apply</dt><dd>{x.apply}</dd></dl>
+              {x.url ? <a className="link rd-out" href={x.url} target="_blank" rel="noopener noreferrer">Programme page{TH(se, { name: "right" })}</a> : null}
+            </div>))}</div>
+          <p className="small muted" style={{ margin: 0 }}>Checked {info.checked}. Dates and eligibility change each season, so confirm on the firm's page before applying.</p>
+        </section>
+        <div className="tip-grid rd-grid">
+          <section className="card tip-panel rd-guide">
+            <h3 className="tip-h">Reported interview topics</h3>
+            <ul className="rd-topics">{info.topics.map((x, i) => <li key={i}><span>{x.name}</span><Links links={x.links} go={go} /></li>)}</ul>
+          </section>
+          <section className="card tip-panel rd-guide">
+            <h3 className="tip-h">Sources</h3>
+            <ul className="rd-src">{info.sources.map((x, i) => <li key={i}><a href={x.url} target="_blank" rel="noopener noreferrer">{x.t}</a></li>)}</ul>
+            <p className="small muted" style={{ margin: 0 }}>Candidate reports are individual experiences and can be out of date.</p>
+          </section>
+        </div>
+      </TF>
+    );
+  }
+
+  /* ---------------- Daily Challenge ---------------- */
+  const PLAN = ["arith", "seq", "prob", "arith", "ob", "seq", "arith", "prob", "ob", "arith", "seq", "prob", "arith", "ob", "seq", "arith", "prob", "ob", "arith", "prob"];
+  const PART = { arith: "Mental maths", seq: "Sequences", prob: "Probability", ob: "Order books" };
+  const pad = n => String(n).padStart(2, "0");
+  const dkey = ts => { const d = new Date(ts); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); };
+  const seedOf = k => { let h = 2166136261; for (const c of "daily" + k) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) % 2147483647; };
+  function dgen(r, s, i, hist) {
+    const part = PLAN[i % PLAN.length], D = TIP_TRAINERS.DEFS, OA = window.__TIP_OA;
+    let q;
+    if (part === "arith") q = D.frac.spec.gen(r, D.frac.presets.Medium, i, hist);
+    else if (part === "seq") q = D.seq.spec.gen(r, D.seq.presets.Medium, i, hist);
+    else if (part === "prob") q = OA.genBto(r, {}, i, hist);
+    else q = OA.genObQ(r);
+    return { ...q, kind: part + ":" + (q.kind == null ? "" : q.kind), part };
+  }
+  function streakOf(plays) {
+    const days = new Set(plays.map(p => dkey(p.ts)));
+    let cur = 0, d = new Date(); if (!days.has(dkey(d))) d.setDate(d.getDate() - 1);
+    while (days.has(dkey(d))) { cur++; d.setDate(d.getDate() - 1); }
+    const sorted = [...days].sort(); let best = 0, run = 0, prev = null;
+    sorted.forEach(k => { const [y, m, dd] = k.split("-").map(Number), t = new Date(y, m - 1, dd).getTime(); run = prev != null && Math.round((t - prev) / DAY) === 1 ? run + 1 : 1; best = Math.max(best, run); prev = t; });
+    return { cur, best, today: days.has(dkey(Date.now())), days: days.size };
+  }
+  const daily = TIP_DRILL.trainer({
+    id: "daily", name: "Daily Challenge", fixed: true, version: 1,
+    blurb: "The same 20 questions for everyone today: mental maths, sequences, probability and order books, five minutes at most. Play once a day to keep your streak.",
+    fields: [], presets: { Easy: {}, Medium: {}, Hard: {} },
+    note: "A new set arrives at midnight. Replays are saved but the questions stay the same until then.",
+  }, { gen: dgen, count: () => 20, sessionSecs: () => 300, seed: () => seedOf(dkey(Date.now())), fast: true, okMs: 300, badMs: 1200,
+    onRecord: q => ({ part: q.part }),
+    summary: hist => { const parts = {}; Object.keys(PART).forEach(k => { const L = hist.filter(h => h.part === k); parts[k] = [L.filter(h => h.ok).length, L.length]; });
+      return [{ label: "By part", value: Object.keys(PART).map(k => parts[k][0] + "/" + parts[k][1]).join(" · "), sub: Object.values(PART).join(" · "), key: "parts", raw: parts }]; } });
+  daily.extraStats = plays => { const s = streakOf(plays); return (
+    <div className="tip-stats tip-stats4">
+      <div className="tip-stat"><span>Streak</span><b>{s.cur}</b><em>day{s.cur === 1 ? "" : "s"} in a row</em></div>
+      <div className="tip-stat"><span>Best streak</span><b>{s.best}</b><em>days</em></div>
+      <div className="tip-stat"><span>Today</span><b>{s.today ? "Done" : "Not yet"}</b><em>{dkey(Date.now())}</em></div>
+      <div className="tip-stat"><span>Days played</span><b>{s.days}</b><em>in total</em></div>
+    </div>); };
+  TIP_TRAINERS.register(daily);
+
+  /* ---------------- mistakes: guess the cause, let the user change it ---------------- */
+  const TAGS = [["slip", "Arithmetic slip"], ["misread", "Misread the question"], ["concept", "Concept gap"], ["time", "Ran out of time"]];
+  const TAGN = Object.fromEntries(TAGS);
+  const digits = v => String(Math.abs(v)).replace(/[^0-9]/g, "").split("").sort().join("");
+  function guess(h) {
+    if (h.timedOut || h.skipped) return "time";
+    const g = TIP_DRILL.num(typeof h.given === "object" && h.given ? NaN : h.given), a = TIP_DRILL.num(h.answer);
+    if (isFinite(g) && isFinite(a)) {
+      const rel = Math.abs(g - a) / Math.max(Math.abs(a), 1e-9), ratio = a ? g / a : 0;
+      if (rel <= 0.05 || [10, 100, 0.1, 0.01].some(x => Math.abs(ratio - x) < 1e-6) || Math.abs(g + a) < 1e-9 || (digits(g) === digits(a) && digits(a).length > 1)) return "slip";
+      if (a > 0 && a < 1 && Math.abs(g - (1 - a)) < 0.01) return "misread";
+    }
+    return "concept";
+  }
+  const NAMES = () => Object.fromEntries([...TIP_TRAINERS.LIST.map(t => [t.id, t.name]), ["daily", "Daily Challenge"], ..._n.map(g => [g.id, g.name])]);
+  /* called by every drill: logs each miss once when the session ends, returns the ids by question index */
+  function useErrLog(done, hist, src) {
+    const ctx = Lt(), ids = useRef(null);
+    if (done && !ids.current) {
+      const ts = Date.now(); ids.current = {};
+      const rows = [];
+      hist.forEach((h, i) => { if (h.ok) return; const id = ts + "-" + i; ids.current[i] = id; rows.push({ id, ts, src: src || "drill", text: String(h.text || "").slice(0, 160), tag: guess(h), g: guess(h) }); });
+      if (rows.length) setTimeout(() => ctx.tipUpdate(G => { G.errs = [...(G.errs || []), ...rows].slice(-400); }), 0);
+    }
+    return ids.current || {};
+  }
+  function TagPick({ id }) {
+    const { progress, tipUpdate } = Lt();
+    const e = (progress.errs || []).find(x => x.id === id);
+    if (!e) return null;
+    return <select className={"tip-sel rd-tag t-" + e.tag} value={e.tag} aria-label="Cause of this mistake" title={e.tag === e.g ? "Guessed by the app; change it if it's wrong" : "Changed by you"}
+      onClick={x => x.stopPropagation()} onChange={x => { const v = x.target.value; tipUpdate(G => { const r = (G.errs || []).find(y => y.id === id); if (r) r.tag = v; }); }}>
+      {TAGS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>;
+  }
+  function Mistakes() {
+    const { progress } = Lt();
+    const since = Date.now() - 30 * DAY, rows = (progress.errs || []).filter(e => e.ts >= since);
+    if (!rows.length) return null;
+    const names = NAMES();
+    const by = TAGS.map(([k, l]) => { const L = rows.filter(e => e.tag === k), src = {}; L.forEach(e => src[e.src] = (src[e.src] || 0) + 1);
+      const top = Object.entries(src).sort((a, b) => b[1] - a[1])[0]; return { k, l, n: L.length, top: top ? names[top[0]] || top[0] : null }; });
+    const max = Math.max(...by.map(x => x.n)), changed = rows.filter(e => e.tag !== e.g).length;
+    return (
+      <div className="card tip-weakcard rd-mist">
+        <div className="row"><h3 className="tip-h" style={{ margin: 0 }}>Mistakes by cause</h3><span className="sp"></span><span className="small muted">last 30 days · {rows.length} mistake{rows.length === 1 ? "" : "s"}</span></div>
+        <p className="small muted" style={{ margin: "4px 0 12px" }}>The app guesses a cause for every missed drill question; change it on the results screen if it's wrong. {changed} changed by you.</p>
+        <div className="rd-mrows">{by.map(x => (
+          <div key={x.k} className="rd-mrow"><span className="rd-mname"><b>{x.l}</b><em>{x.top ? "most in " + x.top : "none"}</em></span>
+            <div className={"tip-wbar rd-mbar t-" + x.k}><i style={{ width: (max ? 100 * x.n / max : 0) + "%" }}></i></div><span className="rd-num">{x.n}</span></div>))}</div>
+      </div>
+    );
+  }
+
+  /* ---------------- dashboard: daily challenge, readiness and mistakes ---------------- */
+  function DashTop({ go }) {
+    const { ctx, st, wk } = useCtx();
+    const plays = (ctx.progress.games.daily && ctx.progress.games.daily.plays) || [];
+    const sk = streakOf(plays);
+    const stars = readStars();
+    const list = FIRMS.map(x => ({ ...x, s: firmScore(x, st), d: firmScore(x, st) - firmScore(x, wk) }));
+    const pick = (stars.length ? list.filter(x => stars.includes(x.id)) : list).sort((a, b) => b.s - a.s).slice(0, 3);
+    const today = plays.filter(p => dkey(p.ts) === dkey(Date.now()));
+    const played = new Set(plays.map(p => dkey(p.ts)));
+    const week = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - 6 + i); const k = dkey(d); return { k, on: played.has(k), today: i === 6, l: "SMTWTFS"[d.getDay()] }; });
+    return (
+      <TF>
+        <div className="grid2 tip-dash2 rd-dash">
+          <div className="card tip-act rd-daily">
+            <div className="tip-act-h"><span className="gicon" style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>{TH(se, { name: "flame" })}</span>
+              <div><b>Daily Challenge</b><div className="small muted">{sk.today ? `Done today: ${today[0].score} / 20 · ${sk.cur}-day streak` : sk.cur ? `${sk.cur}-day streak · play today to keep it` : "20 questions, 5 minutes, the same for everyone"}</div></div></div>
+            <div className="rd-week" aria-label="Daily Challenge, last 7 days">{week.map(d => <span key={d.k} className={"rd-day" + (d.on ? " on" : "") + (d.today ? " today" : "")} title={d.k}><i>{d.on ? "✓" : ""}</i><em>{d.l}</em></span>)}</div>
+            <button className={"btn" + (sk.today ? "" : " primary")} onClick={() => go("trainers", "daily")}>{sk.today ? "Play again" : "Start today's"}</button>
+          </div>
+          <div className="card rd-dcard">
+            <div className="row"><b>Firm readiness</b><span className="sp"></span><button className="link" onClick={() => go("firms")}>See all {FIRMS.length}{TH(se, { name: "right" })}</button></div>
+            {pick.map(x => <button key={x.id} type="button" className="rd-row sm" onClick={() => go("firms", x.id)}><span className="rd-name"><b>{x.name}</b></span><Bar v={x.s} /><span className={"rd-num " + tone(x.s)}>{x.s}</span></button>)}
+            <div className="small muted">{stars.length ? "Your starred firms" : "Your top firms · star firms in the Firms tab to pin them here"}</div>
+          </div>
+        </div>
+        <Mistakes />
+      </TF>
+    );
+  }
+
+  return { STAGES, FIRMS, View, DashTop, Mistakes, TagPick, useErrLog, guess, stageScore, allStages, firmScore, streakOf, TAGS };
+})();

@@ -1,0 +1,273 @@
+/* More assessment games, each different from the existing Cognitive trainers:
+   Shapeshift (Optiver Zap-N), Keypresses, Easy or Hard, Four Decks and Lengths (Pymetrics-style),
+   Change Detection (the arrow-memory task in BrainsFirst NeurOlympics "Collect"),
+   Numerical Reasoning and Diagrammatic Reasoning (SHL / Saville style, as in IMC, Maven and Marshall Wace screens). */
+(function () {
+  const { TH, TF, R, typing } = TIP;
+  const { useState, useEffect, useMemo, useRef } = R;
+  const { trainer, options } = TIP_DRILL;
+  const K = TIP_KIT;
+
+  /* ============ Shapeshift: circle right, square left, as fast as you can ============ */
+  function genShape(r, s, i) {
+    const sq = r() < 0.5, k = sq ? "square" : "circle";
+    return { text: `Shape ${i + 1}: ${k}`, kind: k, answer: sq ? "Left" : "Right",
+      prompt: <K.Art w={160} h={120}><K.Shape kind={k} x={80} y={60} r={36} fill="solid" tone={sq ? 5 : 1} /></K.Art>,
+      input: "choice", cols: 2, choices: [{ value: "L", label: "◀ Square" }, { value: "R", label: "Circle ▶" }], keys: { ArrowLeft: "L", ArrowRight: "R" }, check: v => v === (sq ? "L" : "R") };
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "shapeshift", name: "Shapeshift",
+    blurb: "From Optiver's Zap-N games: press right for a circle and left for a square, quickly and without slips. The time allowed shrinks with every shape.",
+    fields: [
+      { key: "count", label: "Shapes", type: "num", min: 20, max: 200 },
+      { key: "start", label: "Starting time per shape", type: "num", min: 0.6, max: 3, step: 0.1, unit: "s" },
+      { key: "floor", label: "Fastest time per shape", type: "num", min: 0.3, max: 1.5, step: 0.05, unit: "s" },
+    ],
+    presets: { Easy: { count: 40, start: 1.6, floor: 0.8 }, Medium: { count: 70, start: 1.2, floor: 0.55 }, Hard: { count: 100, start: 0.9, floor: 0.4 } },
+    note: "Keys: ← square, → circle. The window shrinks by 2% a shape down to the fastest time.",
+  }, { gen: genShape, count: s => s.count, perQSecs: (s, i) => Math.max(s.floor, s.start * Math.pow(0.98, i)), fast: true, okMs: 120, badMs: 420, tick: 50 }));
+
+  /* ============ Keypresses: tap as fast as you can ============ */
+  function Keys({ settings: s, onFinish, onRestart }) {
+    const [round, setRound] = useState(0), [taps, setTaps] = useState(0), [log, setLog] = useState([]), [t0, setT0] = useState(null), [done, setDone] = useState(false);
+    const now = K.useTick(!done && t0 != null, 50);
+    const left = t0 == null ? s.secs : Math.max(0, s.secs - (now - t0) / 1000);
+    const tap = () => { if (done) return; if (t0 == null) setT0(Date.now()); if (left > 0) setTaps(n => n + 1); };
+    useEffect(() => { if (t0 != null && left <= 0) { const L = [...log, taps]; setLog(L); setTaps(0); setT0(null); if (L.length >= s.rounds) setDone(true); else setRound(round + 1); } }, [left <= 0]);
+    useEffect(() => { const h = e => { if (typing(e)) return; if (e.key === " ") { e.preventDefault(); if (!e.repeat) tap(); } }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); });
+    const res = useMemo(() => { if (!done) return null; const tot = log.reduce((a, b) => a + b, 0), tps = tot / (s.rounds * s.secs); return { score: Math.round(tps * 10) / 10, taps: tot, best: Math.max(...log), fade: log.length > 1 ? log[log.length - 1] - log[0] : 0 }; }, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={res.score + " taps a second"} sub={`${res.taps} taps over ${s.rounds} rounds of ${s.secs}s`} onRestart={onRestart}
+      metrics={[{ label: "Best round", value: res.best + " taps" }, { label: "Last vs first round", value: (res.fade >= 0 ? "+" : "") + res.fade, sub: "how well you kept the pace" }]}
+      notes="Pymetrics uses tapping speed as a baseline for motor speed and for how hard you push when it costs effort. Keep a steady rhythm rather than sprinting and fading." />;
+    return (
+      <K.Stage title="Keypresses" sub={`Round ${round + 1} of ${s.rounds}`} clock={left} clockFrac={left / s.secs} stats={[{ label: "Taps", value: taps, pop: true }]} total={s.rounds} results={log.map(() => true)} at={round}>
+        <div className="kp-wrap">
+          <button type="button" className={"kp-pad" + (t0 != null ? " on" : "")} onPointerDown={e => { e.preventDefault(); tap(); }}>{t0 == null ? "Tap here or press Space to start" : taps}</button>
+        </div>
+      </K.Stage>
+    );
+  }
+  TIP_TRAINERS.register({
+    id: "keypress", name: "Keypresses", metric: "score", unit: "/s", fmtVal: v => Number(v).toFixed(1) + "/s",
+    blurb: "The Pymetrics tapping game: press as fast as you can for a few seconds, several times. Measures speed and whether you keep it up.",
+    fields: [{ key: "rounds", label: "Rounds", type: "num", min: 1, max: 6 }, { key: "secs", label: "Seconds per round", type: "num", min: 5, max: 30, unit: "s" }],
+    presets: { Easy: { rounds: 2, secs: 8 }, Medium: { rounds: 3, secs: 10 }, Hard: { rounds: 4, secs: 15 } },
+    note: "The clock starts on your first tap. Score is taps per second over all rounds.",
+    component: Keys,
+  });
+
+  /* ============ Easy or Hard ============ */
+  const TASK = { easy: { n: 8, t: 4 }, hard: { n: 40, t: 12 } };
+  function EasyHard({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const mkRound = () => ({ p: rng.pick([0.12, 0.5, 0.88]), hard: Math.round((1.24 + rng() * 3.06) * 100) / 100 });
+    const [rd, setRd] = useState(mkRound), [phase, setPhase] = useState("pick"), [task, setTask] = useState(null), [n, setN] = useState(0), [tt, setTt] = useState(0);
+    const [bank, setBank] = useState(0), [log, setLog] = useState([]), [msg, setMsg] = useState(null), [t0] = useState(() => Date.now()), [done, setDone] = useState(false);
+    const now = K.useTick(!done, 100);
+    const left = Math.max(0, s.secs - (now - t0) / 1000), tLeft = task ? Math.max(0, TASK[task].t - (now - tt) / 1000) : 0;
+    useEffect(() => { if (left <= 0 && !done && phase !== "task") setDone(true); }, [left <= 0, phase]);
+    const choose = k => { if (phase !== "pick") return; setTask(k); setN(0); setTt(Date.now()); setPhase("task"); };
+    const finishTask = ok => {
+      const val = task === "hard" ? rd.hard : 1, won = ok && rng() < rd.p;
+      setLog(l => [...l, { p: rd.p, task, ok, won, val: won ? val : 0, hard: rd.hard }]); if (won) setBank(b => Math.round((b + val) * 100) / 100);
+      setMsg(!ok ? "Not finished in time: no reward." : won ? `Won $${val.toFixed(2)}.` : "Finished, but no reward this time."); setPhase("msg");
+      setTimeout(() => { setMsg(null); if ((Date.now() - t0) / 1000 >= s.secs) { setDone(true); return; } setRd(mkRound()); setTask(null); setPhase("pick"); }, 1100);
+    };
+    const press = () => { if (phase !== "task") return; const m = n + 1; setN(m); if (m >= TASK[task].n) finishTask(true); };
+    useEffect(() => { if (phase === "task" && tLeft <= 0) finishTask(false); }, [tLeft <= 0, phase]);
+    useEffect(() => { const h = e => { if (typing(e)) return; if (e.key === " ") { e.preventDefault(); if (!e.repeat) press(); } else if (phase === "pick" && (e.key === "e" || e.key === "E")) choose("easy"); else if (phase === "pick" && (e.key === "h" || e.key === "H")) choose("hard"); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); });
+    const res = useMemo(() => { if (!done) return null; const by = p => { const L = log.filter(x => x.p === p); return L.length ? L.filter(x => x.task === "hard").length / L.length : null; };
+      return { score: bank, rounds: log.length, hard: [0.12, 0.5, 0.88].map(p => [p, by(p)]), fails: log.filter(x => !x.ok).length }; }, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={K.money(res.score, 2) + " earned"} sub={`${res.rounds} rounds · ${res.fails} task${res.fails === 1 ? "" : "s"} not finished`} onRestart={onRestart}
+      metrics={res.hard.filter(h => h[1] != null).map(([p, v]) => ({ label: `Chose hard at ${Math.round(p * 100)}%`, value: Math.round(v * 100) + "%" }))}
+      notes="Both tasks pay with the same probability. The easy task takes about a third of the time, so per second it often pays better: take the hard task when the chance is high and its reward is well above $1 × 3." />;
+    return (
+      <K.Stage title="Easy or Hard" sub={`Round ${log.length + 1}`} clock={left} clockFrac={left / s.secs} stats={[{ label: "Earned", value: K.money(bank, 2), tone: "up", pop: true }]}>
+        <div className="eh-wrap">
+          <div className="eh-prob">Chance of a reward this round: <b>{Math.round(rd.p * 100)}%</b></div>
+          {phase === "pick" ? <div className="eh-pick">
+            <button className="card eh-opt" onClick={() => choose("easy")}><b>Easy</b><span>{TASK.easy.n} taps in {TASK.easy.t}s</span><em>$1.00</em><kbd>E</kbd></button>
+            <button className="card eh-opt" onClick={() => choose("hard")}><b>Hard</b><span>{TASK.hard.n} taps in {TASK.hard.t}s</span><em>${rd.hard.toFixed(2)}</em><kbd>H</kbd></button>
+          </div> : phase === "task" ? <div className="col" style={{ alignItems: "center", gap: 10 }}>
+            <K.Meter v={n} max={TASK[task].n} label={`${n} / ${TASK[task].n} taps · ${tLeft.toFixed(1)}s`} />
+            <button type="button" className="kp-pad on" onPointerDown={e => { e.preventDefault(); press(); }}>Tap or press Space</button>
+          </div> : <div className="eh-msg">{msg}</div>}
+        </div>
+      </K.Stage>
+    );
+  }
+  TIP_TRAINERS.register({
+    id: "easyhard", name: "Easy or Hard", metric: "score", unit: "", fmtVal: v => "$" + Number(v).toFixed(2),
+    blurb: "The Pymetrics effort game: each round choose an easy task for $1 or a hard one for more, with the same chance of being paid. Learn when the extra effort is worth it before the clock runs out.",
+    fields: [{ key: "secs", label: "Game length", type: "num", min: 60, max: 300, unit: "s" }],
+    presets: { Easy: { secs: 90 }, Medium: { secs: 120 }, Hard: { secs: 180 } },
+    note: "E or H picks a task; Space taps. A round only pays if you finish the task in time.",
+    component: EasyHard,
+  });
+
+  /* ============ Four Decks (Iowa gambling task) ============ */
+  const DECKS = [
+    { id: "A", win: 100, loss: () => [150, 200, 250, 300, 350], k: 5 }, { id: "B", win: 100, loss: () => [1250], k: 1 },
+    { id: "C", win: 50, loss: () => [25, 50, 50, 75, 50], k: 5 }, { id: "D", win: 50, loss: () => [250], k: 1 },
+  ];
+  function Decks({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const [order] = useState(() => rng.shuffle([0, 1, 2, 3]));
+    const block = d => { const ls = d.loss(); const out = Array(10).fill(0); rng.shuffle([...Array(10).keys()]).slice(0, ls.length).forEach((pos, j) => out[pos] = ls[j]); return out; };
+    const [cards, setCards] = useState(() => DECKS.map(d => block(d)));
+    const [pos, setPos] = useState([0, 0, 0, 0]), [money, setMoney] = useState(2000), [log, setLog] = useState([]), [last, setLast] = useState(null), [done, setDone] = useState(false);
+    const pick = slot => {
+      if (done) return; const di = order[slot], d = DECKS[di];
+      let c = cards, p = pos[di]; if (p >= 10) { c = cards.map((x, j) => j === di ? block(d) : x); setCards(c); p = 0; }
+      const loss = c[di][p], net = d.win - loss;
+      setPos(ps => ps.map((x, j) => j === di ? (p + 1) : x)); setMoney(m => m + net); setLast({ slot, win: d.win, loss });
+      const L = [...log, { slot, deck: d.id, net }]; setLog(L); if (L.length >= s.draws) setDone(true);
+    };
+    useEffect(() => { const h = e => { if (typing(e)) return; const k = "1234".indexOf(e.key); if (k >= 0) { e.preventDefault(); pick(k); } }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); });
+    const res = useMemo(() => { if (!done) return null; const good = L => L.filter(x => x.deck === "C" || x.deck === "D").length; const half = log.slice(Math.floor(log.length / 2));
+      return { score: money - 2000, goodShare: good(log) / log.length, lateGood: good(half) / half.length, by: [0, 1, 2, 3].map(sl => log.filter(x => x.slot === sl).length) }; }, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={(res.score >= 0 ? "+" : "−") + "$" + Math.abs(res.score)} sub={`Finished with $${money} from $2,000`} onRestart={onRestart}
+      metrics={[{ label: "Safe-deck picks", value: Math.round(res.goodShare * 100) + "%" }, { label: "Second half", value: Math.round(res.lateGood * 100) + "%", sub: "safe-deck picks once learnt" }, ...res.by.map((n, sl) => ({ label: "Deck " + (sl + 1), value: n + " picks" }))]}
+      notes="Two decks pay $100 a card but lose $250 per ten cards; the other two pay $50 but gain $250 per ten. Big wins hide the losses: the skill is noticing the long-run average and moving to the safe decks early." />;
+    return (
+      <K.Stage title="Four Decks" sub={`Card ${log.length + 1} of ${s.draws}`} stats={[{ label: "Money", value: "$" + money, tone: money >= 2000 ? "up" : "dn", pop: true }]} total={s.draws} results={log.map(x => x.net >= 0)} at={log.length}>
+        <div className="fd-wrap">
+          <div className="fd-row">{[0, 1, 2, 3].map(sl => <button key={sl} type="button" className={"fd-deck" + (last && last.slot === sl ? " on" : "")} onClick={() => pick(sl)}><K.Card hidden size={64} /><span>Deck {sl + 1} <kbd>{sl + 1}</kbd></span></button>)}</div>
+          <div className="fd-msg">{last ? <TF>Won <b className="pos">${last.win}</b>{last.loss ? <TF>, lost <b className="neg">${last.loss}</b></TF> : null}</TF> : "Pick a card from any deck"}</div>
+        </div>
+      </K.Stage>
+    );
+  }
+  TIP_TRAINERS.register({
+    id: "decks", name: "Four Decks", metric: "score", unit: "", fmtVal: v => (v < 0 ? "−$" : "+$") + Math.abs(Math.round(v)),
+    blurb: "The Pymetrics cards game (the Iowa gambling task): draw from four decks that pay and charge different amounts. Some decks win big but lose more over time. Learn which, from feedback alone.",
+    fields: [{ key: "draws", label: "Cards to draw", type: "num", min: 30, max: 120 }],
+    presets: { Easy: { draws: 40 }, Medium: { draws: 60 }, Hard: { draws: 100 } },
+    note: "Keys 1 to 4 pick a deck. You start with $2,000; the score is what you gain or lose.",
+    component: Decks,
+  });
+
+  /* ============ Lengths: short or long mouth, shown briefly ============ */
+  function face(len) {
+    return <K.Art w={160} h={150}><circle cx="80" cy="75" r="62" className="t2" /><circle cx="58" cy="60" r="6" className="f1" /><circle cx="102" cy="60" r="6" className="f1" />
+      <path d={`M${80 - len / 2},104H${80 + len / 2}`} className="s1 w3" /></K.Art>;
+  }
+  function genLen(r, s) {
+    const long = r() < 0.5, len = long ? 30 + s.diff : 30;
+    return { text: long ? "Long mouth" : "Short mouth", kind: long ? "long" : "short", answer: long ? "Long" : "Short", memo: face(len), memoMs: s.flash,
+      prompt: <div className="oa-lbl">Was the mouth short or long?</div>, input: "choice", cols: 2,
+      choices: [{ value: "s", label: "◀ Short" }, { value: "l", label: "Long ▶" }], keys: { ArrowLeft: "s", ArrowRight: "l" }, check: v => v === (long ? "l" : "s") };
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "lengths", name: "Lengths",
+    blurb: "The Pymetrics lengths game: a face flashes for a moment and you say whether its mouth was the short or the long one. The two differ by only a few pixels.",
+    fields: [
+      { key: "count", label: "Faces", type: "num", min: 20, max: 120 },
+      { key: "diff", label: "Length difference", type: "num", min: 1, max: 12, unit: "px" },
+      { key: "flash", label: "Face shown for", type: "num", min: 80, max: 800, unit: "ms" },
+    ],
+    presets: { Easy: { count: 30, diff: 8, flash: 500 }, Medium: { count: 50, diff: 4, flash: 250 }, Hard: { count: 80, diff: 2, flash: 120 } },
+    note: "Keys: ← short, → long. The summary also shows your bias: how much more often you answer one side.",
+  }, { gen: genLen, count: s => s.count, perQSecs: () => 3, fast: true, okMs: 300, badMs: 700,
+    summary: hist => { const l = hist.filter(h => h.given === "l").length, sh = hist.filter(h => h.given === "s").length, b = hist.length ? (l - sh) / hist.length : 0; return [{ label: "Bias", value: (b > 0 ? "long +" : b < 0 ? "short +" : "") + Math.round(Math.abs(b) * 100) + "%", key: "bias", raw: b, sub: "0% means no lean to either side" }]; } }));
+
+  /* ============ Change Detection: which arrow turned? ============ */
+  const ROT = [0, 90, 180, 270];
+  function arrows(dirs, onPick, disabled, picked, right) {
+    const n = dirs.length, cols = n <= 4 ? 2 : n <= 9 ? 3 : 4;
+    return <div className="cd-grid" style={{ gridTemplateColumns: `repeat(${cols}, 64px)` }}>{dirs.map((d, k) => {
+      const el = <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true"><g transform={`rotate(${d} 20 20)`}><path d="M8,20H30M22,12L30,20L22,28" className="s1 w3" fill="none" /></g></svg>;
+      return onPick ? <button key={k} type="button" className={"cd-cell" + (picked === k ? (k === right ? " ok" : " bad") : picked != null && k === right ? " ok" : "")} disabled={disabled} onClick={() => onPick(k)}>{el}</button> : <div key={k} className="cd-cell">{el}</div>;
+    })}</div>;
+  }
+  function genCd(r, s) {
+    const dirs = Array.from({ length: s.n }, () => r.pick(ROT)), k = r.int(0, s.n - 1), after = dirs.slice(); after[k] = r.pick(ROT.filter(x => x !== dirs[k]));
+    return { text: `${s.n} arrows; arrow ${k + 1} turned`, kind: "n" + s.n, answer: "arrow " + (k + 1), memo: arrows(dirs), memoMs: s.view,
+      prompt: <div className="oa-lbl">One arrow changed direction. Tap it.</div>, input: "custom", check: v => v === k, givenText: v => "arrow " + (Number(v) + 1),
+      render: ({ submit, running, picked }) => arrows(after, running ? submit : null, !running, picked, k) };
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "change", name: "Change Detection",
+    blurb: "Like the arrow-memory task in BrainsFirst NeurOlympics (used by IMC): a set of arrows shows briefly, disappears and returns with one turned. Tap the one that changed.",
+    fields: [
+      { key: "count", label: "Rounds", type: "num", min: 10, max: 60 },
+      { key: "n", label: "Arrows", type: "num", min: 3, max: 16 },
+      { key: "view", label: "Arrows shown for", type: "num", min: 300, max: 4000, unit: "ms" },
+    ],
+    presets: { Easy: { count: 15, n: 4, view: 2000 }, Medium: { count: 20, n: 8, view: 1500 }, Hard: { count: 30, n: 12, view: 1000 } },
+    note: "Group the arrows into a few patterns while they are on screen instead of trying to remember each one.",
+  }, { gen: genCd, count: s => s.count, perQSecs: () => 8, fast: true, okMs: 450, badMs: 1100 }));
+
+  /* ============ Numerical Reasoning: read a table, answer in 75 seconds ============ */
+  const TOPICS = [
+    { what: "Revenue (£m)", rows: ["Europe", "Americas", "Asia", "Africa"], cols: ["2023", "2024", "2025"], lo: 20, hi: 160 },
+    { what: "Trades executed (thousands)", rows: ["Equities", "Futures", "Options", "FX"], cols: ["Q1", "Q2", "Q3", "Q4"], lo: 40, hi: 400 },
+    { what: "Staff", rows: ["Trading", "Research", "Technology", "Operations"], cols: ["London", "Amsterdam", "Chicago"], lo: 30, hi: 250 },
+  ];
+  function genNum(r) {
+    const T = r.pick(TOPICS), data = T.rows.map(() => T.cols.map(() => r.int(T.lo, T.hi)));
+    const ri = r.int(0, T.rows.length - 1), c0 = 0, c1 = T.cols.length - 1, kind = r.pick(["pct", "share", "diff", "best", "avg", "fx"]);
+    let q, a, ch, why, lab = v => String(v);
+    if (kind === "pct") { a = Math.round((data[ri][c1] / data[ri][c0] - 1) * 1000) / 10; q = `What was the percentage change for ${T.rows[ri]} from ${T.cols[c0]} to ${T.cols[c1]}?`; why = `${data[ri][c1]} / ${data[ri][c0]} − 1.`; lab = v => (v > 0 ? "+" : "") + v.toFixed(1) + "%"; }
+    else if (kind === "share") { const col = r.int(0, c1), tot = data.reduce((x, row) => x + row[col], 0); a = Math.round(data[ri][col] / tot * 1000) / 10; q = `In ${T.cols[col]}, what share of the total did ${T.rows[ri]} account for?`; why = `${data[ri][col]} / ${tot}.`; lab = v => v.toFixed(1) + "%"; }
+    else if (kind === "diff") { const col = r.int(0, c1), rj = (ri + 1 + r.int(0, T.rows.length - 2)) % T.rows.length; a = data[ri][col] - data[rj][col]; q = `In ${T.cols[col]}, by how much did ${T.rows[ri]} exceed ${T.rows[rj]}? (negative if it was lower)`; why = `${data[ri][col]} − ${data[rj][col]}.`; }
+    else if (kind === "avg") { a = Math.round(data[ri].reduce((x, y) => x + y, 0) / T.cols.length * 10) / 10; q = `What was the average for ${T.rows[ri]} across the ${T.cols.length} columns?`; why = `Sum of the row divided by ${T.cols.length}.`; lab = v => v.toFixed(1); }
+    else if (kind === "fx") { const rate = r.pick([1.15, 1.18, 1.25, 1.27]); const col = r.int(0, c1); a = Math.round(data[ri][col] * rate * 10) / 10; q = `Converted at ${rate} dollars per unit, what is the ${T.rows[ri]} figure for ${T.cols[col]}?`; why = `${data[ri][col]} × ${rate}.`; lab = v => v.toFixed(1); }
+    else {
+      const g = data.map(row => row[c1] / row[c0]); const bi = g.indexOf(Math.max(...g)); if (g.filter(x => Math.abs(x - g[bi]) < 0.02).length > 1) return genNum(r);
+      ch = T.rows.map(x => ({ value: x, label: x })); a = T.rows[bi]; q = `Which row grew the most in percentage terms from ${T.cols[c0]} to ${T.cols[c1]}?`; why = T.rows.map((x, k) => x + " " + ((g[k] - 1) * 100).toFixed(1) + "%").join(", ") + ".";
+      return { T, data, q, ch, a, why, check: v => v === a, kind };
+    }
+    const A = a;
+    ch = options(r, A, 5, (rr, x) => Math.round((x + (rr() < 0.5 ? -1 : 1) * Math.max(1, Math.abs(x) * 0.08) * rr.int(1, 4)) * 10) / 10).map(v => ({ value: String(v), label: lab(v) }));
+    return { T, data, q, ch, a: lab(A), why, check: v => Math.abs(Number(v) - A) < 1e-9, kind };
+  }
+  function genNumQ(r) {
+    const o = genNum(r);
+    return { text: o.q, kind: o.kind, answer: o.a, explain: o.why, input: "choice", cols: 1, choices: o.ch, check: o.check,
+      prompt: <div className="oa-big-q"><table className="tbl nr-tbl"><caption>{o.T.what}</caption><thead><tr><th></th>{o.T.cols.map(c => <th key={c}>{c}</th>)}</tr></thead>
+        <tbody>{o.T.rows.map((rw, i) => <tr key={rw}><td className="txt">{rw}</td>{o.data[i].map((v, j) => <td key={j}>{v}</td>)}</tr>)}</tbody></table><K.T>{o.q}</K.T></div> };
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "numreason", name: "Numerical Reasoning",
+    blurb: "SHL and Saville style data questions, as in IMC, Maven and Marshall Wace screens: read a table, then work out a percentage change, a share, an average or a conversion. Calculator-free here, so round sensibly.",
+    fields: [{ key: "count", label: "Questions", type: "num", min: 5, max: 30 }, { key: "time", label: "Time per question", type: "num", min: 30, max: 150, unit: "s" }],
+    presets: { Easy: { count: 8, time: 120 }, Medium: { count: 12, time: 75 }, Hard: { count: 18, time: 50 } },
+    note: "Wrong options are near misses, so estimate first and then check the last digit.",
+  }, { gen: genNumQ, count: s => s.count, perQSecs: s => s.time, skipChoice: true }));
+
+  /* ============ Diagrammatic Reasoning: learn what each box does, then apply two ============ */
+  const OPS = [
+    ["reverse", x => x.split("").reverse().join("")], ["first to end", x => x.slice(1) + x[0]], ["last to front", x => x[x.length - 1] + x.slice(0, -1)],
+    ["swap first two", x => x[1] + x[0] + x.slice(2)], ["next letter", x => x.split("").map(c => String.fromCharCode((c.charCodeAt(0) - 65 + 1) % 26 + 65)).join("")],
+    ["swap middle two", x => x[0] + x[2] + x[1] + x.slice(3)],
+  ];
+  const SYMS = [["square", 1], ["triangle", 4], ["circle", 3], ["diamond", 5]];
+  const Box = ({ k }) => <span className="dg-box"><K.Art w={26} h={26}><K.Shape kind={SYMS[k][0]} x={13} y={13} r={9} fill="solid" tone={SYMS[k][1]} /></K.Art></span>;
+  function genDg(r, s) {
+    const ops = r.shuffle(OPS.slice()).slice(0, 3), word = () => r.shuffle("ABCDEFG".split("")).slice(0, 4).join("");
+    const ex = ops.map((o, k) => { const w = word(); return [w, k, o[1](w)]; });
+    const chain = s.steps === 3 ? [0, 1, 2] : r.shuffle([0, 1, 2]).slice(0, 2), inp = word();
+    const out = chain.reduce((w, k) => ops[k][1](w), inp);
+    const wrong = new Set([out]); const alts = [];
+    for (let t = 0; t < 40 && alts.length < 4; t++) { const ch2 = r.shuffle([0, 1, 2]).slice(0, chain.length); const v = t % 3 === 0 ? r.shuffle(out.split("")).join("") : ch2.reduce((w, k) => ops[k][1](w), inp); if (!wrong.has(v)) { wrong.add(v); alts.push(v); } }
+    while (alts.length < 4) { const v = r.shuffle(out.split("")).join(""); if (!wrong.has(v)) { wrong.add(v); alts.push(v); } }
+    const ch = r.shuffle([out, ...alts]).map(v => ({ value: v, label: v }));
+    return { text: `${inp} through ${chain.map(k => ops[k][0]).join(", then ")}`, kind: "dg" + chain.length, answer: out, explain: chain.map(k => SYMS[k][0] + " = " + ops[k][0]).join("; ") + ".",
+      prompt: <div className="col dg-wrap"><div className="oa-lbl">Each shape changes a code the same way every time</div>
+        {ex.map(([w, k, o], j) => <div key={j} className="dg-row"><b>{w}</b><span>→</span><Box k={k} /><span>→</span><b>{o}</b></div>)}
+        <div className="dg-row dg-q"><b>{inp}</b><span>→</span>{chain.map(k => <TF key={k}><Box k={k} /><span>→</span></TF>)}<b>?</b></div></div>,
+      input: "choice", cols: 5, choices: ch, check: v => v === out };
+  }
+  TIP_TRAINERS.register(trainer({
+    id: "diagram", name: "Diagrammatic Reasoning",
+    blurb: "Saville-style flow diagrams: work out what each shape does to a code from examples, then apply a chain of them. Rewards holding rules in mind and applying them in order.",
+    fields: [{ key: "count", label: "Questions", type: "num", min: 5, max: 30 }, { key: "time", label: "Time per question", type: "num", min: 20, max: 120, unit: "s" },
+      { key: "steps", label: "Boxes in the chain", type: "sel", choices: [{ value: 2, label: "2" }, { value: 3, label: "3" }] }],
+    presets: { Easy: { count: 8, time: 90, steps: 2 }, Medium: { count: 12, time: 60, steps: 2 }, Hard: { count: 16, time: 50, steps: 3 } },
+    note: "Shapes are re-assigned every question, so read the examples each time.",
+  }, { gen: genDg, count: s => s.count, perQSecs: s => s.time, skipChoice: true }));
+})();

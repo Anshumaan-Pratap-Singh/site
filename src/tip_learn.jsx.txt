@@ -1,0 +1,630 @@
+/* Trading Interview Practice: attempt tracking, weak areas, review queue, mock interviews,
+   the Lessons tab (with the formula sheet) and the Glossary tab.
+   Injected into app.js after the other TIP modules; uses the bundle's helpers
+   (Lt, Rt, Zo, br, In, se, yt, m5, ie, r5, Wl). Progress lives in the synced progress object:
+   att = { id: { g, n, t, h } }, rev = { id: { s, d } }, les = { lessonId: bitmask }, mocks = [...]. */
+var TIP_LEARN = (function () {
+  const R = TIP.R;
+  const TH = R.createElement, TF = R.Fragment;
+  const { useState, useEffect, useMemo, useRef } = R;
+  const D = TIP_LEARN_DATA;
+  const M = (text, as, cls) => TH(Rt, { text, as: as || "p", className: cls });
+
+  /* ---------- grading and the review schedule ---------- */
+  const GR = { c: "Clean", h: "Hinted", m: "Missed" };
+  const SCORE = { c: 1, h: 0.5, m: 0 };
+  const INT = [1, 3, 7];
+  const TYPES = ["Probability", "Statistics", "Math", "Brainteasers", "Market Making / EV"];
+  const pad = n => String(n).padStart(2, "0");
+  const day = off => { const d = new Date(); d.setDate(d.getDate() + (off || 0)); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); };
+  const fmtDay = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); };
+  const numeric = q => !!(q && q.answer && typeof q.answer.value === "number");
+  const typeOf = q => TYPES.includes(q.topic) ? q.topic : "Other";
+
+  function applyGrade(G, id, g, src) {
+    G.att = G.att || {}; G.rev = G.rev || {};
+    const a = G.att[id] || { n: 0, h: "" };
+    a.n = (a.n || 0) + 1; a.g = g; a.t = Date.now(); a.h = ((a.h || "") + g).slice(-8);
+    if (src) a.s = src;
+    G.att[id] = a;
+    const r = G.rev[id];
+    if (g === "c") {
+      if (r) { if (r.s >= INT.length - 1) delete G.rev[id]; else G.rev[id] = { s: r.s + 1, d: day(INT[r.s + 1]) }; }
+    } else G.rev[id] = { s: 0, d: day(INT[0]) };
+  }
+  const isDue = (progress, id) => { const r = progress.rev && progress.rev[id]; return !!r && r.d <= day(); };
+  const dueList = (progress, trading) => trading.filter(q => isDue(progress, q.id)).sort((a, b) => (progress.rev[a.id].d < progress.rev[b.id].d ? -1 : 1));
+  const nextDue = progress => { const ds = Object.values(progress.rev || {}).map(r => r.d).filter(d => d > day()).sort(); return ds[0] || null; };
+
+  /* one attempt per opening of a question; the first resolution counts */
+  function useAttempt(q, isNum) {
+    const ctx = Lt();
+    const st = useRef(null);
+    const [, force] = useState(0);
+    if (!st.current || st.current.id !== q.id) st.current = { id: q.id, wrong: 0, hints: 0, graded: null };
+    const grade = (g, src) => {
+      const s = st.current; if (s.graded) return; s.graded = g;
+      ctx.tipUpdate(G => applyGrade(G, q.id, g, src));
+      force(x => x + 1);
+    };
+    return {
+      st: st.current,
+      check(ok, parsed) { const s = st.current; if (s.graded) return; if (!ok && (parsed == null || isNaN(parsed))) return; if (ok) grade(s.wrong || s.hints ? "h" : "c"); else { s.wrong++; force(x => x + 1); if (s.wrong >= 3) grade("m"); } },
+      hint() { if (!st.current.graded) st.current.hints++; },
+      reveal() { if (isNum && !st.current.graded) grade("m"); },
+      rate(g) { grade(g); },
+    };
+  }
+
+  /* chips in the question header: last grade and review status */
+  function Badges({ id }) {
+    const { progress } = Lt();
+    const a = progress.att && progress.att[id], r = progress.rev && progress.rev[id];
+    return <>
+      {a ? <span className={"chip tip-g tip-g-" + a.g} title={"Answered " + a.n + " time" + (a.n === 1 ? "" : "s")}>Last: {GR[a.g]}</span> : null}
+      {r ? <span className={"chip tip-due" + (r.d <= day() ? " now" : "")}>{r.d <= day() ? "Review due" : "Review " + fmtDay(r.d)}</span> : null}
+    </>;
+  }
+
+  /* after revealing a proof / strategy question there is nothing to check, so rate yourself */
+  function SelfRate({ ta }) {
+    const g = ta.st.graded;
+    return (
+      <div className="tip-rate">
+        <span className="small muted">{g ? "Recorded as " + GR[g] + "." : "How did it go?"}</span>
+        {g ? null : ["c", "h", "m"].map(k => <button key={k} className={"btn sm tip-rate-" + k} onClick={() => ta.rate(k)}>{k === "c" ? "Solved it alone" : k === "h" ? "Needed hints" : "Missed it"}</button>)}
+      </div>
+    );
+  }
+
+  /* ---------- weak areas ---------- */
+  const lessonOf = {};
+  const tagsOf = q => (q.tags || []).map(t => String(t).toLowerCase());
+  function allLessons() {
+    const out = D.LESSONS.map(l => ({ ...l }));
+    for (const g of D.GROUPS) if (g.course) (COURSE[g.course] || []).forEach((l, i) => out.push(l));
+    return out;
+  }
+  const relatedIds = (lesson, trading) => { const tg = new Set(lesson.tags.map(t => t.toLowerCase())); return trading.filter(q => tagsOf(q).some(t => tg.has(t))).map(q => q.id); };
+  function areaStats(progress, groups) {
+    const att = progress.att || {};
+    return groups.map(g => {
+      const done = g.ids.filter(id => att[id]);
+      const score = done.length ? done.reduce((s, id) => s + SCORE[att[id].g], 0) / done.length : null;
+      return { ...g, total: g.ids.length, answered: done.length, score };
+    });
+  }
+  const MIN_N = 3;
+
+  /* ---------- session host: practice, review and mock interviews ---------- */
+  let openSession = () => {};
+  const start = cfg => openSession(cfg);
+
+  function Host() {
+    const [cfg, setCfg] = useState(null);
+    useEffect(() => { openSession = c => setCfg({ ...c, key: Date.now() }); return () => { openSession = () => {}; }; }, []);
+    if (!cfg) return null;
+    const close = () => setCfg(null);
+    if (cfg.mode === "mocksetup") return <MockSetup onClose={close} onStart={c => setCfg({ mode: "mock", ...c, key: Date.now() })} />;
+    if (cfg.mode === "mock") return <Mock key={cfg.key} cfg={cfg} onClose={close} />;
+    return <Practice key={cfg.key} cfg={cfg} onClose={close} />;
+  }
+
+  function QHead({ q, extra }) {
+    return (
+      <div className="col" style={{ gap: 6 }}>
+        <h3 style={{ margin: 0, fontSize: 18 }}>{q.title}</h3>
+        <div className="row" style={{ gap: 6 }}>
+          <In d={q.difficulty} /><span className="chip acc">{q.topic}</span><span className="chip">{r5[q.source] || q.source}</span>
+          {extra}
+        </div>
+      </div>
+    );
+  }
+
+  /* practice / review: one question at a time with checks, hints and the solution */
+  function Practice({ cfg, onClose }) {
+    const { trading, progress, toggleSolvedT } = Lt();
+    const qs = useMemo(() => cfg.ids.map(id => trading.find(q => q.id === id)).filter(Boolean), []);
+    const [i, setI] = useState(0);
+    const [done, setDone] = useState(false);
+    const results = useRef({});
+    const q = qs[i];
+    if (!qs.length) return <Modal onClose={onClose} title={<h3 style={{ margin: 0 }}>{cfg.title}</h3>}><p className="muted">Nothing to practise here yet.</p></Modal>;
+    if (done) {
+      const ids = qs.map(q => q.id);
+      const att = progress.att || {};
+      const count = k => ids.filter(id => results.current[id] === k).length;
+      return (
+        <Modal onClose={onClose} title={<h3 style={{ margin: 0 }}>{cfg.title}: summary</h3>}>
+          <div className="tip-sum3">
+            {["c", "h", "m"].map(k => <div key={k} className={"tip-sumbox tip-g-" + k}><b>{count(k)}</b><span>{GR[k]}</span></div>)}
+            <div className="tip-sumbox"><b>{ids.length - Object.keys(results.current).length}</b><span>Skipped</span></div>
+          </div>
+          <p className="small muted">Hinted and missed questions come back for review tomorrow, then after 3 and 7 days once you get them clean.</p>
+          <div className="row"><span className="sp"></span><button className="btn primary" onClick={onClose}>Done</button></div>
+        </Modal>
+      );
+    }
+    return (
+      <Modal onClose={onClose} title={<QHead q={q} extra={<span className="chip">{cfg.title} · {i + 1} / {qs.length}</span>} />}>
+        <PQuestion key={q.id} q={q} onGraded={g => { results.current[q.id] = g; }} toggleSolvedT={toggleSolvedT} />
+        <div className="divider"></div>
+        <div className="row">
+          <button className="btn sm" disabled={i === 0} onClick={() => setI(i - 1)}>{TH(se, { name: "left" })}Prev</button>
+          <span className="sp"></span>
+          {i < qs.length - 1 ? <button className="btn sm primary" onClick={() => setI(i + 1)}>Next{TH(se, { name: "right" })}</button>
+            : <button className="btn sm primary" onClick={() => setDone(true)}>Finish</button>}
+        </div>
+      </Modal>
+    );
+  }
+
+  function PQuestion({ q, onGraded, toggleSolvedT }) {
+    const isNum = numeric(q);
+    const ta = useAttempt(q, isNum);
+    const [hints, setHints] = useState(0);
+    const [sol, setSol] = useState(false);
+    const [val, setVal] = useState("");
+    const [res, setRes] = useState(null);
+    useEffect(() => { if (ta.st.graded) onGraded(ta.st.graded); });
+    const check = () => { const x = m5(val, q.answer); if (!x) return; setRes(x); ta.check(x.ok, x.parsed); if (x.ok) toggleSolvedT(q.id, true); };
+    return (
+      <>
+        <Zo className="prob" text={q.prompt} />
+        {isNum ? (
+          <div className="box">
+            <div className="row nowrap">
+              <input className="inp num grow" value={val} onChange={e => { setVal(e.target.value); setRes(null); }} onKeyDown={e => e.key === "Enter" && val.trim() && check()} placeholder="Your answer" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+              <button className="btn primary" onClick={check} disabled={!val.trim()}>Check</button>
+            </div>
+            {res ? <div className={"small " + (res.ok ? "pos" : "neg")} style={{ marginTop: 6, fontWeight: 600 }}>{isNaN(res.parsed) ? "Couldn't read that. Try a number or fraction." : res.ok ? "Correct (" + ie(res.parsed, 4) + ")" : "Not quite: you entered " + ie(res.parsed, 4) + (ta.st.wrong >= 3 && ta.st.graded === "m" ? ". Recorded as missed." : "")}</div> : null}
+          </div>
+        ) : null}
+        {q.hints && q.hints.length ? (
+          <div className="col" style={{ gap: 8 }}>
+            {q.hints.slice(0, hints).map((h, k) => <div key={k} className="box hint"><b className="small">Hint {k + 1}</b><div>{TH(Rt, { text: h })}</div></div>)}
+            {hints < q.hints.length ? <div><button className="btn" onClick={() => { ta.hint(); setHints(hints + 1); }}>{TH(se, { name: "bulb" })}Show Hint {hints + 1} of {q.hints.length}</button></div> : null}
+          </div>
+        ) : null}
+        <div><button className="btn" onClick={() => { if (!sol) ta.reveal(); setSol(!sol); }}>{TH(se, { name: "book" })}{sol ? "Hide" : "Reveal"} Step-by-Step Solution</button></div>
+        {sol ? (
+          <div className="box sol">
+            <div style={{ marginBottom: 8 }}><b>Answer: </b>{TH(Rt, { text: q.answer.display })}</div>
+            <ol className="steps">{q.solution.map((x, k) => <li key={k}>{TH(Rt, { text: x })}</li>)}</ol>
+          </div>
+        ) : null}
+        {!isNum && sol ? <SelfRate ta={ta} /> : null}
+      </>
+    );
+  }
+
+  /* modal wrapper around the bundle's own modal */
+  function Modal(props) { return TH(br, props); }
+
+  /* ---------- mock interview ---------- */
+  function MockSetup({ onClose, onStart }) {
+    const [n, setN] = useState(10);
+    const [mins, setMins] = useState(30);
+    return (
+      <Modal onClose={onClose} title={<h3 style={{ margin: 0 }}>Mock interview</h3>}>
+        <p className="muted" style={{ marginTop: 0 }}>Timed questions with no hints or solutions until you finish, like a first-round interview. Areas you are weaker in come up more often.</p>
+        <div className="frow"><span className="flbl">Questions</span>{TH(yt, { options: [5, 10, 15], value: n, onChange: setN })}</div>
+        <div className="frow"><span className="flbl">Time</span>{TH(yt, { options: [{ value: 15, label: "15 min" }, { value: 30, label: "30 min" }, { value: 45, label: "45 min" }], value: mins, onChange: setMins })}</div>
+        <div className="row"><span className="sp"></span><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => onStart({ n, mins })}>Start</button></div>
+      </Modal>
+    );
+  }
+
+  function pickMock(trading, progress, n) {
+    const att = progress.att || {};
+    const pool = trading.filter(numeric);
+    const typeScore = {};
+    for (const s of areaStats(progress, TYPES.map(t => ({ id: t, ids: pool.filter(q => q.topic === t).map(q => q.id) })))) typeScore[s.id] = s.answered >= MIN_N ? s.score : null;
+    const w = q => { const ts = typeScore[q.topic]; const a = att[q.id]; return (ts == null ? 1 : 1 + 2 * (1 - ts)) * (!a ? 1 : a.g === "c" ? 0.35 : 1.6); };
+    const left = pool.map(q => ({ q, w: w(q) })); const out = [];
+    while (out.length < n && left.length) {
+      let r = Math.random() * left.reduce((s, x) => s + x.w, 0), k = 0;
+      while (k < left.length - 1 && (r -= left[k].w) > 0) k++;
+      out.push(left.splice(k, 1)[0].q);
+    }
+    return out;
+  }
+
+  function Mock({ cfg, onClose }) {
+    const { trading, progress, tipUpdate, toggleSolvedT } = Lt();
+    const qs = useMemo(() => pickMock(trading, progress, cfg.n), []);
+    const t0 = useRef(Date.now());
+    const end = t0.current + cfg.mins * 60000;
+    const [i, setI] = useState(0);
+    const [ans, setAns] = useState({});
+    const [fin, setFin] = useState(null);
+    const [ask, setAsk] = useState(false);
+    const now = TIP.useNow(!fin, 250);
+    const left = Math.max(0, end - (fin ? fin.ts : now));
+    const finish = () => {
+      if (fin) return;
+      const res = qs.map(q => { const x = (ans[q.id] || "").trim() ? m5(ans[q.id], q.answer) : null; return { q, given: ans[q.id] || "", ok: !!(x && x.ok) }; });
+      const secs = Math.round((Date.now() - t0.current) / 1000);
+      tipUpdate(G => { res.forEach(r => applyGrade(G, r.q.id, r.ok ? "c" : "m", "mock")); G.mocks = [...(G.mocks || []), { ts: Date.now(), n: qs.length, right: res.filter(r => r.ok).length, secs, mins: cfg.mins }].slice(-50); });
+      res.forEach(r => r.ok && toggleSolvedT(r.q.id, true));
+      setFin({ ts: Date.now(), res, secs });
+    };
+    useEffect(() => { if (!fin && left <= 0) finish(); });
+    if (!qs.length) return <Modal onClose={onClose} title={<h3 style={{ margin: 0 }}>Mock interview</h3>}><p className="muted">No questions available.</p></Modal>;
+    const mm = s => Math.floor(s / 60) + ":" + pad(Math.floor(s % 60));
+    if (fin) return <MockReport fin={fin} cfg={cfg} onClose={onClose} />;
+    const q = qs[i];
+    const answered = qs.filter(x => (ans[x.id] || "").trim()).length;
+    return (
+      <Modal onClose={() => setAsk(true)} title={<QHead q={q} extra={<span className={"chip tip-clock" + (left < 60000 ? " low" : "")}>{mm(left / 1000)}</span>} />}>
+        <div className="tip-mock-dots">{qs.map((x, k) => <button key={x.id} className={"tip-dot" + (k === i ? " on" : "") + ((ans[x.id] || "").trim() ? " done" : "")} onClick={() => setI(k)} aria-label={"Question " + (k + 1)}>{k + 1}</button>)}</div>
+        <Zo className="prob" text={q.prompt} />
+        <div className="box">
+          <div className="small muted" style={{ marginBottom: 6 }}>Your answer (no feedback until the end)</div>
+          <input key={q.id} className="inp num" style={{ width: "100%" }} value={ans[q.id] || ""} onChange={e => setAns({ ...ans, [q.id]: e.target.value })} onKeyDown={e => { if (e.key === "Enter" && i < qs.length - 1) setI(i + 1); }} placeholder="Answer" autoCapitalize="off" autoCorrect="off" spellCheck={false} autoFocus />
+        </div>
+        {ask ? (
+          <div className="box tip-confirm">
+            <b>Finish now?</b> <span className="small muted">{answered} of {qs.length} answered. Unanswered questions count as missed.</span>
+            <div className="row"><span className="sp"></span><button className="btn sm" onClick={() => setAsk(false)}>Keep going</button><button className="btn sm" onClick={onClose}>Quit without saving</button><button className="btn sm primary" onClick={finish}>Finish and mark</button></div>
+          </div>
+        ) : null}
+        <div className="divider"></div>
+        <div className="row">
+          <button className="btn sm" disabled={i === 0} onClick={() => setI(i - 1)}>{TH(se, { name: "left" })}Prev</button>
+          <span className="small muted">{answered} / {qs.length} answered</span>
+          <span className="sp"></span>
+          {i < qs.length - 1 ? <button className="btn sm" onClick={() => setI(i + 1)}>Next{TH(se, { name: "right" })}</button> : null}
+          <button className="btn sm primary" onClick={() => setAsk(true)}>Finish</button>
+        </div>
+      </Modal>
+    );
+  }
+
+  function MockReport({ fin, cfg, onClose }) {
+    const [open, setOpen] = useState(null);
+    const right = fin.res.filter(r => r.ok).length;
+    const by = {};
+    fin.res.forEach(r => { const t = typeOf(r.q); by[t] = by[t] || { n: 0, ok: 0 }; by[t].n++; if (r.ok) by[t].ok++; });
+    const mm = s => Math.floor(s / 60) + "m " + pad(s % 60) + "s";
+    return (
+      <Modal onClose={onClose} title={<h3 style={{ margin: 0 }}>Mock interview: results</h3>}>
+        <div className="tip-sum3">
+          <div className="tip-sumbox"><b>{right} / {fin.res.length}</b><span>Correct</span></div>
+          <div className="tip-sumbox"><b>{Math.round(100 * right / fin.res.length)}%</b><span>Score</span></div>
+          <div className="tip-sumbox"><b>{mm(Math.min(fin.secs, cfg.mins * 60))}</b><span>of {cfg.mins} min</span></div>
+        </div>
+        <div className="tip-lbl">By problem type</div>
+        <table className="tbl tip-bytype"><tbody>{Object.entries(by).map(([t, v]) => <tr key={t}><td className="txt">{t}</td><td className="num">{v.ok} / {v.n}</td></tr>)}</tbody></table>
+        <div className="tip-lbl">Questions</div>
+        <div className="col" style={{ gap: 6 }}>
+          {fin.res.map((r, k) => (
+            <div key={r.q.id} className={"tip-mres" + (r.ok ? " ok" : " bad")}>
+              <button className="tip-mres-h" onClick={() => setOpen(open === k ? null : k)}>
+                <span className="tip-mres-i">{r.ok ? "✓" : "✗"}</span><b className="grow">{r.q.title}</b>
+                <span className="small muted">{r.given ? "You: " + r.given : "No answer"}</span>
+              </button>
+              {open === k ? <div className="box sol"><div style={{ marginBottom: 8 }}><b>Answer: </b>{TH(Rt, { text: r.q.answer.display })}</div><ol className="steps">{r.q.solution.map((x, j) => <li key={j}>{TH(Rt, { text: x })}</li>)}</ol></div> : null}
+            </div>
+          ))}
+        </div>
+        <p className="small muted">Missed questions were added to your review queue.</p>
+        <div className="row"><span className="sp"></span><button className="btn primary" onClick={onClose}>Done</button></div>
+      </Modal>
+    );
+  }
+
+  /* ---------- dashboard panels ---------- */
+  function Bar({ v }) { return <div className="tip-wbar"><i style={{ width: Math.round(100 * (v || 0)) + "%" }}></i></div>; }
+
+  function WeakList({ title, rows, empty }) {
+    return (
+      <div className="tip-weak">
+        <div className="tip-lbl">{title}</div>
+        {rows.length ? rows.map(r => (
+          <div key={r.id} className="tip-weak-r">
+            <div className="tip-weak-t"><b>{r.name}</b><span className="small muted">{Math.round(100 * r.score)}% · {r.answered} answered</span></div>
+            <Bar v={r.score} />
+            <div className="row nowrap" style={{ gap: 6 }}>
+              {r.lesson ? <button className="btn sm ghost" onClick={r.lesson}>Lesson</button> : null}
+              <button className="btn sm" onClick={r.practise}>Practise</button>
+            </div>
+          </div>
+        )) : <p className="small muted" style={{ margin: 0 }}>{empty}</p>}
+      </div>
+    );
+  }
+
+  function practiceIds(ids, progress, n) {
+    const att = progress.att || {};
+    const rank = id => { const a = att[id]; return !a ? 1 : a.g === "m" ? 0 : a.g === "h" ? 2 : 3; };
+    return [...ids].sort((a, b) => rank(a) - rank(b) || Math.random() - 0.5).slice(0, n || 10);
+  }
+
+  function DashPanels({ go }) {
+    const { trading, progress } = Lt();
+    const due = dueList(progress, trading);
+    const nd = nextDue(progress);
+    const types = areaStats(progress, TYPES.map(t => ({ id: t, name: t, ids: trading.filter(q => q.topic === t).map(q => q.id) })));
+    const lessons = allLessons();
+    const techs = areaStats(progress, lessons.map(l => ({ id: l.id, name: l.title, ids: relatedIds(l, trading) })).filter(g => g.ids.length));
+    const weakest = (list, mk) => list.filter(s => s.answered >= MIN_N).sort((a, b) => a.score - b.score || b.answered - a.answered).slice(0, 3).map(mk);
+    const tRows = weakest(types, s => ({ ...s, practise: () => start({ mode: "practice", title: s.name, ids: practiceIds(s.ids, progress) }) }));
+    const kRows = weakest(techs, s => ({ ...s, lesson: () => go("lessons", s.id), practise: () => start({ mode: "practice", title: s.name, ids: practiceIds(s.ids, progress) }) }));
+    const answered = Object.keys(progress.att || {}).length;
+    const mocks = progress.mocks || [];
+    const lastMock = mocks[mocks.length - 1];
+    return (
+      <>
+        <div className="grid2 tip-dash2">
+          <div className="card tip-act">
+            <div className="tip-act-h"><span className="gicon">{TH(se, { name: "refresh" })}</span><div><b>Review queue</b><div className="small muted">{due.length ? due.length + " question" + (due.length === 1 ? "" : "s") + " due today" : nd ? "Nothing due · next on " + fmtDay(nd) : "Hinted and missed questions come back here"}</div></div></div>
+            <button className="btn primary" disabled={!due.length} onClick={() => start({ mode: "review", title: "Review", ids: due.map(q => q.id) })}>Start review</button>
+          </div>
+          <div className="card tip-act">
+            <div className="tip-act-h"><span className="gicon">{TH(se, { name: "target" })}</span><div><b>Mock interview</b><div className="small muted">{lastMock ? "Last: " + lastMock.right + " / " + lastMock.n + " in " + lastMock.mins + " min" : "Timed, no hints until the end"}</div></div></div>
+            <button className="btn primary" onClick={() => start({ mode: "mocksetup" })}>Start mock</button>
+          </div>
+        </div>
+        <div className="card tip-weakcard">
+          <div className="row"><h3 className="tip-h" style={{ margin: 0 }}>Weakest areas</h3><span className="sp"></span><span className="small muted">{answered} question{answered === 1 ? "" : "s"} answered</span></div>
+          <p className="small muted" style={{ margin: "4px 0 12px" }}>Score: clean answers count 1, hinted ½, missed 0, using your latest attempt at each question. An area needs {MIN_N}+ answers to be ranked.</p>
+          <div className="grid2">
+            <WeakList title="By problem type" rows={tRows} empty="Answer a few questions in the Trading Questions tab to see this." />
+            <WeakList title="By technique" rows={kRows} empty="Technique scores come from the questions linked to each lesson." />
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  /* Trading Questions tab: review and mock buttons above the filters */
+  function QBar() {
+    const { trading, progress } = Lt();
+    const due = dueList(progress, trading);
+    return (
+      <div className="row tip-qbar">
+        <button className="btn" disabled={!due.length} onClick={() => start({ mode: "review", title: "Review", ids: due.map(q => q.id) })}>{TH(se, { name: "refresh" })}Review{due.length ? " (" + due.length + " due)" : ""}</button>
+        <button className="btn" onClick={() => start({ mode: "mocksetup" })}>{TH(se, { name: "target" })}Mock interview</button>
+      </div>
+    );
+  }
+
+  /* ---------- lessons ---------- */
+  const COURSE = {};
+  function takeCourses() {
+    for (const g of D.GROUPS) {
+      if (!g.course) continue;
+      const def = TIP_TRAINERS.DEFS[g.course];
+      COURSE[g.course] = D.COURSE_LESSONS.filter(l => l.group === g.id).map((l, i) => ({ ...l, legacy: { course: g.course, i } }));
+      if (!def) continue;
+      delete def.lessons;
+      def.blurb = String(def.blurb || "").replace(/ ?Read the lessons, (\w)/, (m, c) => " " + c.toUpperCase()).trim();
+      if (!/Lessons tab/.test(def.blurb)) def.blurb += " The course lessons are in the Lessons tab.";
+      const li = TIP_TRAINERS.LIST.find(t => t.id === g.course);
+      if (li) li.blurb = def.blurb;
+    }
+  }
+  try { takeCourses(); } catch (e) {}
+
+  function LCheck({ q, n, done, onRight }) {
+    const [val, setVal] = useState("");
+    const [res, setRes] = useState(null);
+    const submit = v => {
+      const given = v != null ? v : val;
+      const x = q.choices ? null : m5(given, { value: q.answer, tolerance: q.tol != null ? q.tol : Math.max(1e-6, Math.abs(q.answer) * 1e-3) });
+      let ok = q.choices ? given === q.answer : !!(x && x.ok);
+      if (!ok && !q.choices && x && /%\s*$/.test(String(given)) && Math.abs(x.parsed * 100 - q.answer) <= (q.tol != null ? q.tol : Math.max(1e-6, Math.abs(q.answer) * 1e-3))) ok = true;
+      if (!q.choices && x && isNaN(x.parsed)) { setRes({ bad: true }); return; }
+      setRes({ ok, given }); if (ok) onRight();
+    };
+    return (
+      <div className={"tip-chk" + (done ? " done" : "")}>
+        <div className="tip-lbl">Question {n}{done ? " ✓" : ""}</div>
+        {M(q.q, "div", "tip-chk-q")}
+        {q.choices ? (
+          <div className="tip-chk-opts">{q.choices.map(c => <button key={c} type="button" className={"chip" + (res && res.given === c ? (res.ok ? " ok" : " bad") : "")} onClick={() => submit(c)}>{c}</button>)}</div>
+        ) : (
+          <div className="row nowrap"><input className="inp num" value={val} onChange={e => { setVal(e.target.value); setRes(null); }} onKeyDown={e => { if (e.key === "Enter" && val.trim()) { e.preventDefault(); submit(); } }} placeholder="Answer" autoCapitalize="off" autoCorrect="off" spellCheck={false} /><button className="ghost" onClick={() => submit()} disabled={!val.trim()}>Check</button></div>
+        )}
+        {res ? res.bad ? <div className="box small errbox">Couldn't read that. Try a number or fraction.</div>
+          : <div className={"box small " + (res.ok ? "okbox" : "errbox")}><b>{res.ok ? "Right. " : "Not quite. "}</b>{res.ok ? M(q.why, "span") : <span>Try again, or look back at the worked example.</span>}</div> : null}
+      </div>
+    );
+  }
+
+  function Sheet() {
+    const [open, setOpen] = useState(() => { try { return localStorage.getItem("tip-sheet-open") === "1"; } catch (e) { return false; } });
+    const tog = () => { setOpen(!open); try { localStorage.setItem("tip-sheet-open", open ? "0" : "1"); } catch (e) {} };
+    return (
+      <section className="card tip-sheet">
+        <button className="tip-sheet-h" onClick={tog} aria-expanded={open}>
+          <span className="gicon">{TH(se, { name: "sigma" })}</span>
+          <div className="grow"><b>Formula sheet</b><div className="small muted">Probability, distributions, processes, options and number facts on one page</div></div>
+          <span className={"tip-chev" + (open ? " on" : "")}>{TH(se, { name: "right" })}</span>
+        </button>
+        {open ? <div className="tip-sheet-grid">{D.SHEET.map(s => (
+          <div key={s.title} className="tip-sheet-sec"><div className="tip-lbl">{s.title}</div>{s.lines.flatMap(l => l.split(/\\qquad/)).map(l => l.trim()).filter(Boolean).map((l, k) => <div key={k} className="tip-sheet-l">{M("$$" + l + "$$", "div")}</div>)}</div>
+        ))}</div> : null}
+      </section>
+    );
+  }
+
+  /* one lesson page: header, key ideas, worked examples, traps and tips, then the checks */
+  /* display formulae sit on their own line already, so drop the line breaks written around them */
+  const tidy = t => String(t || "").replace(/\s*\n\s*(?=\$\$)/g, " ").replace(/(\$\$[^$]+\$\$)\s*\n\s*/g, "$1");
+  const ML = (t, as, cls) => M(tidy(t), as, cls);
+  const words = l => [l.intro, ...(l.sections || []).flatMap(x => x.p), ...(l.examples || []).flatMap(e => [e.q, ...e.a])].join(" ").split(/\s+/).length;
+  function Example({ e, n }) {
+    const [open, setOpen] = useState(false);
+    return (
+      <div className={"tip-ex" + (open ? " open" : "")}>
+        <div className="tip-ex-h"><span className="tip-ex-n">{n}</span><b>{e.t}</b></div>
+        {ML(e.q, "div", "tip-ex-q")}
+        {open ? <ol className="tip-ex-steps">{e.a.map((x, k) => <li key={k} style={{ animationDelay: (k * 0.06) + "s" }}>{ML(x, "div")}</li>)}</ol>
+          : <button className="btn sm tip-ex-show" onClick={() => setOpen(true)}>Show solution</button>}
+      </div>
+    );
+  }
+  function LessonBody({ L, grp, done, bits, mark }) {
+    const n = L.checks.length, k = L.checks.filter((_, j) => bits & (1 << j)).length;
+    const mins = Math.max(3, Math.round(words(L) / 170));
+    const go = id => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: TIP.still() ? "auto" : "smooth", block: "start" }); };
+    const secs = [...(L.sections || []).map((x, i) => ({ id: "ls" + i, t: x.h })), { id: "lex", t: "Worked examples" }, { id: "ltt", t: "Traps and tips" }, { id: "lck", t: "Check yourself" }];
+    return (
+      <TF>
+        <header className="tip-lh">
+          <div className="tip-lh-top"><span className="tip-lh-grp">{grp ? grp.title : ""}</span>{done ? <span className="chip solved">Done</span> : null}</div>
+          <h2>{L.title}</h2>
+          {L.desc ? <p className="tip-lh-desc">{L.desc}</p> : null}
+          <div className="tip-lh-meta"><span>{mins} min read</span><span>{(L.examples || []).length} worked examples</span><span>{k}/{n} checks</span></div>
+          <div className="tip-lh-bar"><i style={{ width: (n ? 100 * k / n : 0) + "%" }}></i></div>
+          {L.drill ? <div className="tip-lh-drill"><button className="btn primary" onClick={() => TIP_MMT.drill(L.drill)}>{TH(se, { name: "zap" })}Drill this in the Mental Math Trainer</button></div> : null}
+        </header>
+        <nav className="tip-ltoc" aria-label="Sections">{secs.map((x, i) => <button key={x.id} onClick={() => go(x.id)}><span>{i + 1}</span>{x.t}</button>)}</nav>
+        <div className="tip-lintro">{ML(L.intro, "div")}</div>
+        {(L.sections || []).map((x, i) => (
+          <section key={i} id={"ls" + i} className="tip-lsec">
+            <h3><span className="tip-lsec-n">{i + 1}</span>{x.h}</h3>
+            {x.p.map((t, j) => <div key={j} className="tip-lp">{ML(t, "div")}</div>)}
+          </section>
+        ))}
+        {(L.examples || []).length ? (
+          <section id="lex" className="tip-lsec">
+            <h3><span className="tip-lsec-n">{(L.sections || []).length + 1}</span>Worked examples</h3>
+            <div className="tip-exs">{L.examples.map((e, i) => <Example key={L.id + i} e={e} n={i + 1} />)}</div>
+          </section>
+        ) : null}
+        <section id="ltt" className="tip-callouts">
+          {(L.traps || []).length ? <div className="tip-call bad"><div className="tip-call-h">Common traps</div><ul>{L.traps.map((t, i) => <li key={i}>{ML(t, "div")}</li>)}</ul></div> : null}
+          {(L.tips || []).length ? <div className="tip-call good"><div className="tip-call-h">In the interview</div><ul>{L.tips.map((t, i) => <li key={i}>{ML(t, "div")}</li>)}</ul></div> : null}
+        </section>
+        <section id="lck" className="tip-lsec">
+          <h3><span className="tip-lsec-n">✓</span>Check yourself<span className="tip-lsec-c">{k}/{n}</span></h3>
+          {L.checks.map((c, j) => <LCheck key={L.id + j} q={c} n={j + 1} done={!!(bits & (1 << j))} onRight={() => mark(j)} />)}
+        </section>
+      </TF>
+    );
+  }
+
+  function LessonsView({ sub, go }) {
+    const { trading, progress, tipUpdate } = Lt();
+    const lessons = useMemo(allLessons, []);
+    const les = progress.les || {};
+    /* carry over lessons ticked off inside the trainers before they moved here */
+    useEffect(() => {
+      if (progress.lesMig) return;
+      tipUpdate(G => {
+        G.les = G.les || {};
+        lessons.forEach(l => { if (!l.legacy) return; try { const d = JSON.parse(localStorage.getItem("tip-lessons-" + l.legacy.course) || "[]"); if (d.includes(l.legacy.i)) G.les[l.id] = (G.les[l.id] || 0) | 1; } catch (e) {} });
+        G.lesMig = 1;
+      });
+    }, []);
+    useEffect(() => { try { window.scrollTo({ top: 0 }); } catch (e) {} }, [sub]);
+    const L = sub && lessons.find(l => l.id === sub);
+    const doneAll = l => (les[l.id] || 0) === (1 << l.checks.length) - 1;
+    /* filter hook runs on every render (lesson page too) so the hook order never changes */
+    const [f, setF, resetF, active] = TIP.useFilters("lessons", { q: "", grp: [], st: "All" });
+    if (L) {
+      const idx = lessons.indexOf(L);
+      const ids = relatedIds(L, trading);
+      const rel = ids.map(id => trading.find(q => q.id === id));
+      const mark = k => tipUpdate(G => { G.les = G.les || {}; G.les[L.id] = (G.les[L.id] || 0) | (1 << k); });
+      const grp = D.GROUPS.find(g => g.id === L.group);
+      return (
+        <div className="view tip-lessonview">
+          <div className="row tm-titlebar">
+            <button className="ghost sm" onClick={() => go("lessons")}>{TH(se, { name: "left" })}All lessons</button>
+            <span className="small muted">{grp ? grp.title : ""}</span>
+          </div>
+          <article className="card tip-lesson tip-lesson-page" key={L.id}>
+            <LessonBody L={L} grp={grp} done={doneAll(L)} bits={les[L.id] || 0} mark={mark} />
+            {rel.length ? (
+              <div className="tip-rel">
+                <div className="row"><div className="tip-lbl" style={{ margin: 0 }}>Practise this in the bank · {rel.length} question{rel.length === 1 ? "" : "s"}</div><span className="sp"></span>
+                  <button className="btn sm primary" onClick={() => start({ mode: "practice", title: L.title, ids: practiceIds(ids, progress) })}>Practise 10</button></div>
+                <div className="tip-rel-list">{rel.slice(0, 12).map(q => { const a = progress.att && progress.att[q.id]; return (
+                  <button key={q.id} className="tip-rel-q" onClick={() => start({ mode: "practice", title: L.title, ids: [q.id] })}>
+                    <span className={"tip-gdot" + (a ? " tip-g-" + a.g : "")}></span><span className="grow">{q.title}</span><In d={q.difficulty} />
+                  </button>); })}</div>
+              </div>
+            ) : null}
+            <div className="row" style={{ marginTop: 14 }}>
+              <span className="sp"></span>
+              {idx > 0 ? <button className="ghost sm" onClick={() => go("lessons", lessons[idx - 1].id)}>Previous</button> : null}
+              {idx < lessons.length - 1 ? <button className="start sm" onClick={() => go("lessons", lessons[idx + 1].id)}>Next lesson</button> : null}
+            </div>
+          </article>
+        </div>
+      );
+    }
+    const total = lessons.length, nDone = lessons.filter(doneAll).length;
+    const bitsOf = l => les[l.id] || 0;
+    const status = l => doneAll(l) ? "Done" : bitsOf(l) ? "In progress" : "Not started";
+    const textOf = l => [l.title, l.desc, (D.GROUPS.find(g => g.id === l.group) || {}).title, l.intro, ...(l.sections || []).flatMap(x => [x.h, ...x.p]), ...(l.tags || [])].join(" ");
+    const shown = lessons.filter(l => TIP.inSel(f.grp, l.group) && (f.st === "All" || status(l) === f.st) && TIP.matches(f.q, textOf(l)));
+    return (
+      <div className="view tip-lessons-tab">
+        <div className="sec-h"><h2>Lessons</h2><span className="muted small">{nDone} / {total} done · full theory, worked examples and practice checks in every lesson</span></div>
+        <Sheet />
+        <TIP.FilterBar q={f.q} onQ={v => setF("q", v)} placeholder="Search lessons by title or content…" count={shown.length} noun="lesson" active={active} onReset={resetF}
+          rows={[
+            { label: "Group", multi: true, options: [{ value: "all", label: "All" }, ...D.GROUPS.map(g => ({ value: g.id, label: g.title }))], value: f.grp, onChange: v => setF("grp", v) },
+            { label: "Status", options: ["All", "Not started", "In progress", "Done"], value: f.st, onChange: v => setF("st", v) },
+          ]} />
+        {!shown.length ? <div className="card empty tip-fempty">No lessons match these filters.<div><button className="btn sm" onClick={resetF}>Clear filters</button></div></div> : null}
+        {D.GROUPS.map(g => {
+          const ls = shown.filter(l => l.group === g.id);
+          if (!ls.length) return null;
+          const all = lessons.filter(l => l.group === g.id);
+          return (
+            <section key={g.id} className="tip-lgroup">
+              <div className="tip-lgroup-h"><h3>{g.title}</h3><span className="small muted">{all.filter(doneAll).length} / {all.length}</span></div>
+              <div className="tgrid">{ls.map(l => {
+                const n = relatedIds(l, trading).length, bits = les[l.id] || 0, k = l.checks.filter((_, j) => bits & (1 << j)).length;
+                return TH(TIP_TRAINERS.Card, { key: l.id, name: l.title, blurb: lessonBlurb(l), rich: true, art: lessonArt(l), ready: true, done: doneAll(l), btn: doneAll(l) ? "Review" : k ? "Continue" : "Open",
+                  meta: (doneAll(l) ? "Done \u2713" : k + "/" + l.checks.length + " checks") + (n ? " \u00b7 " + n + " question" + (n === 1 ? "" : "s") : ""), onOpen: () => go("lessons", l.id) });
+              })}</div>
+            </section>
+          );
+        })}
+      </div>
+    );
+  }
+
+
+  /* ---------- lesson cards: same card as Trainers and Market Games ---------- */
+  /* a lesson that is the same topic as a trainer or game shows that card's picture */
+  /* card art: TIP_ART picks the scene, and lessons on the same topic as a trainer or game share its scene */
+  const lessonArt = l => l.id;
+  const lessonBlurb = l => l.desc || "";
+
+  /* ---------- glossary ---------- */
+  function GlossaryView() {
+    const [qs, setQs] = useState("");
+    const s = qs.trim().toLowerCase();
+    const list = D.GLOSSARY.filter(g => !s || g.term.toLowerCase().includes(s) || g.def.toLowerCase().includes(s)).sort((a, b) => a.term.localeCompare(b.term));
+    const groups = {};
+    list.forEach(g => { const L = g.term[0].toUpperCase(); (groups[L] = groups[L] || []).push(g); });
+    const letters = Object.keys(groups).sort();
+    return (
+      <div className="view tip-gloss">
+        <div className="sec-h"><h2>Glossary</h2><span className="muted small">{D.GLOSSARY.length} terms</span></div>
+        <div className="card fbar tip-fbar tip-gloss-search">
+          <div className="search">{TH(se, { name: "search" })}<input className="inp" type="search" value={qs} onChange={e => setQs(e.target.value)} placeholder="Search terms and definitions…" aria-label="Search terms and definitions" autoCapitalize="off" autoCorrect="off" spellCheck={false} /></div>
+          {!s ? <div className="frow tf-row tip-az-row"><span className="flbl">Jump to</span><div className="pills tip-az">{letters.map(L => <button type="button" key={L} onClick={() => { const el = document.getElementById("gl-" + L); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }}>{L}</button>)}</div></div> : null}
+        </div>
+        {s ? <div className="row small muted tip-fcount"><span>{list.length} term{list.length === 1 ? "" : "s"}</span><button className="ghost sm" onClick={() => setQs("")}>Clear search</button></div> : null}
+        {letters.length ? letters.map(L => (
+          <section key={L} id={"gl-" + L} className="card tip-gloss-sec">
+            <div className="tip-gloss-L">{L}</div>
+            <dl>{groups[L].map(g => <TF key={g.term}><dt>{g.term}</dt><dd>{M(g.def, "div")}</dd></TF>)}</dl>
+          </section>
+        )) : <p className="muted">No terms match “{qs}”.</p>}
+      </div>
+    );
+  }
+
+  return { useAttempt, Badges, SelfRate, DashPanels, QBar, Host, LessonsView, GlossaryView, isDue, applyGrade, start, allLessons, relatedIds };
+})();

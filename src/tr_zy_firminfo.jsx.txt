@@ -1,0 +1,162 @@
+/* Firms tab data: website domains (for the logo images on the firm cards) and researched guides for each firm:
+   programmes and dates, assessment stages linked to the matching trainers, and reported interview topics.
+   Guides are written in our own words from the firms' own pages and candidate reports; each lists its sources
+   and the date it was checked. Firms without a guide still show their score and reported process.
+   go: [tab, id] opens a tab here; label is the button text. */
+var TIP_FIRMINFO = (function () {
+  const DOMAINS = {
+    optiver: "optiver.com", imc: "imc.com", flow: "flowtraders.com", akuna: "akunacapital.com", janestreet: "janestreet.com",
+    sig: "sig.com", citsec: "citadelsecurities.com", drw: "drw.com", maven: "mavensecurities.com", davinci: "davincitrading.com",
+    belvedere: "belvederetrading.com", ctc: "chicagotrading.com", peak6: "peak6.com", fiverings: "fiverings.com", mako: "mako.com",
+    wintermute: "wintermute.com", keyrock: "keyrock.com", jump: "jumptrading.com", hrt: "hudsonrivertrading.com", tower: "tower-research.com",
+    xtx: "xtxmarkets.com", virtu: "virtu.com", geneva: "genevatrading.com", graviton: "gravitontrading.com", twosigma: "twosigma.com",
+    gresearch: "gresearch.com", deshaw: "deshaw.com", squarepoint: "squarepoint-capital.com", qrt: "qube-rt.com", point72: "point72.com",
+    marshallwace: "mwam.com", man: "man.com", brevan: "brevanhoward.com", balyasny: "bamfunds.com", millennium: "mlp.com",
+    maverick: "maverickderivatives.com", rothesay: "rothesay.com",
+  };
+
+  const INFO = {
+    optiver: {
+      checked: "22 Nov 2026",
+      programmes: [
+        { id: "ff27", deadlines: [{ l: "UK and Ireland", at: "2026-12-06T23:59:00+01:00" }, { l: "EU", at: "2027-02-01T23:59:00+01:00" }], name: "FutureFocus: Quants 2027", who: "Students graduating in 2029 (first and second years) at UK, Irish and EU universities",
+          when: "Amsterdam. UK and Ireland weeks start 5 April and 12 April 2027; the EU week starts 10 May 2027",
+          apply: "UK and Ireland deadline 6 Dec 2026, 23:59 CET; EU deadline 1 Feb 2027. Online assessment, then an interview. Strong participants can be fast-tracked to an internship offer.",
+          url: "https://www.optiver.com/join-us/jobs/trading/amsterdam/futurefocus-quants-2027/" },
+        { id: "qti27", name: "Quantitative Trading Internship (2027 start)", who: "University students; see the posting for graduation years",
+          when: "Ten weeks in Amsterdam, summer 2027. Strong interns can be offered a full-time role in Amsterdam or London",
+          apply: "Apply online. Optiver takes one application per role per recruitment season.",
+          url: "https://www.optiver.com/join-us/jobs/trading/amsterdam/quantitative-trading-internship-2027-start/" },
+        { id: "ck27", deadlines: [{ l: "Applications", at: "2026-12-06T17:00:00+01:00" }], name: "Career Kickstarter: Trading 2027", who: "Final-year students at European universities",
+          when: "Five days in Amsterdam: 1–5 March or 8–12 March 2027",
+          apply: "Closes 6 Dec 2026 at 17:00 CET, and the online assessment must be finished by 23:59 CET that day. Can lead to a graduate trader offer.",
+          url: "https://www.optiver.com/join-us/jobs/trading/amsterdam/career-kickstarter-trading-2027/" },
+      ],
+      stages: [
+        { name: "80 in 8", detail: "80 mental arithmetic questions in 8 minutes, multiple choice, with plenty of fractions and decimals. Some candidates report a penalty for wrong answers.",
+          links: [{ go: ["trainers", "frac"], label: "80-in-8 Mental Maths" }, { go: ["trainers", "mmt"], label: "Mental Math Trainer" }] },
+        { name: "Sequences (NumberLogic)", detail: "Find the next number in a series against the clock. One report: 26 sequences in 25 minutes.",
+          links: [{ go: ["trainers", "seq"], label: "Sequence Trainer" }] },
+        { name: "Beat the Odds", detail: "Probability and expected-value questions, about 90 seconds each; pick the closest of the options.",
+          links: [{ go: ["trainers", "bto"], label: "Beat the Odds" }, { go: ["trainers", "prob"], label: "Probability Trainer" }] },
+        { name: "Likelihood List, Intervals, Orderbooks", detail: "Modules reported for the 2026/27 invites: rank outcomes by probability, give tight ranges that contain the answer, and read order books.",
+          links: [{ go: ["trainers", "likelihood"], label: "Likelihood List" }, { go: ["trainers", "intervals"], label: "Intervals" }, { go: ["trainers", "orderbook"], label: "Orderbooks" }] },
+        { name: "Zap-N and Zap-Q", detail: "Zap-N is a set of short cognitive games (memory, reaction, planning, risk), about an hour in total. Zap-Q is a personality questionnaire.",
+          links: [{ go: ["trainers"], label: "Cognitive games" }] },
+        { name: "Interviews", detail: "An HR call on motivation (why trading, why Optiver), then technical interviews with traders built around market-making and betting games, then a final round.",
+          links: [{ go: ["games", "trading"], label: "Market making game" }, { go: ["games", "oddsbet"], label: "Odds Betting" }] },
+      ],
+      topics: [
+        { name: "Probability and expected value under time pressure", links: [{ go: ["lessons", "ev"], label: "Expected value" }, { go: ["lessons", "bayes"], label: "Bayes" }] },
+        { name: "Making markets and adjusting quotes as information arrives", links: [{ go: ["lessons", "marketmaking"], label: "Making a market" }, { go: ["games", "cardmarket"], label: "Market of Cards" }] },
+        { name: "Betting on given odds and sizing positions", links: [{ go: ["lessons", "pred5"], label: "Kelly sizing" }, { go: ["games", "oddsbet"], label: "Odds Betting" }] },
+        { name: "Quick estimates (guesstimates)", links: [{ go: ["games", "fermi"], label: "Fermi Questions" }] },
+        { name: "Why trading, why Optiver, how you handle pressure", links: [] },
+      ],
+      sources: [
+        { t: "Optiver: FutureFocus Quants 2027", url: "https://www.optiver.com/join-us/jobs/trading/amsterdam/futurefocus-quants-2027/" },
+        { t: "Optiver: Quantitative Trading Internship (2027 start)", url: "https://www.optiver.com/join-us/jobs/trading/amsterdam/quantitative-trading-internship-2027-start/" },
+        { t: "Optiver: Career Kickstarter Trading 2027", url: "https://www.optiver.com/join-us/jobs/trading/amsterdam/career-kickstarter-trading-2027/" },
+        { t: "Candidate reports (Glassdoor, Optiver Graduate Trader)", url: "https://www.glassdoor.co.uk/Interview/Optiver-Interview-E243355-RVW58033002.htm" },
+        { t: "QuantVault: Optiver interview guide", url: "https://quantvault.org/optiver-interview-guide.html" },
+      ],
+    },
+
+    janestreet: {
+      checked: "22 Nov 2026",
+      programmes: [
+        { id: "fttp27", deadlines: [{ l: "Applications", at: "2027-01-03T23:59:00Z" }], name: "First-year Trading and Technology Programme (FTTP), London", who: "First-year undergraduates in maths, physics, computer science or other STEM subjects",
+          when: "21–25 March 2027 at Jane Street's London office",
+          apply: "Deadline 3 Jan 2027, 23:59 GMT; decisions by 15 Jan 2027. Talks, games and activities; no finance knowledge needed.",
+          url: "https://www.janestreet.com/fttp-ldn-email" },
+        { id: "focus27", name: "FOCUS, London", who: "First-year students at universities in Europe, the Middle East or Africa who have faced barriers to advanced STEM opportunities",
+          when: "13–16 January 2027 in London", apply: "See the programme page for the deadline.",
+          url: "https://www.janestreet.com/focus-ldn-email.html" },
+        { id: "insight", name: "INSIGHT, London", who: "Women, transgender and gender-expansive undergraduates",
+          when: "Tracks include Trading and Research and Software Engineering. The last London run was 13–18 April 2026",
+          apply: "2027 London dates were not listed when checked; the 2026 deadline was in mid-January.",
+          url: "https://www.janestreet.com/insight-ldn-email" },
+        { id: "qtint", name: "Quantitative Trader Internship, London", who: "Strong quantitative thinkers; no specific degree required",
+          when: "June to September", apply: "Apply on Jane Street's site; no deadline is listed.",
+          url: "https://www.janestreet.com/join-jane-street/position/8474407002" },
+      ],
+      stages: [
+        { name: "No online test", detail: "Jane Street describes no online assessment for trading: the process starts with interviews run by quantitative traders.", links: [] },
+        { name: "Phone interviews", detail: "Candidates report a few quick mental maths questions early on, then probability, expected value and game questions worked through out loud. Jane Street says it should feel more like a conversation than a quiz.",
+          links: [{ go: ["trainers", "mmt"], label: "Mental Math Trainer" }, { go: ["trainers", "prob"], label: "Probability Trainer" }] },
+        { name: "Final round, in person", detail: "Problem solving, probability and statistics, and possibly coding in a language of your choice, data analysis and general interests.",
+          links: [{ go: ["coding"], label: "Coding Bank" }, { go: ["trading"], label: "Trading Questions" }] },
+      ],
+      topics: [
+        { name: "Fast mental maths (for example, squaring two-digit numbers)", links: [{ go: ["lessons", "mental"], label: "Mental maths shortcuts" }, { go: ["lessons", "tsq5"], label: "Squares ending in 5" }] },
+        { name: "Conditional probability and Bayes", links: [{ go: ["lessons", "bayes"], label: "Bayes" }] },
+        { name: "Expected value of games and the best strategy to play them", links: [{ go: ["lessons", "ev"], label: "Expected value" }, { go: ["lessons", "firststep"], label: "First-step analysis" }] },
+        { name: "Counting and combinations", links: [{ go: ["lessons", "counting"], label: "Counting" }] },
+        { name: "Basic market making", links: [{ go: ["lessons", "marketmaking"], label: "Making a market" }, { go: ["games", "trading"], label: "Market making game" }] },
+        { name: "How you think: be methodical, communicate clearly, correct your mistakes, ask why", links: [] },
+      ],
+      sources: [
+        { t: "Jane Street: Trading interviews", url: "https://www.janestreet.com/trading-interviews" },
+        { t: "Jane Street: FTTP London", url: "https://www.janestreet.com/fttp-ldn-email" },
+        { t: "Jane Street: FOCUS London", url: "https://www.janestreet.com/focus-ldn-email.html" },
+        { t: "Jane Street: INSIGHT London", url: "https://www.janestreet.com/insight-ldn-email" },
+        { t: "Jane Street: Quantitative Trader Internship, London", url: "https://www.janestreet.com/join-jane-street/position/8474407002" },
+        { t: "Candidate reports (Glassdoor, Jane Street)", url: "https://www.glassdoor.com/Interview/Jane-Street-Interview-E255549-RVW4076990.htm" },
+      ],
+    },
+
+    imc: {
+      checked: "22 Nov 2026",
+      programmes: [
+        { id: "launchpad", name: "Launchpad – Trading (Amsterdam)", who: "STEM students at UK or European universities in their pre-penultimate year (the 2026 edition was for students graduating in 2028)",
+          when: "Two days in Amsterdam (5–6 May in 2026). IMC says all its 2027 EU programmes will be in Amsterdam",
+          apply: "2027 dates not announced when checked; join IMC's 2027 EU campus talent community to hear first. Standout participants are fast-tracked to final-round internship interviews. No visa support for these short events.",
+          url: "https://job-boards.greenhouse.io/imc/jobs/4940448101" },
+        { id: "ti27", name: "Trader Intern (Amsterdam, summer 2027)", who: "Penultimate-year students in maths, physics, econometrics or similar, graduating in 2028",
+          when: "Starts 28 June 2027 with a week of classroom training",
+          apply: "CV, cover letter and academic transcript. If you were unsuccessful this season, you can reapply when the next one opens in summer 2027.",
+          url: "https://job-boards.eu.greenhouse.io/imc/jobs/4939846101" },
+        { id: "qti", name: "Quantitative Trader Intern (Amsterdam)", who: "See the posting for eligibility",
+          when: "Summer 2027: a project, weekly trading challenges and simulated trading sessions", apply: "Apply online.",
+          url: "https://job-boards.greenhouse.io/imc/jobs/4936262101" },
+      ],
+      stages: [
+        { name: "Online assessment", detail: "Most reports through mid-2026: BrainsFirst NeurOlympics, four cognitive games of roughly 45 minutes in total, sometimes with a Saville numerical and diagrammatic test. An SHL personality and inductive reasoning test was reported for the 2027 cycle. Formats vary by role and intake.",
+          links: [{ go: ["trainers", "change"], label: "Change Detection" }, { go: ["trainers", "intercept"], label: "Intercept" }, { go: ["trainers", "numreason"], label: "Numerical Reasoning" }, { go: ["trainers", "inductive"], label: "Inductive Reasoning" }] },
+        { name: "Recorded video interview", detail: "A one-way video interview: motivation questions plus maths and market-making questions you work out on paper, then explain.",
+          links: [{ go: ["games", "trading"], label: "Market making game" }] },
+        { name: "Technical interview", detail: "Usually with a trader: brainteasers, probability, Fermi estimation and a market-making game.",
+          links: [{ go: ["games", "fermi"], label: "Fermi Questions" }, { go: ["trading"], label: "Trading Questions" }] },
+        { name: "Final round", detail: "A day at the Amsterdam office in rotating stations: trading simulation, quantitative, technical and behavioural.",
+          links: [{ go: ["games", "superday"], label: "Superday Simulation" }] },
+      ],
+      topics: [
+        { name: "Probability brainteasers, including uniform distributions", links: [{ go: ["lessons", "orderstats"], label: "Order statistics" }, { go: ["lessons", "geometric"], label: "Geometric probability" }] },
+        { name: "Making a market on a number that is hard to work out exactly", links: [{ go: ["lessons", "marketmaking"], label: "Making a market" }, { go: ["games", "fermi"], label: "Fermi Questions" }] },
+        { name: "Option pricing basics", links: [{ go: ["lessons", "options1"], label: "Calls and puts" }, { go: ["lessons", "options3"], label: "Put–call parity" }] },
+        { name: "Why IMC, why trading, overcoming a challenge", links: [] },
+      ],
+      sources: [
+        { t: "IMC: Trader Intern (Amsterdam)", url: "https://job-boards.eu.greenhouse.io/imc/jobs/4939846101" },
+        { t: "IMC: Quantitative Trader Intern (Amsterdam)", url: "https://job-boards.greenhouse.io/imc/jobs/4936262101" },
+        { t: "IMC: Launchpad – Trading", url: "https://job-boards.eu.greenhouse.io/imc/jobs/4697253101" },
+        { t: "IMC: 2027 EU campus talent community", url: "https://job-boards.greenhouse.io/imc/jobs/4940448101" },
+        { t: "IMC: How we hire", url: "https://www.imc.com/eu/careers/recruitment-process" },
+        { t: "TraderMaths: the IMC interview", url: "https://tradermath.org/knowledge-base/everything-you-need-to-know-about-the-imc-interview" },
+        { t: "Candidate reports (Glassdoor, IMC)", url: "https://www.glassdoor.ca/Interview/IMC-Trading-Interview-E278100-RVW93114215.htm" },
+      ],
+    },
+  };
+
+  /* application tracker: statuses, and the next deadline still to come for a programme */
+  const STATUS = [
+    { v: "", l: "Not tracked" }, { v: "todo", l: "Not started" }, { v: "applied", l: "Applied" }, { v: "test", l: "Online test" },
+    { v: "phone", l: "Phone round" }, { v: "final", l: "Final round" }, { v: "offer", l: "Offer" }, { v: "rejected", l: "Rejected" }, { v: "withdrawn", l: "Withdrawn" },
+  ];
+  const nextDeadline = (p, now) => { const t = now || Date.now(); const up = (p.deadlines || []).map(d => ({ ...d, ts: Date.parse(d.at) })).filter(d => d.ts > t).sort((a, b) => a.ts - b.ts); return up[0] || null; };
+  const allProgrammes = () => Object.entries(INFO).flatMap(([fid, x]) => x.programmes.map(p => ({ ...p, fid, key: fid + ":" + p.id })));
+  /* logo masks shipped with the artifact (private copy): white marks on transparent, recoloured in CSS */
+  const HAVE = ["akuna", "balyasny", "belvedere", "brevan", "citsec", "ctc", "davinci", "deshaw", "drw", "fiverings", "flow", "geneva", "graviton", "gresearch", "hrt", "imc", "janestreet", "jump", "keyrock", "mako", "man", "marshallwace", "maven", "maverick", "millennium", "optiver", "peak6", "point72", "qrt", "rothesay", "sig", "squarepoint", "tower", "twosigma", "virtu", "wintermute", "xtx"];
+  const logo = id => HAVE.includes(id) ? "logos/" + id + ".png" : null;
+  return { DOMAINS, INFO, HAVE, logo, STATUS, nextDeadline, allProgrammes };
+})();

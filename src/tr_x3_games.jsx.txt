@@ -1,0 +1,235 @@
+/* New Market Games: Market of Cards (you against three AI traders, both sides of the market),
+   Odds Betting (spot mispriced odds and size with Kelly; the Kelly stake is shown after every bet)
+   and the Superday Simulation (a 10-minute final-round sequence: mental maths, probability, market making, news). */
+(function () {
+  const { TH, TF, R, typing } = TIP;
+  const { useState, useEffect, useMemo, useRef } = R;
+  const K = TIP_KIT;
+  const V = 1, PF = p => (p.v || 1) === V;
+  const sel = (key, label, choices) => ({ key, label, type: "sel", choices: choices.map(c => Array.isArray(c) ? { value: c[0], label: c[1] } : { value: c, label: String(c) }) });
+  const num = (key, label, min, max, unit, extra) => ({ key, label, type: "num", min, max, unit, ...(extra || {}) });
+  const half = v => Math.round(v * 2) / 2;
+  const f1 = v => (Math.round(v * 2) / 2).toFixed(1);
+  const BOTS = ["Ava", "Ben", "Cleo"];
+
+  /* ================= Market of Cards ================= */
+  function Cards({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const [deal] = useState(() => { const d = rng.shuffle(Array.from({ length: 52 }, (_, i) => ({ v: i % 13 + 1, s: Math.floor(i / 13) }))); return { you: d[0], bots: d.slice(1, 4), mid: d.slice(4, 4 + s.center) }; });
+    const total = deal.you.v + deal.bots.reduce((a, c) => a + c.v, 0) + deal.mid.reduce((a, c) => a + c.v, 0);
+    const rounds = s.center + 1;
+    const [ri, setRi] = useState(0), [phase, setPhase] = useState("quote"), [bid, setBid] = useState(""), [ask, setAsk] = useState(""), [err, setErr] = useState("");
+    const [pos, setPos] = useState(0), [cash, setCash] = useState(0), [tape, setTape] = useState([]), [trades, setTrades] = useState([]), [quotes, setQuotes] = useState(null), [pt0, setPt0] = useState(() => Date.now()), [miss, setMiss] = useState(0);
+    const shown = deal.mid.slice(0, ri);
+    /* fair value for someone who knows `own` plus the revealed centre cards */
+    const fairFor = own => { const seen = [own, ...shown], sum = seen.reduce((a, c) => a + c.v, 0), unk = 3 + (s.center - ri), mean = (364 - sum) / (52 - seen.length); return sum + unk * mean; };
+    const myFair = fairFor(deal.you), unk = 3 + (s.center - ri);
+    const now = K.useTick(phase === "quote" || phase === "take", 200);
+    const left = Math.max(0, s.time - (now - pt0) / 1000);
+    const log = (txt, tone) => setTape(t => [{ txt, tone }, ...t].slice(0, 40));
+    const fill = (side, px, who) => { if (Math.abs(pos + side) > s.limit) { log(`${who} wanted to trade, but you are at your limit`, ""); return false; }
+      setPos(p => p + side); setCash(c => c - side * px); setTrades(t => [...t, { side, px, who, ri }]); log(`${who} ${side > 0 ? "sells to you" : "buys from you"} at ${f1(px)}`, side > 0 ? "up" : "dn"); return true; };
+    function botQuotes() {
+      return deal.bots.map((c, j) => { const f = fairFor(c), m = f + rng.normal() * s.noise, w = rng.pick([1, 1.5, 2]); return { n: BOTS[j], bid: half(m - w / 2), ask: half(m + w / 2), mid: (half(m - w / 2) + half(m + w / 2)) / 2, used: false }; });
+    }
+    function submitQuote(timeout) {
+      if (phase !== "quote") return;
+      const b = parseFloat(bid), a = parseFloat(ask);
+      if (!timeout) {
+        if (!isFinite(b) || !isFinite(a)) { setErr("Enter a bid and an ask"); return; }
+        if (a <= b) { setErr("The ask must be above the bid"); return; }
+        if (a - b > s.width + 1e-9) { setErr(`Width ${a - b} is wider than the maximum ${s.width}`); return; }
+      }
+      setErr("");
+      if (timeout) { setMiss(m => m + 1); log(`Round ${ri + 1}: no quote in time`, "dn"); }
+      else {
+        log(`Round ${ri + 1}: you quote ${f1(b)} / ${f1(a)}`, "");
+        let p = pos;
+        deal.bots.forEach((c, j) => { const f = fairFor(c); if (f > a + 0.5 && Math.abs(p - 1) <= s.limit) { if (fill(-1, a, BOTS[j])) p -= 1; } else if (f < b - 0.5 && Math.abs(p + 1) <= s.limit) { if (fill(1, b, BOTS[j])) p += 1; } });
+      }
+      setQuotes(botQuotes()); setPhase("take"); setPt0(Date.now());
+    }
+    function take(i, side) {
+      if (phase !== "take" || quotes[i].used) return;
+      const q = quotes[i];
+      if (Math.abs(pos + side) > s.limit) { setErr("Position limit reached"); return; }
+      setPos(p => p + side); setCash(c => c - side * (side > 0 ? q.ask : q.bid)); setTrades(t => [...t, { side, px: side > 0 ? q.ask : q.bid, who: "you", ri }]);
+      log(`You ${side > 0 ? "buy from" : "sell to"} ${q.n} at ${f1(side > 0 ? q.ask : q.bid)}`, side > 0 ? "up" : "dn");
+      setQuotes(qs => qs.map((x, k) => k === i ? { ...x, used: true } : x));
+    }
+    function next() {
+      if (phase !== "take") return;
+      if (ri + 1 >= rounds) { setPhase("done"); return; }
+      log(`Centre card ${ri + 1}: ${K.rankName(deal.mid[ri].v)}${K.SUITS[deal.mid[ri].s]}`, "warn");
+      setRi(ri + 1); setBid(""); setAsk(""); setQuotes(null); setPhase("quote"); setPt0(Date.now());
+    }
+    useEffect(() => { if (left > 0) return; if (phase === "quote") submitQuote(true); else if (phase === "take") next(); }, [left <= 0]);
+    const done = phase === "done";
+    const res = useMemo(() => { if (!done) return null; const pnl = Math.round((cash + pos * total) * 100) / 100; const edge = trades.reduce((a, t) => a + t.side * (total - t.px), 0);
+      return { pnl, score: pnl, edge: Math.round(edge * 100) / 100, trades: trades.length, mine: trades.filter(t => t.who === "you").length, miss, rounds }; }, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={K.money(res.pnl, 2) + " P&L"} sub={`The cards summed to ${total}. You ended with a position of ${pos}.`} onRestart={onRestart}
+      metrics={[{ label: "P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" }, { label: "Trades", value: res.trades, sub: res.mine + " that you took" }, { label: "Missed quotes", value: res.miss, tone: res.miss ? "dn" : "" },
+        ...deal.bots.map((c, j) => ({ label: BOTS[j] + "'s card", value: K.rankName(c.v) + K.SUITS[c.s] }))]}
+      notes="Each trader quotes around its own fair value, so the middle of its market gives its card away: mid − (revealed cards + unknown cards × the deck's average). Trade against the traders whose card you can infer, and quote so that the ones holding high or low cards hit you only at a price you like." />;
+    const quoting = phase === "quote";
+    /* a trader's mid = own + shown + unk × (364 − own − shown) / (51 − shown), solved for its own card */
+    const implied = q => { const sh = shown.reduce((a, c) => a + c.v, 0), M = 51 - shown.length; return (q.mid - sh - unk * (364 - sh) / M) / (1 - unk / M); };
+    return (
+      <K.Stage title="Market of Cards" sub={`Round ${ri + 1} of ${rounds} · ${quoting ? "make your market" : "trade on theirs"}`} clock={left} clockFrac={left / s.time}
+        stats={[{ label: "Position", value: (pos > 0 ? "+" : "") + pos, pop: true }, { label: "Cash", value: K.signed(cash, 1) }]} cls="mm-stage">
+        <div className="mm-grid">
+          <div className="mm-left">
+            <div className="mm-info">
+              <div className="oa-lbl">Contract: the sum of all {4 + s.center} cards</div>
+              <div className="mc-hands">
+                <div className="mc-seat me"><span>You</span><K.Card v={deal.you.v} s={deal.you.s} size={48} /></div>
+                {deal.bots.map((c, j) => <div key={j} className="mc-seat"><span>{BOTS[j]}</span><K.Card hidden size={48} /></div>)}
+              </div>
+              <div className="oa-lbl">Centre</div>
+              <div className="mm-row">{deal.mid.map((c, j) => <K.Card key={j + (j < ri ? "s" : "h")} v={c.v} s={c.s} hidden={j >= ri} flip={j === ri - 1} size={48} />)}</div>
+            </div>
+            {s.showFair ? <div className="mm-fair">Your fair value now: <b>{myFair.toFixed(1)}</b> (shown on Easy)</div> : null}
+          </div>
+          <div className="mm-right">
+            {quoting ? (
+              <div className="mm-ticket">
+                <div className="oa-lbl">Your market · size 1 · max width {s.width} · limit ±{s.limit}</div>
+                <div className="mm-quote">
+                  <label className="bid"><span>Bid</span><input inputMode="decimal" value={bid} onChange={e => { setBid(e.target.value); setErr(""); }} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submitQuote(); } }} autoFocus /></label>
+                  <label className="ask"><span>Ask</span><input inputMode="decimal" value={ask} onChange={e => { setAsk(e.target.value); setErr(""); }} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submitQuote(); } }} /></label>
+                </div>
+                {err ? <div className="mm-err">{err}</div> : null}
+                <button className="start" onClick={() => submitQuote()}>Quote</button>
+              </div>
+            ) : (
+              <div className="mm-book">
+                <div className="oa-lbl">The traders' markets · size 1 each</div>
+                {(quotes || []).map((q, i) => (
+                  <div key={i} className={"mm-bot" + (q.used ? " used" : "")}>
+                    <span className="mm-bot-n">{q.n}{s.showFair ? <em className="mc-imp"> card ≈ {Math.max(1, Math.min(13, Math.round(implied(q))))}</em> : null}</span>
+                    <button className="mm-px bid" disabled={q.used} onClick={() => take(i, -1)}>Sell <b>{f1(q.bid)}</b></button>
+                    <button className="mm-px ask" disabled={q.used} onClick={() => take(i, 1)}>Buy <b>{f1(q.ask)}</b></button>
+                  </div>
+                ))}
+                {err ? <div className="mm-err">{err}</div> : null}
+                <button className="ghost" onClick={next}>{ri + 1 >= rounds ? "Settle" : "Reveal the next centre card"}</button>
+              </div>
+            )}
+            <div className="mm-tape">{tape.map((t, i) => <div key={tape.length - i} className={"mm-tick " + (t.tone || "")}>{t.txt}</div>)}</div>
+          </div>
+        </div>
+      </K.Stage>
+    );
+  }
+
+  /* ================= Odds Betting ================= */
+  const EVENTS = [
+    r => { const t = r.int(8, 11); let n = 0; for (let a = 1; a <= 6; a++) for (let b = 1; b <= 6; b++) if (a + b >= t) n++; return { t: `Two dice are rolled. You win if the sum is ${t} or more.`, p: n / 36, why: `${n} of 36 outcomes.` }; },
+    r => { const n = r.int(2, 5); return { t: `A die is rolled ${n} times. You win if at least one six appears.`, p: 1 - Math.pow(5 / 6, n), why: `1 − (5/6)^${n}.` }; },
+    r => { const v = r.pick([["a heart", 13 / 52], ["a face card", 12 / 52], ["an ace", 4 / 52], ["a red 8, 9 or 10", 6 / 52], ["a spade or an ace", 16 / 52]]); return { t: `A card is drawn from a full deck. You win if it is ${v[0]}.`, p: v[1], why: `${Math.round(v[1] * 52)} of 52 cards.` }; },
+    r => { const n = r.int(3, 6), k = Math.ceil(n / 2) + r.int(0, 1); let c = 0; for (let j = k; j <= n; j++) { let x = 1; for (let i = 1; i <= j; i++) x = x * (n - j + i) / i; c += x; } return { t: `${n} fair coins are flipped. You win if at least ${k} land heads.`, p: c / Math.pow(2, n), why: `${c} of ${Math.pow(2, n)} outcomes.` }; },
+    () => ({ t: "Three dice are rolled. You win if all three show different numbers.", p: 120 / 216, why: "6·5·4/216." }),
+    () => ({ t: "Two cards are drawn. You win if they are the same colour.", p: 25 / 51, why: "After the first card, 25 of the 51 left match its colour." }),
+  ];
+  function OddsBet({ settings: s, onFinish, onRestart }) {
+    const [rng] = useState(() => jt());
+    const mk = () => { const e = rng.pick(EVENTS)(rng); let edge = (rng() - 0.45) * 0.6; const b = Math.max(0.1, Math.round(((1 + edge) / e.p - 1) * 10) / 10); const kelly = Math.max(0, (b * e.p - (1 - e.p)) / b); return { ...e, b, kelly, ev: e.p * (b + 1) - 1 }; };
+    const [bet, setBet] = useState(mk), [i, setI] = useState(0), [bank, setBank] = useState(s.bankroll), [kBank, setKBank] = useState(s.bankroll), [frac, setFrac] = useState(0.1), [fb, setFb] = useState(null), [log, setLog] = useState([]), [done, setDone] = useState(false);
+    const place = f => {
+      if (fb || done) return;
+      const win = rng() < bet.p, stake = bank * f, d = win ? stake * bet.b : -stake, kd = win ? kBank * bet.kelly * bet.b : -kBank * bet.kelly;
+      setBank(x => Math.round((x + d) * 100) / 100); setKBank(x => Math.round((x + kd) * 100) / 100);
+      setLog(l => [...l, { f, k: bet.kelly, win, d, ev: bet.ev }]); setFb({ win, d, f, ...bet });
+    };
+    const next = () => { if (i + 1 >= s.bets) { setDone(true); return; } setI(i + 1); setBet(mk()); setFb(null); };
+    useEffect(() => { const h = e => { if (typing(e)) return; if (!fb && e.key === "Enter") { e.preventDefault(); place(frac); } else if (!fb && (e.key === "p" || e.key === "P")) place(0); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); });
+    const res = useMemo(() => { if (!done) return null; const gap = log.reduce((a, x) => a + Math.abs(x.f - x.k), 0) / log.length; const goodPass = log.filter(x => x.k === 0 && x.f === 0).length, bad = log.filter(x => x.k === 0).length;
+      return { pnl: Math.round((bank - s.bankroll) * 100) / 100, score: Math.round((bank - s.bankroll) * 100) / 100, kellyPnl: Math.round((kBank - s.bankroll) * 100) / 100, gap: Math.round(gap * 1000) / 10, passes: goodPass + "/" + bad }; }, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={K.money(res.pnl, 2) + " P&L"} sub={`Bankroll ${K.money(bank, 2)} from ${K.money(s.bankroll, 0)}`} onRestart={onRestart}
+      metrics={[{ label: "Your P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" }, { label: "Kelly on the same bets", value: K.money(res.kellyPnl, 2), tone: res.kellyPnl >= 0 ? "up" : "dn" },
+        { label: "Average distance from Kelly", value: res.gap + " pts", sub: "percentage points of bankroll" }, { label: "Bad bets passed", value: res.passes, sub: "negative-EV offers you turned down" }]}
+      review={log.map((x, k) => ({ ok: Math.abs(x.f - x.k) <= 0.05, text: `Bet ${k + 1}: you staked ${Math.round(x.f * 100)}%, Kelly ${Math.round(x.k * 100)}%`, shown: K.signed(x.d, 2) }))}
+      notes="Kelly stakes f* = (b·p − q) / b of the bankroll, where b is the payout per $1, p the chance of winning and q = 1 − p. Bet nothing when the edge is negative. Staking more than Kelly adds risk without adding long-run growth." />;
+    const fr = [0, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5];
+    return (
+      <K.Stage title="Odds Betting" sub={`Bet ${i + 1} of ${s.bets}`} stats={[{ label: "Bankroll", value: K.money(bank, 0), tone: bank >= s.bankroll ? "up" : "dn", pop: true }]} total={s.bets} results={log.map(x => x.d >= 0)} at={i}>
+        <div className="ob-wrap">
+          <div className="oa-big-q"><K.T>{bet.t}</K.T></div>
+          <div className="ob-odds">Pays <b>{bet.b.toFixed(1)} to 1</b>{s.showP ? <span className="muted"> · win chance {(bet.p * 100).toFixed(1)}% (shown on Easy)</span> : null}</div>
+          {!fb ? <TF>
+            <div className="oa-lbl">Stake as a share of your bankroll</div>
+            <div className="ob-fr">{fr.map(f => <button key={f} type="button" className={"chip" + (frac === f ? " on" : "")} onClick={() => setFrac(f)}>{f ? Math.round(f * 100) + "%" : "0%"}</button>)}</div>
+            <div className="row"><button className="btn" onClick={() => place(0)}>Pass <kbd>P</kbd></button><span className="sp"></span><button className="start" disabled={!frac} onClick={() => place(frac)}>Bet {K.money(bank * frac, 0)} <kbd>Enter</kbd></button></div>
+          </TF> : <K.Banner ok={fb.d >= 0} onNext={next} title={fb.f === 0 ? "You passed." : fb.win ? `Won ${K.money(fb.d, 2)}.` : `Lost ${K.money(-fb.d, 2)}.`}>
+            Win chance {(fb.p * 100).toFixed(1)}% ({fb.why}) at {fb.b.toFixed(1)} to 1 gives an edge of {(fb.ev * 100).toFixed(1)}% per $1. <b>Kelly stake: {Math.round(fb.kelly * 100)}% of bankroll</b>{fb.kelly === 0 ? " (pass)" : ""}; you staked {Math.round(fb.f * 100)}%.
+          </K.Banner>}
+        </div>
+      </K.Stage>
+    );
+  }
+
+  /* ================= Superday Simulation ================= */
+  const STAGES = [
+    { id: "math", name: "Mental maths", mins: 2, sub: "As many as you can in two minutes." },
+    { id: "prob", name: "Probability", mins: 2.5, sub: "Five phone-screen questions, about 30 seconds each." },
+    { id: "mm", name: "Market making", mins: 3.5, sub: "Make markets on the sum of hidden dice; the interviewer trades with you." },
+    { id: "news", name: "News and updating", mins: 2, sub: "Quote an event contract while headlines arrive." },
+  ];
+  function Superday({ onFinish, onRestart, diff }) {
+    const [si, setSi] = useState(0), [out, setOut] = useState([]), [ready, setReady] = useState(false), [done, setDone] = useState(false);
+    const [t0] = useState(() => Date.now());
+    const D = TIP_TRAINERS.DEFS;
+    const st = STAGES[si];
+    const score = (id, r) => {
+      if (id === "math" || id === "prob") return Math.round(100 * Math.max(0, Math.min(1, ((r.acc || 0) - 0.3) / 0.6)) * Math.min(1, (r.total || 0) / (id === "math" ? 18 : 5)));
+      const qe = r.quoteErr == null ? 99 : r.quoteErr, base = Math.max(0, 1 - qe / (id === "mm" ? 4 : 12)), miss = r.quotes ? r.miss / r.quotes : 1;
+      return Math.round(100 * Math.max(0, base * (1 - miss) * 0.7 + (r.pnl > 0 ? 0.3 : r.pnl === 0 ? 0.15 : 0)));
+    };
+    const finishStage = r => { const o = [...out, { id: st.id, name: st.name, s: score(st.id, r), r }]; setOut(o); setReady(false); if (si + 1 >= STAGES.length) setDone(true); else setSi(si + 1); };
+    const res = useMemo(() => { if (!done) return null; const sc = Math.round(out.reduce((a, x) => a + x.s, 0) / out.length); return { score: sc, stages: out.map(x => [x.id, x.s]), pnl: out.filter(x => x.r.pnl != null).reduce((a, x) => a + x.r.pnl, 0), mins: Math.round((Date.now() - t0) / 6000) / 10 }; }, [done]);
+    Jt(done, res, onFinish);
+    if (done && res) return <K.Result headline={res.score + " / 100"} sub={`Four rounds in ${res.mins} minutes`} ring={res.score / 100} ringLabel={res.score + ""} onRestart={onRestart}
+      metrics={out.map(x => ({ label: x.name, value: x.s + " / 100", tone: x.s >= 70 ? "up" : x.s < 45 ? "dn" : "" }))}
+      notes="Round scores: mental maths and probability from accuracy and how many you reached; market making and news from how close your quotes were to fair (quote error), the share of quotes you made in time, and a bonus for a positive P&L. The overall score is the average." />;
+    if (!ready) return (
+      <div className="card sd-gate">
+        <div className="oa-sub">Round {si + 1} of {STAGES.length} · about {st.mins} min</div>
+        <h3>{st.name}</h3>
+        <p className="muted">{st.sub}</p>
+        <div className="sd-steps">{STAGES.map((x, k) => <span key={x.id} className={"chip" + (k < si ? " solved" : k === si ? " on" : "")}>{k < si ? "✓ " : ""}{x.name}{k < si ? " · " + out[k].s : ""}</span>)}</div>
+        <button className="start" onClick={() => setReady(true)} autoFocus>Start round {si + 1}</button>
+      </div>
+    );
+    const lvl = diff === "Hard" ? "Hard" : diff === "Easy" ? "Easy" : "Medium";
+    if (st.id === "math") { const d = D.frac; return TH(TIP_DRILL.Drill, { key: "m", settings: d.presets[lvl], spec: { ...d.spec, count: null, sessionSecs: () => 120 }, title: "Round 1 · Mental maths", onFinish: finishStage, onRestart }); }
+    if (st.id === "prob") { const d = D.bto; return TH(TIP_DRILL.Drill, { key: "p", settings: { ...d.presets[lvl], count: 5, time: 30 }, spec: { ...d.spec, count: () => 5, perQSecs: () => 30 }, title: "Round 2 · Probability", onFinish: finishStage, onRestart }); }
+    if (st.id === "mm") return TH(TIP_MM.Game, { key: "d", inst: "dice", mode: "make", title: "Round 3 · Market making", onFinish: finishStage, onRestart,
+      settings: { n: 3, target: "sum", rounds: 2, width: lvl === "Hard" ? 1.5 : 2, time: lvl === "Easy" ? 25 : 18, sharp: lvl === "Easy" ? 0 : 0.25, tighten: lvl === "Hard" ? 0.25 : 0, showFair: lvl === "Easy", size: 1 } });
+    return TH(TIP_MM.Game, { key: "n", inst: "binary", mode: "make", title: "Round 4 · News and updating", onFinish: finishStage, onRestart,
+      settings: { news: 3, rounds: 1, width: lvl === "Hard" ? 6 : 8, time: lvl === "Easy" ? 25 : 18, sharp: lvl === "Easy" ? 0 : 0.25, story: "rates", tighten: 0, showFair: lvl === "Easy", size: 1 } });
+  }
+
+  const base = { tip: true, version: V, playFilter: PF };
+  const defs = [
+    { ...base, id: "cardmarket", name: "Market of Cards", icon: "cards", metric: "pnl",
+      blurb: "You and three AI traders each hold one card; the contract pays the sum of every hand plus the centre cards, which turn one at a time. Make a market they trade on, then trade on theirs, inferring their cards from where they quote.",
+      fields: [num("center", "Centre cards", 2, 5), num("time", "Time per phase", 8, 60, "s"), num("width", "Max width", 1, 6), num("limit", "Position limit", 2, 10), sel("noise", "Trader noise", [[0.5, "Low"], [1, "Medium"], [2, "High"]]), { key: "showFair", label: "Show fair value and implied cards", type: "bool" }],
+      presets: { Easy: { center: 3, time: 40, width: 4, limit: 6, noise: 0.5, showFair: true }, Medium: { center: 3, time: 25, width: 3, limit: 6, noise: 1, showFair: false }, Hard: { center: 4, time: 15, width: 2, limit: 5, noise: 2, showFair: false } },
+      note: "A trader buys your ask if its own fair value is at least 0.5 above it, and sells your bid if it is 0.5 below. Everything settles at the true sum.",
+      component: Cards },
+    { ...base, id: "oddsbet", name: "Odds Betting", icon: "dice", metric: "pnl",
+      blurb: "Dice, card and coin bets offered at fixed odds, some generous and some not. Work out the chance, decide whether there is an edge, and choose a stake. After every bet you see the Kelly stake next to yours.",
+      fields: [num("bets", "Bets", 5, 40), num("bankroll", "Starting bankroll ($)", 100, 100000), { key: "showP", label: "Show win chance", type: "bool" }],
+      presets: { Easy: { bets: 10, bankroll: 1000, showP: true }, Medium: { bets: 15, bankroll: 1000, showP: false }, Hard: { bets: 25, bankroll: 1000, showP: false } },
+      note: "Payouts are quoted as 'b to 1': a $1 stake returns $b profit if you win. Enter bets the chosen stake, P passes.",
+      component: OddsBet },
+    { ...base, id: "superday", name: "Superday Simulation", icon: "target", metric: "score", unit: "/100", fmtVal: v => Math.round(v) + "/100",
+      blurb: "A 10-minute final round in four parts, the way DRW, IMC and Citadel Securities run their Superday blocks: mental maths, quick probability, a market-making game and an event contract with news. One score out of 100.",
+      fields: [], presets: { Easy: {}, Medium: {}, Hard: {} },
+      note: "Difficulty sets the pace and how sharp the interviewer is. You can pause between rounds.",
+      component: Superday },
+  ];
+  defs.forEach(d => { const i = _n.findIndex(g => g.id === d.id); if (i >= 0) _n[i] = d; else _n.push(d); });
+})();

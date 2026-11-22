@@ -1,0 +1,434 @@
+/* Lessons part 3: the Options, Futures & basis and Prediction markets courses (ids options1..6, futures1..6, pred1..6). */
+var TIP_LP3 = (function () {
+  const S = String.raw;
+  const OT = ["options", "greeks", "black–scholes", "digital", "convexity", "binomial tree", "hedging", "no-arbitrage", "replication", "put-call parity"];
+  const FT = ["forwards", "cost of carry", "fixed income", "interest rates", "present value", "compounding", "duration", "hedging", "regression", "portfolio"];
+  const PT = ["kelly", "bet sizing", "log utility", "bayes", "arbitrage", "information", "base rate", "prediction markets", "odds"];
+  return [
+    /* ---------------- Options ---------------- */
+    { id: "options1", group: "options", title: "Calls, puts and payoffs", tags: OT,
+      desc: "What calls and puts are, their payoff diagrams at expiry, long versus short, and the common spreads.",
+      intro: S`A **call** gives the right to buy at the strike $K$; a **put** gives the right to sell at $K$. At expiry they are worth
+$$C_T = \max(S_T - K, 0), \qquad P_T = \max(K - S_T, 0).$$
+The buyer pays a **premium** up front; profit is payoff minus premium.`,
+      sections: [
+        { h: "Long and short", p: [
+          S`Long a call: limited loss (the premium), unlimited upside. Short a call: you collect the premium and carry unlimited risk. Long a put: profits when the stock falls, at most $K$ minus the premium.` ] },
+        { h: "Building blocks", p: [
+          S`**Bull call spread**: long the $K_1$ call, short the $K_2 > K_1$ call; payoff capped at $K_2 - K_1$. **Straddle**: long call and put at the same strike; profits from a big move either way. **Strangle**: the same with out-of-the-money strikes. **Butterfly** $K_1, K_2, K_3$ (long 1, short 2, long 1): a tent peaking at $K_2$; it is never negative, so its price must be $\ge 0$.` ] },
+        { h: "Moneyness", p: [
+          S`A call is **in the money** when $S > K$, **at the money** when $S \approx K$, **out of the money** when $S < K$; puts the other way round.` ] },
+      ],
+      examples: [
+        { t: "Profit on a call", q: S`You buy the $100$ call for $4$. The stock finishes at $107$. Profit?`, a: [S`Payoff $7$, minus premium $4$: $+3$.`] },
+        { t: "Break-even of a put", q: S`You buy the $50$ put for $2.50$. Where do you break even at expiry?`, a: [S`$K - \text{premium} = 47.50$.`] },
+      ],
+      traps: [S`Forgetting the premium when computing profit.`, S`Mixing up who has the right (buyer) and who has the obligation (seller).`],
+      tips: [S`Sketch the payoff diagram before answering any strategy question.`],
+      checks: [
+        { q: S`You buy a $40$ call for $2.50$ and the stock finishes at $41.50$. What is your profit per share?`, answer: -1, why: S`Payoff $1.50$, minus $2.50$: $-1.00$.` },
+        { q: S`You buy the $100$ call for $4$; the stock finishes at $107$. Profit?`, answer: 3, why: S`$7 - 4 = 3$.` },
+        { q: S`A $90/100$ bull call spread costs $3.80$. What is its maximum profit?`, answer: 6.2, tol: 0.001, why: S`Max payoff $10$, minus $3.80$: $6.20$.` },
+        { q: S`A straddle at $K = 50$ costs $6$. What is the upper break-even price?`, answer: 56, why: S`$K + 6 = 56$ (and $44$ below).` },
+        { q: S`What is the payoff of a $95/100/105$ call butterfly if the stock ends at $102$?`, answer: 3, why: S`$(102 - 95) - 2(102 - 100) + 0 = 7 - 4 = 3$.` },
+        { q: S`You sell the $60$ put for $3$ and the stock ends at $55$. What is your profit?`, answer: -2, why: S`You pay $60 - 55 = 5$ at expiry, having collected $3$: $-2$.` },
+      ] },
+
+    { id: "options2", group: "options", title: "Intrinsic and time value", tags: OT,
+      desc: "Split an option price into intrinsic and time value, and see how volatility and time to expiry drive the second part.",
+      intro: S`Before expiry an option is worth more than its payoff today. The price splits into
+$$\text{price} = \underbrace{\max(S - K, 0)}_{\text{intrinsic}} + \text{time value}.$$`,
+      sections: [
+        { h: "What drives time value", p: [
+          S`Time value pays for the chance the option ends further in the money. It rises with **volatility** and **time to expiry**, and is largest at the money. Deep in or out of the money, time value is small.` ] },
+        { h: "The ATM rule of thumb", p: [
+          S`For an at-the-money option with zero rates,
+$$C \approx P \approx 0.4\,S\,\sigma\sqrt{T}.$$
+So with $S = 100$, $\sigma = 20\%$, $T = 1$: about $8$. For three months, halve it ($\sqrt{0.25} = 0.5$): about $4$.` ] },
+        { h: "Bounds", p: [
+          S`With zero rates: $\max(S - K, 0) \le C \le S$ and $\max(K - S, 0) \le P \le K$. An American call on a non-dividend stock should never be exercised early: you would throw away time value.` ] },
+      ],
+      examples: [
+        { t: "Split a price", q: S`Stock $103$, the $100$ call trades at $5.20$.`, a: [S`Intrinsic $3$, time value $2.20$.`] },
+        { t: "ATM estimate", q: S`$S = 200$, $\sigma = 30\%$, $T = \frac14$. Roughly price the ATM call.`, a: [S`$0.4 \times 200 \times 0.3 \times 0.5 = 12$.`] },
+      ],
+      traps: [S`Calling an out-of-the-money option worthless before expiry. All of its value is time value.`],
+      tips: [S`Remember $0.4\,S\sigma\sqrt T$; interviewers ask for ATM prices constantly.`],
+      checks: [
+        { q: S`Stock $103$, the $100$ call trades at $5.20$. What is its time value?`, answer: 2.2, tol: 0.001, why: S`$5.20 - 3 = 2.20$.` },
+        { q: S`$S = 100$, $\sigma = 25\%$, $T = 1$. Roughly what is the ATM call worth?`, answer: 10, tol: 0.3, why: S`$0.4 \times 100 \times 0.25 = 10$.` },
+        { q: S`An ATM option is worth $6$ with 4 months to expiry. Roughly what is it worth with 1 month left, all else equal?`, answer: 3, tol: 0.05, why: S`Time value scales with $\sqrt T$: $6 \times \sqrt{1/4} = 3$.` },
+        { q: S`The $110$ put trades at $12$ with the stock at $100$. What is its time value?`, answer: 2, why: S`Intrinsic $10$; time value $2$.` },
+        { q: S`Which has more time value: the $100$ call with stock at $100$, or at $130$?`, choices: ["Stock at 100", "Stock at 130", "The same"], answer: "Stock at 100", why: S`Time value is largest at the money.` },
+        { q: S`Volatility doubles. Roughly how does an ATM option's price change?`, choices: ["Roughly doubles", "Roughly quadruples", "Barely changes"], answer: "Roughly doubles", why: S`ATM price is about linear in $\sigma$.` },
+      ] },
+
+    { id: "options3", group: "options", title: "Put–call parity", tags: OT,
+      desc: "The no-arbitrage link between calls, puts, stock and cash, and how to trade it when it breaks.",
+      intro: S`A long call and a short put at the same strike and expiry pay $S_T - K$ whatever happens, exactly like holding the stock and owing $K$. So, for European options,
+$$C - P = S - K e^{-rT} \quad (\text{zero rates: } C - P = S - K).$$`,
+      sections: [
+        { h: "Using parity", p: [
+          S`Parity gives any one of $C, P, S$ from the other two. With dividends $D$ paid before expiry: $C - P = S - D - Ke^{-rT}$. Synthetic positions: long call + short put = **synthetic long stock**; long stock + long put = a call (a protective put).` ] },
+        { h: "Trading violations", p: [
+          S`If $C - P > S - K$, the call is rich relative to the put: **sell the call, buy the put, buy the stock** (a conversion) and lock in the difference. If $C - P < S - K$, do the reverse (a reversal).` ] },
+      ],
+      examples: [
+        { t: "Fair call", q: S`Stock $50$, the $45$ put is $1.20$ (zero rates). Fair $45$ call?`, a: [S`$C = P + S - K = 1.20 + 5 = 6.20$.`] },
+        { t: "An arbitrage", q: S`$S = 100$, $K = 100$, $C = 7$, $P = 5$, zero rates. Trade?`, a: [S`$C - P = 2 > 0 = S - K$: sell call, buy put, buy stock. Lock in $2$.`] },
+      ],
+      traps: [S`Applying parity to American options exactly (it only gives bounds).`, S`Forgetting dividends.`],
+      tips: [S`Remember: "call minus put equals stock minus strike".`],
+      checks: [
+        { q: S`Stock $50$, the $45$ put is $1.20$ (zero rates). What is the fair $45$ call?`, answer: 6.2, tol: 0.001, why: S`$1.20 + 50 - 45 = 6.20$.` },
+        { q: S`$S = 80$, $K = 85$, $C = 3$ (zero rates). What is the fair put?`, answer: 8, tol: 0.001, why: S`$P = C - S + K = 3 + 5 = 8$.` },
+        { q: S`$S = 100$, $K = 100$, $C = 7$, $P = 5$ (zero rates). How much does the conversion lock in per share?`, answer: 2, tol: 0.001, why: S`$(C - P) - (S - K) = 2$.` },
+        { q: S`$S = 60$, $K = 60$, a dividend of $1$ is paid before expiry (zero rates). What is $C - P$?`, answer: -1, tol: 0.001, why: S`$S - D - K = -1$.` },
+        { q: S`Long call + short put at the same strike is equivalent to:`, choices: ["Long stock (financed)", "Short stock", "A straddle"], answer: "Long stock (financed)", why: S`It pays $S_T - K$ in every state.` },
+        { q: S`$S = 100$, $K = 105$, $r = 5\%$, $T = 1$ ($e^{-0.05} \approx 0.951$). What is $C - P$?`, answer: 100 - 105 * Math.exp(-0.05), tol: 0.02, why: S`$100 - 105 \times 0.951 \approx 0.12$.` },
+      ] },
+
+    { id: "options4", group: "options", title: "Delta and hedging", tags: OT,
+      desc: "Delta as hedge ratio and rough probability, position delta, and how a market maker stays flat.",
+      intro: S`**Delta** is how much the option price moves for a $1$ move in the stock: $\Delta = \frac{\partial V}{\partial S}$. Calls have $0 \le \Delta \le 1$; puts $-1 \le \Delta \le 0$; and $\Delta_C - \Delta_P = 1$ (from parity).`,
+      sections: [
+        { h: "Reading delta", p: [
+          S`ATM options have $\Delta \approx 0.5$ (calls) and $-0.5$ (puts). Deep in the money tends to $\pm 1$; far out tends to $0$. Delta is also roughly the market's probability the option finishes in the money.` ] },
+        { h: "Position delta and hedging", p: [
+          S`Position delta $= \text{contracts} \times \text{multiplier} \times \Delta$. A market maker who sells calls is short delta and buys stock to get flat. As the stock moves, delta changes (that is gamma), so the hedge must be adjusted.` ] },
+      ],
+      examples: [
+        { t: "Hedge a short call position", q: S`You are short 30 calls (100 shares each) with delta $0.55$. Hedge?`, a: [S`Position delta $-30 \times 100 \times 0.55 = -1650$: buy 1650 shares.`] },
+        { t: "Put delta", q: S`A call has delta $0.7$. What is the delta of the same-strike put?`, a: [S`$0.7 - 1 = -0.3$.`] },
+      ],
+      traps: [S`Forgetting the contract multiplier.`, S`Using the call delta for a put.`],
+      tips: [S`Write position delta with a sign before deciding to buy or sell stock.`],
+      checks: [
+        { q: S`You are short $30$ calls ($100$ shares each) with delta $0.55$. How many shares do you buy to be flat delta?`, answer: 1650, why: S`$30 \times 100 \times 0.55 = 1650$.` },
+        { q: S`A call has delta $0.7$. What is the delta of the same-strike put?`, answer: -0.3, tol: 0.001, why: S`$\Delta_P = \Delta_C - 1$.` },
+        { q: S`You are long 10 puts (100 shares each) with delta $-0.4$. How many shares do you buy to hedge?`, answer: 400, why: S`Position delta $-400$: buy $400$ shares.` },
+        { q: S`An option has delta $0.6$. The stock rises by $2$. Roughly how much does the option gain?`, answer: 1.2, tol: 0.001, why: S`$0.6 \times 2 = 1.20$.` },
+        { q: S`Long a straddle exactly at the money: roughly what is its delta?`, answer: 0, tol: 0.05, why: S`$0.5 + (-0.5) = 0$.` },
+        { q: S`Long 5 calls (delta 0.3) and short 2 calls (delta 0.8), 100 shares each. What is the position delta?`, answer: -10, why: S`$500 \times 0.3 - 200 \times 0.8 = 150 - 160 = -10$.` },
+      ] },
+
+    { id: "options5", group: "options", title: "Gamma, vega and theta", tags: OT,
+      desc: "Convexity, volatility exposure and time decay: the Greeks that decide whether a hedged book makes money.",
+      intro: S`Once you are delta-hedged, your P&L comes from the other Greeks: **gamma** ($\Gamma$, how fast delta changes), **vega** (sensitivity to volatility) and **theta** (time decay).`,
+      sections: [
+        { h: "Gamma P&L", p: [
+          S`A delta-hedged long-option position makes about
+$$\tfrac12\,\Gamma\,(\Delta S)^2$$
+on a move $\Delta S$, and pays theta every day for that convexity. Long gamma wins when realised volatility beats implied; short gamma wins when the stock sits still.` ] },
+        { h: "Where the Greeks peak", p: [
+          S`Gamma and theta are largest at the money and near expiry. Vega is largest at the money and for long-dated options.` ] },
+        { h: "Vega", p: [
+          S`Vega is the price change per 1 volatility point. ATM: vega $\approx 0.4\,S\sqrt T / 100$. If implied vol rises from $20\%$ to $22\%$ and vega is $0.15$, the option gains $0.30$.` ] },
+      ],
+      examples: [
+        { t: "Gamma scalp", q: S`Gamma $0.05$, delta-hedged, the stock jumps $4$. Gain?`, a: [S`$\frac12 \times 0.05 \times 16 = 0.40$.`] },
+        { t: "Theta versus gamma", q: S`Theta is $-0.10$ a day and gamma $0.05$. What daily move breaks even?`, a: [S`$\frac12 \times 0.05 \times x^2 = 0.10$ gives $x = 2$.`] },
+      ],
+      traps: [S`Thinking long options are free money in a volatile market: you pay theta whether or not the move comes.`],
+      tips: [S`"Long gamma, short theta" always go together.`],
+      checks: [
+        { q: S`You are long options with gamma $0.05$ and delta-hedged. The stock jumps by $4$. Roughly what do you make from gamma?`, answer: 0.4, tol: 0.001, why: S`$\frac12 \times 0.05 \times 16 = 0.40$.` },
+        { q: S`Vega $0.25$; implied vol falls by 3 points. Price change?`, answer: -0.75, tol: 0.001, why: S`$-3 \times 0.25 = -0.75$.` },
+        { q: S`Theta $-0.08$ a day, gamma $0.04$. What daily move in the stock breaks even?`, answer: 2, tol: 0.01, why: S`$\frac12 \times 0.04 \times x^2 = 0.08$ gives $x = 2$.` },
+        { q: S`Where is gamma largest?`, choices: ["At the money, near expiry", "Deep in the money", "Far out of the money, long-dated"], answer: "At the money, near expiry", why: S`Delta changes fastest there.` },
+        { q: S`You sold options and delta-hedged. The stock barely moves for a week. Do you make or lose money?`, choices: ["Make money", "Lose money", "Break even"], answer: "Make money", why: S`Short gamma collects theta when nothing moves.` },
+        { q: S`$S = 100$, $T = 1$. Roughly what is the ATM vega per vol point?`, answer: 0.4, tol: 0.02, why: S`$0.4 \times 100 \times 1 / 100 = 0.40$.` },
+      ] },
+
+    { id: "options6", group: "options", title: "Quoting an option market", tags: OT,
+      desc: "How an options market-making interview runs: theo, width from vega and uncertainty, skew, hedging fills.",
+      intro: S`In an options market-making interview you get a stock price, a strike, a time and a volatility (or enough to estimate one). You quote a two-way price, get filled, hedge, and adjust. Every step is the market-making lesson plus the Greeks.`,
+      sections: [
+        { h: "Theo and width", p: [
+          S`Price the option (theo) with the ATM rule or parity. Set the width from your uncertainty: if your vol estimate could be $\pm 2$ points and vega is $0.20$, your theo is uncertain by $\pm 0.40$, so quote theo $\pm 0.40$.` ] },
+        { h: "After a fill", p: [
+          S`If you sell calls, you are short delta: buy $\Delta \times$ size in stock straight away. Then skew: having sold, raise your market so the next buyer pays more and sellers are encouraged.` ] },
+        { h: "Implied volatility", p: [
+          S`Interviewers often quote in vol points. Converting: price change $\approx$ vega $\times$ vol change. A market of $19$ / $21$ vol with vega $0.15$ is $0.30$ wide in price.` ] },
+      ],
+      examples: [
+        { t: "Set a market", q: S`Theo $3.00$, vega $0.20$, vol uncertain by $\pm 2$ points.`, a: [S`Bid $2.60$, offer $3.40$.`] },
+        { t: "Hedge a fill", q: S`You sell 20 calls (delta 0.4, 100 shares each).`, a: [S`Buy $800$ shares to stay flat delta.`] },
+      ],
+      traps: [S`Forgetting to hedge delta after a fill.`, S`Skewing the wrong way after you trade.`],
+      tips: [S`Quote in vol, think in price; state your hedge every time you are filled.`],
+      checks: [
+        { q: S`Theo $3.00$, vega $0.20$, and your vol estimate could be $2$ points off either way. Where do you bid?`, answer: 2.6, tol: 0.001, why: S`$3.00 - 0.40 = 2.60$.` },
+        { q: S`You sell 20 calls with delta $0.4$ (100 shares each). How many shares do you buy?`, answer: 800, why: S`$20 \times 100 \times 0.4 = 800$.` },
+        { q: S`Your market is $19$ / $21$ vol and vega is $0.15$. How wide is it in price?`, answer: 0.3, tol: 0.001, why: S`$2 \times 0.15 = 0.30$.` },
+        { q: S`You just sold calls. Which way do you skew your next quote?`, choices: ["Up", "Down", "Keep it the same"], answer: "Up", why: S`You want buyers to pay more and sellers to come to you.` },
+        { q: S`$S = 100$, $\sigma = 20\%$, $T = 0.25$, zero rates. Roughly what is the ATM call theo?`, answer: 4, tol: 0.15, why: S`$0.4 \times 100 \times 0.2 \times 0.5 = 4$.` },
+        { q: S`You bought 10 puts (delta $-0.3$, 100 shares). What is your stock hedge?`, choices: ["Buy 300 shares", "Sell 300 shares", "Buy 30 shares"], answer: "Buy 300 shares", why: S`Position delta $-300$: buy 300 shares.` },
+      ] },
+
+    /* ---------------- Futures & basis ---------------- */
+    { id: "futures1", group: "futures", title: "Cost of carry", tags: FT,
+      desc: "Why a future trades away from spot: financing, storage, dividends and yields, and how to price it.",
+      intro: S`A future fixes today the price for delivery later. Owning the asset until then costs financing (and storage) but earns any dividends or yield, so the fair future is spot plus the net cost of carrying it:
+$$F = S\left(1 + r\,\tfrac{t}{365}\right) - D \quad\text{(simple interest)}$$
+$$F = S e^{(r - q)T} \quad\text{(continuous, yield } q\text{)}.$$`,
+      sections: [
+        { h: "Carry components", p: [
+          S`**Interest** on the money tied up (adds). **Storage and insurance** for commodities (adds). **Dividends** or a convenience yield (subtracts). An equity index future with dividends above the interest rate trades **below** spot.` ] },
+        { h: "Mental arithmetic for carry", p: [
+          S`Interest in days: $S \times r \times \frac{t}{365}$. Rates like $3.65\%$ make this neat: $1\%$ of a year is $3.65$ days.` ] },
+      ],
+      examples: [
+        { t: "Index future", q: S`Spot $1{,}000$, rates $3.65\%$, $100$ days, dividends $4$.`, a: [S`Carry $1000 \times 0.0365 \times \frac{100}{365} = 10$; $F = 1000 + 10 - 4 = 1006$.`] },
+      ],
+      traps: [S`Forgetting to subtract dividends.`, S`Using a 360-day year when the question says 365.`],
+      tips: [S`Compute carry in currency units first, then add and subtract.`],
+      checks: [
+        { q: S`Spot $1{,}000$, rates $3.65\%$, $100$ days, dividends $4$. What is the fair future?`, answer: 1006, tol: 0.01, why: S`$1000 + 10 - 4 = 1006$.` },
+        { q: S`Spot $500$, rates $7.3\%$, $50$ days, no dividends. Fair future?`, answer: 505, tol: 0.01, why: S`$500 \times 0.073 \times \frac{50}{365} = 5$.` },
+        { q: S`Gold at $2{,}000$, rates $5\%$, storage $0.5\%$ a year, 1 year (simple). Fair future?`, answer: 2110, tol: 0.01, why: S`$2000 \times 1.055 = 2110$.` },
+        { q: S`Spot $100$, rates $2\%$, dividend yield $3\%$, 1 year (simple). Is the future above or below spot?`, choices: ["Below", "Above", "Equal"], answer: "Below", why: S`Net carry $2\% - 3\% < 0$.` },
+        { q: S`Spot $200$, $r = 5\%$ continuous, $T = 1$, no yield ($e^{0.05} \approx 1.0513$). Fair future?`, answer: 200 * Math.exp(0.05), tol: 0.05, why: S`$200 \times 1.0513 \approx 210.25$.` },
+      ] },
+
+    { id: "futures2", group: "futures", title: "Basis and convergence", tags: FT,
+      desc: "The gap between future and spot, why it shrinks to zero at expiry, and trading rich or cheap basis.",
+      intro: S`The **basis** is $F - S$. Fair basis is the net carry, and it shrinks to zero as expiry approaches because the future and spot are the same thing on delivery day.`,
+      sections: [
+        { h: "Rich and cheap", p: [
+          S`If the future trades above fair, the basis is **rich**: sell the future, buy spot. Below fair it is **cheap**: buy the future, sell spot. Either way the gap closes by expiry.` ] },
+        { h: "How fast it converges", p: [
+          S`Fair basis is proportional to the days left: halfway to expiry, interest carry halves (dividends drop out when paid).` ] },
+      ],
+      examples: [
+        { t: "Fair basis", q: S`Spot $3{,}000$, rates $4.38\%$, $50$ days, no dividends.`, a: [S`$3000 \times 0.0438 \times \frac{50}{365} = 18$.`] },
+      ],
+      traps: [S`Quoting basis as $S - F$ when the desk uses $F - S$; say which you use.`],
+      tips: [S`Think "fair basis = carry left"; it falls in a straight line with time.`],
+      checks: [
+        { q: S`Spot $3{,}000$, rates $4.38\%$, $50$ days, no dividends. What is the fair basis $F - S$?`, answer: 18, tol: 0.01, why: S`$3000 \times 0.0438 \times 50/365 = 18$.` },
+        { q: S`Fair basis is $12$ with 60 days left (no dividends). What is fair basis with 15 days left?`, answer: 3, tol: 0.001, why: S`Proportional to time: $12 \times \frac{15}{60} = 3$.` },
+        { q: S`Fair basis is $10$ but the future trades $14$ over spot. What do you do?`, choices: ["Sell future, buy spot", "Buy future, sell spot", "Nothing"], answer: "Sell future, buy spot", why: S`Basis is rich by $4$.` },
+        { q: S`What is the basis on the expiry date?`, answer: 0, tol: 0.001, why: S`Future and spot converge.` },
+        { q: S`Spot $4{,}000$, rates $3.65\%$, $73$ days, dividends $20$. Fair basis?`, answer: 9.2, tol: 0.01, why: S`$4000 \times 0.0365 \times 0.2 = 29.2$; minus $20$: $9.2$.` },
+      ] },
+
+    { id: "futures3", group: "futures", title: "Cash-and-carry arbitrage", tags: FT,
+      desc: "Lock in a riskless profit when a future is rich: borrow, buy spot, sell the future, deliver.",
+      intro: S`If $F$ is above fair, borrow cash, buy spot, and sell the future. At expiry deliver the asset for $F$ and repay the loan: the profit is $F - \text{fair}$, whatever the price does. The reverse (sell spot, lend cash, buy the future) works when $F$ is cheap.`,
+      sections: [
+        { h: "Costs that eat the edge", p: [
+          S`Bid–ask spreads, borrowing above the risk-free rate, short-selling fees and dividend uncertainty all shrink the arbitrage. In practice there is a no-arbitrage **band** around fair.` ] },
+      ],
+      examples: [
+        { t: "Lock it in", q: S`Fair value $2{,}030$; the future is bid at $2{,}036.50$.`, a: [S`Sell the future, buy spot, finance it: lock in $6.50$ per unit before costs.`] },
+      ],
+      traps: [S`Forgetting the financing leg; that is what makes fair value differ from spot.`],
+      tips: [S`Write the cash flows today and at expiry in a two-row table.`],
+      checks: [
+        { q: S`Fair value $2{,}030$ and the future is bid at $2{,}036.50$. What profit per unit does cash and carry lock in?`, answer: 6.5, tol: 0.001, why: S`$2036.50 - 2030 = 6.50$.` },
+        { q: S`Spot $100$, rates $4\%$, 1 year (simple), no income. The future is $107$. Profit per unit?`, answer: 3, tol: 0.001, why: S`Fair $104$; $107 - 104 = 3$.` },
+        { q: S`Spot $100$, rates $4\%$, 1 year, the future is $101$. Which trade?`, choices: ["Reverse cash and carry", "Cash and carry", "None"], answer: "Reverse cash and carry", why: S`The future is cheap: sell spot, lend, buy the future.` },
+        { q: S`In a reverse cash and carry, what do you do with the stock today?`, choices: ["Sell (short) it", "Buy it", "Nothing"], answer: "Sell (short) it", why: S`You sell spot and lend the proceeds.` },
+        { q: S`Fair $500$, future $503$, round-trip costs $1.20$. Net arbitrage profit?`, answer: 1.8, tol: 0.001, why: S`$3 - 1.20 = 1.80$.` },
+      ] },
+
+    { id: "futures4", group: "futures", title: "Implied repo rate", tags: FT,
+      desc: "Back out the financing rate a futures price implies and compare it with your own funding.",
+      intro: S`The implied repo rate is the interest rate that makes the futures price fair. With dividends $D$ and $t$ days,
+$$r_{\text{impl}} = \left(\frac{F + D}{S} - 1\right)\frac{365}{t}.$$`,
+      sections: [
+        { h: "Using it", p: [
+          S`If the implied repo is **above** your funding rate, cash and carry earns more than it costs: do it. If it is **below**, reverse it. Repo traders compare implied repo across contracts to find the cheapest to fund.` ] },
+      ],
+      examples: [
+        { t: "Back it out", q: S`Spot $250$, future $252.50$, dividends $1.25$, $146$ days.`, a: [S`$\frac{253.75}{250} - 1 = 0.015$; times $\frac{365}{146} = 2.5$: $3.75\%$.`] },
+      ],
+      traps: [S`Leaving dividends out of the numerator.`],
+      tips: [S`Day counts like 73, 146 and 219 are fifths of a year.`],
+      checks: [
+        { q: S`Spot $250$, future $252.50$, dividends $1.25$, $146$ days. What is the implied repo rate, in %?`, answer: 3.75, tol: 0.01, why: S`$0.015 \times 2.5 = 3.75\%$.` },
+        { q: S`Spot $1{,}000$, future $1{,}010$, no dividends, $73$ days. Implied repo, in %?`, answer: 5, tol: 0.01, why: S`$0.01 \times 5 = 5\%$.` },
+        { q: S`Implied repo is $5\%$ and you fund at $4\%$. Which trade earns the spread?`, choices: ["Cash and carry", "Reverse cash and carry", "Neither"], answer: "Cash and carry", why: S`The future pays you more for carrying than it costs you.` },
+        { q: S`Spot $400$, future $402$, dividends $2$, $182.5$ days. Implied repo, in %?`, answer: 2, tol: 0.01, why: S`$\frac{404}{400} - 1 = 0.01$; times 2: $2\%$.` },
+      ] },
+
+    { id: "futures5", group: "futures", title: "Calendar spreads", tags: FT,
+      desc: "Price the spread between two expiries and trade the carry between them.",
+      intro: S`A calendar spread is long one expiry and short another. Its fair value is the carry between the two dates:
+$$F_2 - F_1 \approx S\,r\,\frac{t_2 - t_1}{365} - D_{(t_1, t_2]}.$$`,
+      sections: [
+        { h: "Why trade it", p: [
+          S`The spread removes most exposure to the spot price and leaves exposure to rates and dividends between the two dates. Rolling a hedge from the front month to the next is a calendar trade.` ] },
+      ],
+      examples: [
+        { t: "Fair spread", q: S`Spot $2{,}000$, rates $5.475\%$, 60 and 120 days, no dividends.`, a: [S`$2000 \times 0.05475 \times \frac{60}{365} = 18$.`] },
+      ],
+      traps: [S`Including dividends paid before the first expiry; only those between the two dates matter.`],
+      tips: [S`Price each leg from spot, then subtract.`],
+      checks: [
+        { q: S`Spot $2{,}000$, rates $5.475\%$, contracts $60$ and $120$ days out, no dividends. What is the fair calendar spread?`, answer: 18, tol: 0.01, why: S`$2000 \times 0.05475 \times 60/365 = 18$.` },
+        { q: S`Same, but a dividend of $5$ is paid at day 90. Fair spread?`, answer: 13, tol: 0.01, why: S`$18 - 5 = 13$.` },
+        { q: S`A dividend is paid at day 30 (before both expiries). Does it change the fair spread between the 60- and 120-day contracts?`, choices: ["No", "Yes, lowers it", "Yes, raises it"], answer: "No", why: S`Both futures are reduced by it equally.` },
+        { q: S`Spot $1{,}000$, rates $7.3\%$, 30- and 80-day contracts, no dividends. Fair spread?`, answer: 10, tol: 0.01, why: S`$1000 \times 0.073 \times \frac{50}{365} = 10$.` },
+      ] },
+
+    { id: "futures6", group: "futures", title: "Hedging with futures", tags: FT,
+      desc: "Size a beta hedge, minimum-variance hedge ratios and what is left over (basis risk).",
+      intro: S`To hedge a stock portfolio with index futures, sell enough contracts to cancel its market exposure:
+$$N = \beta \times \frac{\text{portfolio value}}{F \times \text{multiplier}}.$$`,
+      sections: [
+        { h: "Minimum-variance hedge", p: [
+          S`For a general hedge, the ratio that minimises variance is $h^* = \rho\,\frac{\sigma_S}{\sigma_F}$, which is the regression slope of the asset on the hedge instrument. Beta is exactly this for an equity portfolio against the index.` ] },
+        { h: "What remains", p: [
+          S`A hedge removes market risk, not stock-specific or basis risk. A perfectly hedged portfolio earns roughly the risk-free rate plus its alpha.` ] },
+      ],
+      examples: [
+        { t: "Index hedge", q: S`$\$4.8$m portfolio, beta $1.5$, future $4{,}800$, multiplier $50$.`, a: [S`$N = 1.5 \times \frac{4{,}800{,}000}{240{,}000} = 30$: sell 30 contracts.`] },
+      ],
+      traps: [S`Forgetting the contract multiplier or beta.`],
+      tips: [S`Compute one contract's notional first ($F \times$ multiplier).`],
+      checks: [
+        { q: S`$4.8$m portfolio, beta $1.5$, future $4{,}800$, multiplier $50$. How many contracts do you sell?`, answer: 30, tol: 0.01, why: S`$1.5 \times 4{,}800{,}000 / 240{,}000 = 30$.` },
+        { q: S`$\$2$m portfolio, beta $0.8$, future $4{,}000$, multiplier $50$. Contracts to sell?`, answer: 8, tol: 0.01, why: S`$0.8 \times 2{,}000{,}000 / 200{,}000 = 8$.` },
+        { q: S`$\rho = 0.9$, $\sigma_S = 20\%$, $\sigma_F = 15\%$. Minimum-variance hedge ratio?`, answer: 1.2, tol: 0.001, why: S`$0.9 \times \frac{20}{15} = 1.2$.` },
+        { q: S`You want to raise a portfolio's beta from $1.0$ to $1.5$ using futures. Do you buy or sell them?`, choices: ["Buy", "Sell"], answer: "Buy", why: S`Adding long index exposure raises beta.` },
+      ] },
+
+    /* ---------------- Prediction markets ---------------- */
+    { id: "pred1", group: "pred", title: "Prices are probabilities", tags: PT,
+      desc: "A contract paying \$100 if an event happens trades at the market's probability, and how to read odds formats.",
+      intro: S`A binary contract pays \$100 if the event happens and \$0 otherwise. Its fair price is $100 \times \mathbb{P}(\text{event})$, so a price of \$62 means the market thinks the event is about $62\%$ likely.`,
+      sections: [
+        { h: "Odds formats", p: [
+          S`**Decimal odds** $d$: you get $d$ back per \$1 staked if you win, so $p = \frac1d$. **Fractional odds** $a/b$: profit $a$ per $b$ staked, so $p = \frac{b}{a+b}$. **American**: $+150$ means \$150 profit per \$100 ($p = 0.4$); $-200$ means stake \$200 to win \$100 ($p = \frac23$).` ] },
+        { h: "Bid, ask and mid", p: [
+          S`A market of $60$ / $64$ means you can sell YES at \$60 or buy at \$64. The mid ($62$) is the best single estimate of the market's probability; the spread is the cost of trading.` ] },
+      ],
+      examples: [
+        { t: "Read the odds", q: S`A YES contract paying \$100 trades at \$15.`, a: [S`Probability $15\%$; decimal odds $\frac1{0.15} \approx 6.67$; fractional about $17/3$.`] },
+      ],
+      traps: [S`Reading the ask as the probability instead of the mid.`],
+      tips: [S`Convert everything to probabilities before comparing.`],
+      checks: [
+        { q: S`A YES contract paying \$100 trades at \$15. What decimal odds does that imply?`, answer: 100 / 15, tol: 0.01, why: S`$\frac1{0.15} \approx 6.67$.` },
+        { q: S`Fractional odds $3/1$. What is the implied probability?`, answer: 0.25, tol: 0.001, why: S`$\frac{1}{3+1} = 0.25$.` },
+        { q: S`American odds $-150$. What is the implied probability?`, answer: 0.6, tol: 0.001, why: S`$\frac{150}{150 + 100} = 0.6$.` },
+        { q: S`The market is $70$ / $74$. What is the mid-implied probability, in %?`, answer: 72, tol: 0.01, why: S`$\frac{70 + 74}{2} = 72$.` },
+        { q: S`Decimal odds $2.5$. Implied probability?`, answer: 0.4, tol: 0.001, why: S`$\frac{1}{2.5} = 0.4$.` },
+      ] },
+
+    { id: "pred2", group: "pred", title: "Expected value of a trade", tags: PT,
+      desc: "Compare your probability with the price, include the spread, and decide whether to buy, sell or pass.",
+      intro: S`If you think YES has probability $q$ and you can buy at \$$a$ (on a \$100 contract), your expected profit per contract is
+$$\text{EV}_{\text{buy}} = 100q - a, \qquad \text{EV}_{\text{sell}} = b - 100q.$$`,
+      sections: [
+        { h: "Edge", p: [
+          S`Your **edge** is the gap between your probability and the price you can trade at, not the mid. With a market of $60$ / $64$ and $q = 0.63$, buying has EV $-1$ and selling has EV $-3$: pass.` ] },
+        { h: "Confidence matters", p: [
+          S`A positive EV from a guess is still a guess. Size by how sure you are (Kelly, later) and ask what the other side might know.` ] },
+      ],
+      examples: [
+        { t: "Buy or pass", q: S`You think YES is $70\%$ likely; the ask is \$63.`, a: [S`EV $= 70 - 63 = \$7$ per contract: buy.`] },
+      ],
+      traps: [S`Using the mid instead of the side you actually trade on.`],
+      tips: [S`Quickly check both sides: $100q - a$ and $b - 100q$.`],
+      checks: [
+        { q: S`You think YES is $70\%$ likely and the ask is \$63. What is the EV of buying one \$100 contract?`, answer: 7, tol: 0.01, why: S`$70 - 63 = 7$.` },
+        { q: S`You think YES is $30\%$ likely; the market is $35$ / $38$. EV of selling one at the bid?`, answer: 5, tol: 0.01, why: S`$35 - 30 = 5$.` },
+        { q: S`You think $55\%$; the market is $53$ / $57$. What do you do?`, choices: ["Pass", "Buy", "Sell"], answer: "Pass", why: S`Buy EV $-2$, sell EV $-2$.` },
+        { q: S`You buy 20 contracts at \$40 and think YES is $50\%$. Total EV?`, answer: 200, tol: 0.01, why: S`$20 \times (50 - 40) = 200$.` },
+        { q: S`At what probability are you indifferent to buying at \$72?`, answer: 0.72, tol: 0.001, why: S`When $100q = 72$.` },
+      ] },
+
+    { id: "pred3", group: "pred", title: "Overround", tags: PT,
+      desc: "Why bookmaker probabilities add to more than 100%, how to remove the margin, and what it costs you.",
+      intro: S`Add up the implied probabilities of all outcomes. Above $100\%$, the excess is the **overround** (the book's margin): you are paying it on every bet.`,
+      sections: [
+        { h: "Removing the margin", p: [
+          S`The simplest fix is to scale each probability by the total: $p_i^{\text{fair}} = \frac{p_i}{\sum_j p_j}$. If the book prices outcomes at $40\%$, $35\%$, $30\%$ (total $105\%$), fair is about $38.1\%$, $33.3\%$, $28.6\%$.` ] },
+        { h: "Exchanges", p: [
+          S`On an exchange, use the best ask on each outcome to buy; the asks typically sum to over $100\%$ and the bids to under $100\%$. If the asks sum below $100\%$, buying all outcomes is an arbitrage.` ] },
+      ],
+      examples: [
+        { t: "A match market", q: S`Decimal odds $1.80$, $3.50$, $4.50$.`, a: [S`$55.6\% + 28.6\% + 22.2\% = 106.3\%$: overround $6.3\%$.`] },
+      ],
+      traps: [S`Comparing a single outcome's probability with your view without removing the margin.`],
+      tips: [S`Always add the probabilities first; it tells you how much you are paying.`],
+      checks: [
+        { q: S`Three outcomes are priced at $40\%$, $35\%$ and $30\%$. What is the overround, in %?`, answer: 5, tol: 0.01, why: S`$105\% - 100\%$.` },
+        { q: S`Same book: what is the margin-free probability of the first outcome, in %? (1 d.p.)`, answer: 40 / 1.05, tol: 0.06, why: S`$\frac{40}{105} \approx 38.1\%$.` },
+        { q: S`Decimal odds $1.90$ and $1.90$ on a two-way market. Overround, in %? (1 d.p.)`, answer: 200 / 1.9 - 100, tol: 0.06, why: S`$2 \times 52.6\% = 105.3\%$.` },
+        { q: S`Best asks on three outcomes are \$30, \$33 and \$35. Is buying all three an arbitrage?`, choices: ["Yes, locks in \$2", "No", "Yes, locks in \$98"], answer: "Yes, locks in \$2", why: S`You pay \$98 and collect \$100.` },
+      ] },
+
+    { id: "pred4", group: "pred", title: "Arbitrage across outcomes", tags: PT,
+      desc: "Dutch books: when prices across mutually exclusive outcomes or related markets let you lock in profit.",
+      intro: S`If outcomes are mutually exclusive and exhaustive, exactly one pays \$100. Buying one of each for less than \$100, or selling one of each for more, locks in the difference. That is a **Dutch book**.`,
+      sections: [
+        { h: "Across books", p: [
+          S`Take the best price on each outcome from different books. With two outcomes at decimal odds $d_1$ and $d_2$, an arbitrage exists when $\frac1{d_1} + \frac1{d_2} < 1$. Stake in proportion to $\frac1{d_i}$ to make the payout equal.` ] },
+        { h: "Related markets", p: [
+          S`Prices must be consistent: $\mathbb{P}(A \text{ and } B) \le \mathbb{P}(A)$, and "wins by 3+" can't be priced above "wins". Any inconsistency is a trade.` ] },
+      ],
+      examples: [
+        { t: "Two books", q: S`Book X: Team A at $2.10$. Book Y: Team B at $2.10$. Stake \$100 total.`, a: [S`$\frac1{2.1} + \frac1{2.1} = 0.952 < 1$. Stake \$50 each; either way you get \$105: profit \$5.`] },
+      ],
+      traps: [S`Ignoring limits, fees and the risk that one leg isn't filled.`],
+      tips: [S`Equalise the payouts; the profit is the same whichever outcome happens.`],
+      checks: [
+        { q: S`Two outcomes with asks \$47 and \$50 (bids \$45 and \$48). How much does buying one of each lock in?`, answer: 3, tol: 0.01, why: S`Pay \$97, collect \$100.` },
+        { q: S`Decimal odds $2.10$ on A at one book and $2.10$ on B at another. With \$100 staked equally, what is the locked profit?`, answer: 5, tol: 0.01, why: S`Each \$50 returns \$105.` },
+        { q: S`Three outcomes have bids \$40, \$35, \$30. Selling one of each locks in how much?`, answer: 5, tol: 0.01, why: S`Collect \$105, pay out \$100.` },
+        { q: S`"Team wins" trades at $55$ and "Team wins by 10+" at $58$. Which trade is the arbitrage?`, choices: ["Sell 'by 10+', buy 'wins'", "Buy 'by 10+', sell 'wins'", "No arbitrage"], answer: "Sell 'by 10+', buy 'wins'", why: S`"By 10+" can never be more likely than "wins".` },
+      ] },
+
+    { id: "pred5", group: "pred", title: "Sizing with Kelly", tags: PT,
+      desc: "How much of your bankroll to stake when you have an edge, and why traders bet a fraction of Kelly.",
+      intro: S`The Kelly criterion stakes the fraction of bankroll that maximises long-run growth. For a bet at net odds $b$ (win $b$ per \$1) with win probability $p$:
+$$f^* = \frac{bp - (1-p)}{b} = p - \frac{1-p}{b}.$$
+For a binary contract priced at $c$ (as a probability), buying YES with your belief $p$ gives $f^* = \frac{p - c}{1 - c}$.`,
+      sections: [
+        { h: "Why fractional Kelly", p: [
+          S`Full Kelly is very volatile and assumes your probability is exactly right. Overbetting is much worse than underbetting: at twice Kelly, expected growth falls to zero. Most traders use half Kelly or less.` ] },
+        { h: "No edge, no bet", p: [
+          S`If $bp < 1 - p$ the formula is negative: don't bet (or take the other side if you can).` ] },
+      ],
+      examples: [
+        { t: "Even-money edge", q: S`A $55\%$ coin at even money ($b = 1$).`, a: [S`$f^* = 0.55 - 0.45 = 10\%$ of bankroll.`] },
+        { t: "Binary contract", q: S`Price $20\%$, your view $28\%$.`, a: [S`$\frac{0.28 - 0.20}{0.80} = 10\%$.`] },
+      ],
+      traps: [S`Betting full Kelly on a guessed probability.`, S`Forgetting that the bankroll changes after each bet.`],
+      tips: [S`For even money, Kelly is simply "edge": $2p - 1$.`],
+      checks: [
+        { q: S`Price $20\%$, your view $28\%$. What Kelly fraction do you stake, in %?`, answer: 10, tol: 0.01, why: S`$\frac{0.08}{0.80} = 10\%$.` },
+        { q: S`A $60\%$ coin at even money. Kelly fraction, in %?`, answer: 20, tol: 0.01, why: S`$2(0.6) - 1 = 0.2$.` },
+        { q: S`Odds $2:1$ ($b = 2$), $p = 0.4$. Kelly fraction, in %?`, answer: 10, tol: 0.01, why: S`$0.4 - \frac{0.6}{2} = 0.1$.` },
+        { q: S`Odds $1:1$, $p = 0.45$. What should you stake?`, choices: ["Nothing", "5%", "45%"], answer: "Nothing", why: S`Negative edge: $f^* = -0.1$.` },
+        { q: S`Full Kelly says $16\%$. What does half Kelly stake on a \$10,000 bankroll?`, answer: 800, tol: 0.01, why: S`$0.08 \times 10{,}000 = 800$.` },
+      ] },
+
+    { id: "pred6", group: "pred", title: "Updating on news", tags: PT,
+      desc: "Move a price on new information using likelihood ratios, and tell real news from noise.",
+      intro: S`When news arrives, update your probability with Bayes' rule in odds form:
+$$\text{posterior odds} = \text{prior odds} \times \frac{\mathbb{P}(\text{news} \mid \text{YES})}{\mathbb{P}(\text{news} \mid \text{NO})}.$$
+Then move your quote to the new probability before others trade on you.`,
+      sections: [
+        { h: "How big a move?", p: [
+          S`A likelihood ratio of 2 doubles the odds: $20\% \to 33\%$, $50\% \to 67\%$. Ratios near 1 are noise. Several independent pieces multiply.` ] },
+        { h: "Market making through news", p: [
+          S`Widen when news is about to land, update quickly, and be suspicious of large one-sided flow just before an announcement: someone may know.` ] },
+      ],
+      examples: [
+        { t: "Doubling evidence", q: S`Prior $20\%$; the news is twice as likely if YES.`, a: [S`Odds $1:4 \to 2:4$, so $\frac26 \approx 33.3\%$.`] },
+      ],
+      traps: [S`Adding probabilities instead of multiplying odds.`, S`Overreacting to weak evidence.`],
+      tips: [S`Work in odds; convert back to a price only at the end.`],
+      checks: [
+        { q: S`Prior $20\%$. News arrives that is twice as likely if YES. What is the new probability, in %?`, answer: 100 / 3, tol: 0.05, why: S`$\frac{2}{6} \approx 33.3\%$.` },
+        { q: S`Prior $50\%$. Evidence with likelihood ratio 3. New probability, in %?`, answer: 75, tol: 0.05, why: S`Odds $3:1$: $75\%$.` },
+        { q: S`Prior $60\%$. Evidence with likelihood ratio $\frac12$. New probability, in %?`, answer: 300 / 7 , tol: 0.06, why: S`Odds $1.5 \to 0.75$: $\frac{0.75}{1.75} \approx 42.9\%$.` },
+        { q: S`Prior $25\%$; two independent signals each with likelihood ratio 2. New probability, in %?`, answer: 100 * 4 / 7, tol: 0.06, why: S`Odds $\frac13 \times 4 = \frac43$: $\frac{4}{7} \approx 57.1\%$.` },
+      ] },
+  ];
+})();

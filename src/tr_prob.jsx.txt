@@ -1,0 +1,61 @@
+/* Probability Trainer: rapid probability and expected-value questions in the style of Optiver's Beat the Odds
+   and the SIG / Jane Street phone screens. Five options (or typed), one clock per question, optional negative marking. */
+(function () {
+  const { TH } = TIP;
+  const { trainer, options, frac, gcd } = TIP_DRILL;
+  const K = TIP_KIT;
+  const C = (n, k) => { if (k < 0 || k > n) return 0; let r = 1; for (let i = 1; i <= k; i++) r = r * (n - k + i) / i; return Math.round(r); };
+  const F = (n, d) => ({ v: n / d, s: frac(n, d) });
+  const D = v => ({ v, s: String(Math.round(v * 1000) / 1000) });
+
+  /* each family: r -> {q, a: {v, s}, why, kind, tex?} */
+  const FAM = [
+    r => { const s = r.int(4, 10); const w = [0, 0, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1][s]; return { q: `Two fair dice are rolled. What is the probability their sum is ${s}?`, a: F(w, 36), why: `${w} of the 36 ordered outcomes give ${s}.`, kind: "dice2" }; },
+    r => { const n = r.int(2, 5); return { q: `You roll ${n} dice. What is the probability of at least one six?`, a: F(Math.pow(6, n) - Math.pow(5, n), Math.pow(6, n)), why: `$1 - (5/6)^{${n}}$.`, kind: "atleast" }; },
+    r => { const n = r.pick([4, 5, 6, 8, 10]), k = r.int(1, n - 1); return { q: `A fair coin is flipped ${n} times. What is the probability of exactly ${k} heads?`, a: F(C(n, k), Math.pow(2, n)), why: `$\\binom{${n}}{${k}} / 2^{${n}} = ${C(n, k)}/${Math.pow(2, n)}$.`, kind: "binom" }; },
+    r => { const k = r.pick([2, 3]); const c = [["aces", 4], ["hearts", 13], ["kings", 4], ["red cards", 26]]; const [nm, m] = r.pick(c); return { q: `Draw ${k} cards without replacement. What is the probability all are ${nm}?`, a: F(C(m, k), C(52, k)), why: `$\\binom{${m}}{${k}}/\\binom{52}{${k}}$.`, kind: "cards" }; },
+    r => { const p = r.pick([1, 2, 5, 10]), se = r.pick([90, 95, 99]), fp = r.pick([5, 10, 20]); const num = p * se, den = p * se + (100 - p) * fp; return { q: `A condition affects ${p}% of people. A test detects it ${se}% of the time and gives false positives ${fp}% of the time. Given a positive test, what is the probability of the condition?`, a: D(num / den), why: `$\\frac{${p}\\cdot ${se}}{${p}\\cdot ${se} + ${100 - p}\\cdot ${fp}} \\approx ${(num / den).toFixed(3)}$.`, kind: "bayes" }; },
+    r => { const n = r.pick([2, 3, 4]); return { q: `What is the expected value of the maximum of ${n} rolls of a fair die?`, a: D([0, 0, 161 / 36, 4.9583, 5.2446][n]), why: `$\\sum_k \\mathbb{P}(\\max \\ge k) = \\sum_{k=1}^{6} \\left(1 - ((k-1)/6)^{${n}}\\right)$.`, kind: "maxdie" }; },
+    r => { const p = r.pick([[1, 6, 6], [1, 2, 2], [1, 4, 4], [1, 3, 3]]); return { q: `You repeat a trial that succeeds with probability ${p[0]}/${p[1]}. What is the expected number of trials until the first success?`, a: D(p[2]), why: `Geometric: $1/p = ${p[2]}$.`, kind: "geom" }; },
+    r => { const k = r.pick([2, 3]); const v = k === 2 ? 6 : 14; return { q: `How many flips of a fair coin do you expect until ${k === 2 ? "two" : "three"} heads in a row?`, a: D(v), why: `$2^{${k + 1}} - 2 = ${v}$ by first-step analysis.`, kind: "run" }; },
+    r => { const n = r.pick([3, 4, 5, 6]); return { q: `${n} people's hats are shuffled and handed back. What is the expected number who get their own hat?`, a: D(1), why: `Linearity: $n \\cdot \\frac1n = 1$.`, kind: "hats" }; },
+    r => { const a = r.pick([[3, 5], [2, 6], [4, 4], [1, 9]]); return { q: `An urn has ${a[0]} red and ${a[1]} blue balls. You draw two without replacement. What is the probability they are the same colour?`, a: F(a[0] * (a[0] - 1) + a[1] * (a[1] - 1), (a[0] + a[1]) * (a[0] + a[1] - 1)), why: `$\\frac{${a[0]}\\cdot${a[0] - 1} + ${a[1]}\\cdot${a[1] - 1}}{${a[0] + a[1]}\\cdot${a[0] + a[1] - 1}}$.`, kind: "urn" }; },
+    r => { const p = r.pick([0.3, 0.4, 0.6]); const v = p * p / (1 - 2 * p * (1 - p)); return { q: `You win each point with probability ${p}. From deuce you need two points in a row. What is your probability of winning?`, a: D(v), why: `$p^2 / (p^2 + (1-p)^2) = ${v.toFixed(3)}$.`, kind: "deuce" }; },
+    r => { const n = r.pick([3, 4, 5]); return { q: `${n} points are uniform on [0, 1]. What is the expected value of the smallest?`, a: F(1, n + 1), why: `Uniform order statistics: $\\frac{1}{n+1}$.`, kind: "unif" }; },
+    r => { const k = r.int(2, 5), N = r.pick([8, 10, 12]); return { q: `A fair gambler starts with \\$${k} and bets \\$1 per flip until reaching \\$${N} or \\$0. What is the probability of reaching \\$${N}?`, a: F(k, N), why: `Fair ruin: $k/N$.`, kind: "ruin" }; },
+    r => { return { q: `Roll a die; you may reroll once and must keep the second roll. What is the game worth?`, a: D(4.25), why: `Keep 4, 5, 6: $\\frac12 \\cdot 5 + \\frac12 \\cdot 3.5 = 4.25$.`, kind: "reroll" }; },
+    r => { const t = r.pick([10, 15, 20, 30]); const v = 1 - Math.pow(1 - t / 60, 2); return { q: `Two people arrive independently at uniform times within an hour and each waits ${t} minutes. What is the probability they meet?`, a: D(v), why: `$1 - (1 - ${t}/60)^2$.`, kind: "meet" }; },
+    r => { const lam = r.pick([1, 2, 3]); return { q: `Calls arrive as a Poisson process at ${lam} per hour. What is the probability of no calls in an hour?`, a: D(Math.exp(-lam)), why: `$e^{-${lam}}$.`, kind: "poisson" }; },
+    r => { const s = r.int(3, 6); return { q: `Two dice: given that at least one shows a ${s}, what is the probability both do?`, a: F(1, 11), why: `11 outcomes have at least one ${s}; one has two.`, kind: "cond" }; },
+    r => { return { q: `Three cards: one red/red, one red/black, one black/black. You draw a card and see a red face. What is the probability the other side is red?`, a: F(2, 3), why: `Of the 3 red faces, 2 are on the red/red card.`, kind: "cards3" }; },
+  ];
+  const show = a => a.s;
+  function gen(r, s) {
+    const q = r.pick(FAM)(r);
+    const ans = q.a.v;
+    const base = { text: q.q, kind: q.kind, answer: q.a.s + (q.a.s.includes("/") ? ` ≈ ${(ans).toFixed(3)}` : ""), explain: q.why,
+      prompt: <div className="pb-q"><K.T>{q.q}</K.T></div> };
+    if (s.format === "typed") return { ...base, input: "num", placeholder: "fraction or decimal", check: v => Math.abs(TIP_DRILL.num(v) - ans) <= Math.max(0.0015, Math.abs(ans) * 0.005) };
+    /* distractors: common mistakes as fractions or decimals of similar size */
+    const isF = q.a.s.includes("/");
+    const opts = options(r, ans, 5, (rr) => {
+      if (isF) { const [n, d] = q.a.s.split("/").map(Number); const c = rr.pick([[n + 1, d], [n - 1, d], [n, d - 1], [n, d + 1], [n * 2, d], [d - n, d], [n, d * 2]]); return c[0] > 0 && c[1] > 0 && c[0] / c[1] <= (ans > 1 ? 100 : 1) ? c[0] / c[1] : null; }
+      return Math.round((ans + rr.pick([-1, 1]) * ans * rr.pick([0.1, 0.2, 0.33, 0.5])) * 1000) / 1000;
+    });
+    const lab = v => { if (Math.abs(v - ans) < 1e-12) return q.a.s; if (isF) { for (let d = 1; d <= 2600; d++) { const n = Math.round(v * d); if (Math.abs(n / d - v) < 1e-12) return frac(n, d); } } return String(v); };
+    return { ...base, input: "choice", cols: 5, choices: opts.map(v => ({ value: v, label: lab(v), node: isF ? <TIP.Tex t={lab(v).replace(/^(\d+)\/(\d+)$/, "\\frac{$1}{$2}")} /> : <span>{lab(v)}</span> })), check: v => Math.abs(v - ans) < 1e-12 };
+  }
+
+  TIP_TRAINERS.register(trainer({
+    id: "prob", name: "Probability Trainer", version: 2,
+    blurb: "Rapid probability and expected-value questions like Optiver's Beat the Odds and the SIG and Jane Street phone screens: dice, cards, Bayes, linearity, waiting times and stopping games, with five options and negative marking.",
+    fields: [
+      { key: "count", label: "Questions", type: "num", min: 5, max: 40 },
+      { key: "time", label: "Time per question", type: "num", min: 10, max: 180, unit: "s" },
+      { key: "format", label: "Answer format", type: "sel", choices: [{ value: "mc", label: "Five options" }, { value: "typed", label: "Type the answer" }] },
+      { key: "pen", label: "Wrong answers", type: "sel", choices: [{ value: 0, label: "No penalty" }, { value: 0.5, label: "−½ point" }, { value: 1, label: "−1 point" }] },
+    ],
+    presets: { Easy: { count: 10, time: 90, format: "mc", pen: 0 }, Medium: { count: 20, time: 45, format: "mc", pen: 0.5 }, Hard: { count: 25, time: 40, format: "typed", pen: 1 } },
+    note: "Typed answers accept fractions (5/36), decimals or percentages, to about 0.5%.",
+  }, { gen, count: s => s.count, perQSecs: s => s.time, penalty: s => s.pen, variety: true, always: true }));
+})();
