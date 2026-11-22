@@ -56,7 +56,13 @@ var TIP_DRILL = (function () {
   }
 
   function Drill({ settings: s, onFinish, onRestart, spec, title }) {
+    /* spec.usePersist (Daily Challenge): the run is saved after every answer and picked up again on reopen */
+    const P = spec.usePersist ? spec.usePersist() : null;
     const [rng] = useState(() => jt(spec.seed ? spec.seed() : undefined));
+    const [init] = useState(() => { const r = P && P.run; if (!r) return null; const H = r.hist || []; for (let i = 0; i < H.length; i++) spec.gen(rng, s, i, H.slice(0, i)); return r; });
+    const replay = !!(init && init.done);
+    if (replay) onRestart = null;
+    else if (P) { const f0 = onFinish; onFinish = res => f0({ ...res, ts: t0 }); }
     const seenRef = useRef(null);
     if (!seenRef.current) seenRef.current = readSeen(spec.__id || "drill");
     const nextQ = (i, h) => {
@@ -70,14 +76,15 @@ var TIP_DRILL = (function () {
     const total = spec.count ? spec.count(s) : null;
     const sess = spec.sessionSecs ? spec.sessionSecs(s) : null;
     const pen = spec.penalty ? Number(spec.penalty(s)) || 0 : 0;
-    const [hist, setHist] = useState([]);
-    const [q, setQ] = useState(() => nextQ(0, []));
-    const [qi, setQi] = useState(0);
+    const [hist, setHist] = useState(() => init ? init.hist || [] : []);
+    const [q, setQ] = useState(() => nextQ(hist.length, hist));
+    const [qi, setQi] = useState(() => hist.length);
     const [fb, setFb] = useState(null);          /* {ok, given, timedOut, skipped} while the banner shows */
     const [picked, setPicked] = useState(null);  /* fast mode: brief tile reveal */
-    const [t0] = useState(() => Date.now());
+    const [t0] = useState(() => init ? init.t0 : Date.now());
     const [qt0, setQt0] = useState(() => Date.now());
-    const [done, setDone] = useState(false);
+    const [done, setDone] = useState(replay);
+    useEffect(() => { if (P && !init) P.save({ t0, hist: [] }); }, []);
     const [memo, setMemo] = useState(() => !!q.memo);
     const perQ = spec.perQSecs ? spec.perQSecs(s, qi) : null;
     const running = !done && !fb && !memo && picked == null;
@@ -90,6 +97,7 @@ var TIP_DRILL = (function () {
     function record(ok, given, extra) {
       const h = { ok, given: q.givenText ? q.givenText(given) : given, kind: q.kind, text: q.text, answer: q.answer, explain: q.explain, ms: Date.now() - qt0, ...(extra || {}) };
       setHist(x => [...x, h]);
+      if (P) P.save({ t0, hist: [...hist, h] });
       return h;
     }
     function advance(nh) {
@@ -138,8 +146,9 @@ var TIP_DRILL = (function () {
       const extra = spec.summary ? Object.fromEntries(spec.summary(hist, s).filter(m => m.key).map(m => [m.key, m.raw])) : {};
       return { score: Math.round(score * 100) / 100, correct: c, wrong, total: n, acc: n ? c / n : 0, avgMs: okMs.length ? okMs.reduce((a, b) => a + b, 0) / okMs.length : null, bestStreak: best, ...extra };
     }, [done]);
-    Jt(done, res, onFinish);
-    const errIds = TIP_READY.useErrLog(done && !!res, hist, spec.__id);
+    Jt(done && !replay, res, onFinish);
+    useEffect(() => { if (P && done && !replay) P.save({ t0, hist, done: true }); }, [done]);
+    const errIds = TIP_READY.useErrLog(done && !replay && !!res, hist, spec.__id);
 
     if (done && res) {
       const outOf = total || res.total;

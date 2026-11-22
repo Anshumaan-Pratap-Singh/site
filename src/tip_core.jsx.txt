@@ -261,7 +261,16 @@ var TIP = (function () {
     const [cd, setCd] = useState(0);        /* 3-2-1 countdown before every run, as in the Mental Math Trainer */
     const [cdGone, setCdGone] = useState(true);
     const err = game.check ? game.check(clean) : null;
-    const start = () => { if (err) return; setRun(k => k + 1); setCd(3); setCdGone(false); setPlaying(true); window.scrollTo({ top: 0 }); };
+    /* game.gate(progress) -> { locked, resume, review, note }: once-a-day games (Daily Challenge) */
+    const ctxAll = Lt();
+    const gate = game.gate ? game.gate(progress) : null;
+    useEffect(() => { if (game.onOpen) game.onOpen(ctxAll); }, []);
+    const start = () => {
+      if (err) return;
+      if (gate && gate.locked) { if (gate.review) { setRun(k => k + 1); setCd(0); setCdGone(true); setPlaying(true); window.scrollTo({ top: 0 }); } return; }
+      const now = gate && gate.resume;
+      setRun(k => k + 1); setCd(now ? 0 : 3); setCdGone(!!now); setPlaying(true); window.scrollTo({ top: 0 });
+    };
     const cancel = () => { setCd(0); setCdGone(true); setPlaying(false); };
     useEffect(() => { if (!playing || cd <= 0) return; const t = setTimeout(() => setCd(n => n - 1), 1000); return () => clearTimeout(t); }, [playing, cd, run]);
     useEffect(() => { if (!playing || cd > 0 || cdGone) return; const t = setTimeout(() => setCdGone(true), 320); return () => clearTimeout(t); }, [playing, cd, cdGone]);
@@ -298,11 +307,11 @@ var TIP = (function () {
             <div className="tm-clock clock"></div>
             <div className="hud-r">
               <div className="tm-score"></div>
-              <button className="link" onClick={start}>{TH(se, { name: "refresh" })}Restart</button>
+              {game.noReplay ? null : <button className="link" onClick={start}>{TH(se, { name: "refresh" })}Restart</button>}
             </div>
           </div>
           <div className="bar tm-bar" key={"bar" + run}></div>
-          {cd > 0 ? <div className="card tip-cd-stage" aria-hidden="true"></div> : <G key={run} settings={clean} diff={diff} onRestart={start}
+          {cd > 0 ? <div className="card tip-cd-stage" aria-hidden="true"></div> : <G key={run} settings={clean} diff={diff} onRestart={game.noReplay ? null : start}
             onFinish={res => { window.__tmFinish = { prev: best, metric: metric, res }; recordGame(game.id, { diff, v: game.version || 1, ...res }); }} />}
           {!cdGone ? (
             <div className={"tip-cd" + (cd <= 0 ? " out" : "")} role="status" aria-live="assertive">
@@ -349,8 +358,10 @@ var TIP = (function () {
             </div>
             {game.note ? <p className="note">{typeof game.note === "function" ? game.note(clean) : game.note}</p> : null}
             {err ? <p className="note tip-err">{err}</p> : null}
-            <button className="start tip-go" disabled={!!err} onClick={start}>Start Game</button>
-            <span className="hint tip-enter">or press <kbd>Enter</kbd></span>
+            {gate && gate.note ? <p className="note">{gate.note}</p> : null}
+            {gate && gate.locked && !gate.review ? null : <TF>
+            <button className="start tip-go" disabled={!!err} onClick={start}>{gate && gate.locked ? "See today's result" : gate && gate.resume ? "Resume" : "Start Game"}</button>
+            <span className="hint tip-enter">or press <kbd>Enter</kbd></span></TF>}
           </section>
           <div className="tip-side">
             <section className="card tip-panel">

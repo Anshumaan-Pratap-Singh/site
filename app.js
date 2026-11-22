@@ -807,11 +807,27 @@ var TIP = (function() {
     const [cd, setCd] = useState(0);
     const [cdGone, setCdGone] = useState(true);
     const err = game.check ? game.check(clean) : null;
+    const ctxAll = Lt();
+    const gate = game.gate ? game.gate(progress) : null;
+    useEffect(() => {
+      if (game.onOpen) game.onOpen(ctxAll);
+    }, []);
     const start = () => {
       if (err) return;
+      if (gate && gate.locked) {
+        if (gate.review) {
+          setRun((k) => k + 1);
+          setCd(0);
+          setCdGone(true);
+          setPlaying(true);
+          window.scrollTo({ top: 0 });
+        }
+        return;
+      }
+      const now = gate && gate.resume;
       setRun((k) => k + 1);
-      setCd(3);
-      setCdGone(false);
+      setCd(now ? 0 : 3);
+      setCdGone(!!now);
       setPlaying(true);
       window.scrollTo({ top: 0 });
     };
@@ -867,13 +883,13 @@ var TIP = (function() {
     }, [ask]);
     if (playing) {
       const G = game.component;
-      return /* @__PURE__ */ TH("div", { className: "view game-view playing-view tip-play" }, /* @__PURE__ */ TH("div", { className: "hud" }, /* @__PURE__ */ TH("div", { className: "hud-l" }, /* @__PURE__ */ TH("button", { className: "ghost sm", onClick: cancel }, TH(se, { name: "left" }), "Settings"), /* @__PURE__ */ TH("span", { className: "tag" }, game.name), game.fixed ? null : /* @__PURE__ */ TH("span", { className: "tag dim" }, diff)), /* @__PURE__ */ TH("div", { className: "tm-clock clock" }), /* @__PURE__ */ TH("div", { className: "hud-r" }, /* @__PURE__ */ TH("div", { className: "tm-score" }), /* @__PURE__ */ TH("button", { className: "link", onClick: start }, TH(se, { name: "refresh" }), "Restart"))), /* @__PURE__ */ TH("div", { className: "bar tm-bar", key: "bar" + run }), cd > 0 ? /* @__PURE__ */ TH("div", { className: "card tip-cd-stage", "aria-hidden": "true" }) : /* @__PURE__ */ TH(
+      return /* @__PURE__ */ TH("div", { className: "view game-view playing-view tip-play" }, /* @__PURE__ */ TH("div", { className: "hud" }, /* @__PURE__ */ TH("div", { className: "hud-l" }, /* @__PURE__ */ TH("button", { className: "ghost sm", onClick: cancel }, TH(se, { name: "left" }), "Settings"), /* @__PURE__ */ TH("span", { className: "tag" }, game.name), game.fixed ? null : /* @__PURE__ */ TH("span", { className: "tag dim" }, diff)), /* @__PURE__ */ TH("div", { className: "tm-clock clock" }), /* @__PURE__ */ TH("div", { className: "hud-r" }, /* @__PURE__ */ TH("div", { className: "tm-score" }), game.noReplay ? null : /* @__PURE__ */ TH("button", { className: "link", onClick: start }, TH(se, { name: "refresh" }), "Restart"))), /* @__PURE__ */ TH("div", { className: "bar tm-bar", key: "bar" + run }), cd > 0 ? /* @__PURE__ */ TH("div", { className: "card tip-cd-stage", "aria-hidden": "true" }) : /* @__PURE__ */ TH(
         G,
         {
           key: run,
           settings: clean,
           diff,
-          onRestart: start,
+          onRestart: game.noReplay ? null : start,
           onFinish: (res) => {
             window.__tmFinish = { prev: best, metric, res };
             recordGame(game.id, { diff, v: game.version || 1, ...res });
@@ -888,7 +904,7 @@ var TIP = (function() {
     const fields = game.fields.filter((f) => !f.hidden && (!f.showIf || f.showIf(clean)) && (!f.customOnly || editAll) && (!f.presetOnly || !editAll));
     const big = fields.filter((f) => f.wide);
     const small = fields.filter((f) => !f.wide);
-    return /* @__PURE__ */ TH("div", { className: "view game-view setup-view tip-setup" }, /* @__PURE__ */ TH("div", { className: "row tm-titlebar" }, /* @__PURE__ */ TH("button", { className: "ghost sm", onClick: () => go(back) }, TH(se, { name: "left" }), backLabel || "Back"), /* @__PURE__ */ TH("h2", { className: "tm-gname" }, game.name)), game.lessons ? /* @__PURE__ */ TH(Lessons, { id: game.id, lessons: game.lessons }) : null, /* @__PURE__ */ TH("div", { className: "tip-grid" }, /* @__PURE__ */ TH("section", { className: "card tip-panel" }, /* @__PURE__ */ TH("h3", { className: "tip-h" }, "Settings"), game.blurb ? /* @__PURE__ */ TH("p", { className: "lead" }, game.blurb) : null, game.fixed ? null : /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "tip-lbl" }, "Game difficulty"), /* @__PURE__ */ TH("div", { className: "tip-seg", role: "tablist" }, DIFFS.map((d) => /* @__PURE__ */ TH("button", { key: d, type: "button", role: "tab", "aria-selected": diff === d, className: diff === d ? "on" : "", onClick: () => choose(d) }, d)))), big.map((f) => /* @__PURE__ */ TH("div", { key: f.key, className: "tip-wide" }, /* @__PURE__ */ TH("div", { className: "tip-lbl" }, f.label), /* @__PURE__ */ TH(Tile, { f: { ...f, label: "" }, value: cfg[f.key], edit: true, onChange: (v) => setCfg((c) => ({ ...c, [f.key]: v })) }))), /* @__PURE__ */ TH("div", { className: "tip-tiles" }, small.map((f) => /* @__PURE__ */ TH(Tile, { key: f.key, f, value: f.type === "info" ? f.text(clean) : editAll ? cfg[f.key] : clean[f.key], edit: f.type !== "info" && (editAll || f.always), onChange: (v) => setCfg((c) => ({ ...c, [f.key]: v })) }))), game.note ? /* @__PURE__ */ TH("p", { className: "note" }, typeof game.note === "function" ? game.note(clean) : game.note) : null, err ? /* @__PURE__ */ TH("p", { className: "note tip-err" }, err) : null, /* @__PURE__ */ TH("button", { className: "start tip-go", disabled: !!err, onClick: start }, "Start Game"), /* @__PURE__ */ TH("span", { className: "hint tip-enter" }, "or press ", /* @__PURE__ */ TH("kbd", null, "Enter"))), /* @__PURE__ */ TH("div", { className: "tip-side" }, /* @__PURE__ */ TH("section", { className: "card tip-panel" }, /* @__PURE__ */ TH("h3", { className: "tip-h" }, "Statistics"), /* @__PURE__ */ TH("div", { className: "tip-stats" }, /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Sessions"), /* @__PURE__ */ TH("b", null, plays.length)), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Best"), /* @__PURE__ */ TH("b", { className: metric === "pnl" ? Xe(best || 0) : "" }, fmtVal(best))), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Latest"), /* @__PURE__ */ TH("b", { className: metric === "pnl" ? Xe(latest || 0) : "" }, fmtVal(latest)))), /* @__PURE__ */ TH(
+    return /* @__PURE__ */ TH("div", { className: "view game-view setup-view tip-setup" }, /* @__PURE__ */ TH("div", { className: "row tm-titlebar" }, /* @__PURE__ */ TH("button", { className: "ghost sm", onClick: () => go(back) }, TH(se, { name: "left" }), backLabel || "Back"), /* @__PURE__ */ TH("h2", { className: "tm-gname" }, game.name)), game.lessons ? /* @__PURE__ */ TH(Lessons, { id: game.id, lessons: game.lessons }) : null, /* @__PURE__ */ TH("div", { className: "tip-grid" }, /* @__PURE__ */ TH("section", { className: "card tip-panel" }, /* @__PURE__ */ TH("h3", { className: "tip-h" }, "Settings"), game.blurb ? /* @__PURE__ */ TH("p", { className: "lead" }, game.blurb) : null, game.fixed ? null : /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "tip-lbl" }, "Game difficulty"), /* @__PURE__ */ TH("div", { className: "tip-seg", role: "tablist" }, DIFFS.map((d) => /* @__PURE__ */ TH("button", { key: d, type: "button", role: "tab", "aria-selected": diff === d, className: diff === d ? "on" : "", onClick: () => choose(d) }, d)))), big.map((f) => /* @__PURE__ */ TH("div", { key: f.key, className: "tip-wide" }, /* @__PURE__ */ TH("div", { className: "tip-lbl" }, f.label), /* @__PURE__ */ TH(Tile, { f: { ...f, label: "" }, value: cfg[f.key], edit: true, onChange: (v) => setCfg((c) => ({ ...c, [f.key]: v })) }))), /* @__PURE__ */ TH("div", { className: "tip-tiles" }, small.map((f) => /* @__PURE__ */ TH(Tile, { key: f.key, f, value: f.type === "info" ? f.text(clean) : editAll ? cfg[f.key] : clean[f.key], edit: f.type !== "info" && (editAll || f.always), onChange: (v) => setCfg((c) => ({ ...c, [f.key]: v })) }))), game.note ? /* @__PURE__ */ TH("p", { className: "note" }, typeof game.note === "function" ? game.note(clean) : game.note) : null, err ? /* @__PURE__ */ TH("p", { className: "note tip-err" }, err) : null, gate && gate.note ? /* @__PURE__ */ TH("p", { className: "note" }, gate.note) : null, gate && gate.locked && !gate.review ? null : /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("button", { className: "start tip-go", disabled: !!err, onClick: start }, gate && gate.locked ? "See today's result" : gate && gate.resume ? "Resume" : "Start Game"), /* @__PURE__ */ TH("span", { className: "hint tip-enter" }, "or press ", /* @__PURE__ */ TH("kbd", null, "Enter")))), /* @__PURE__ */ TH("div", { className: "tip-side" }, /* @__PURE__ */ TH("section", { className: "card tip-panel" }, /* @__PURE__ */ TH("h3", { className: "tip-h" }, "Statistics"), /* @__PURE__ */ TH("div", { className: "tip-stats" }, /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Sessions"), /* @__PURE__ */ TH("b", null, plays.length)), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Best"), /* @__PURE__ */ TH("b", { className: metric === "pnl" ? Xe(best || 0) : "" }, fmtVal(best))), /* @__PURE__ */ TH("div", { className: "tip-stat" }, /* @__PURE__ */ TH("span", null, "Latest"), /* @__PURE__ */ TH("b", { className: metric === "pnl" ? Xe(latest || 0) : "" }, fmtVal(latest)))), /* @__PURE__ */ TH(
       LineChart,
       {
         title: metric === "pnl" ? "P&L per session" : "Score progression",
@@ -2233,7 +2249,21 @@ var TIP_DRILL = (function() {
     return best || spec.gen(rng, s, i, hist);
   }
   function Drill({ settings: s, onFinish, onRestart, spec, title }) {
+    const P = spec.usePersist ? spec.usePersist() : null;
     const [rng] = useState(() => jt(spec.seed ? spec.seed() : void 0));
+    const [init] = useState(() => {
+      const r = P && P.run;
+      if (!r) return null;
+      const H = r.hist || [];
+      for (let i = 0; i < H.length; i++) spec.gen(rng, s, i, H.slice(0, i));
+      return r;
+    });
+    const replay = !!(init && init.done);
+    if (replay) onRestart = null;
+    else if (P) {
+      const f0 = onFinish;
+      onFinish = (res2) => f0({ ...res2, ts: t0 });
+    }
     const seenRef = useRef(null);
     if (!seenRef.current) seenRef.current = readSeen(spec.__id || "drill");
     const nextQ = (i, h) => {
@@ -2252,14 +2282,17 @@ var TIP_DRILL = (function() {
     const total = spec.count ? spec.count(s) : null;
     const sess = spec.sessionSecs ? spec.sessionSecs(s) : null;
     const pen = spec.penalty ? Number(spec.penalty(s)) || 0 : 0;
-    const [hist, setHist] = useState([]);
-    const [q, setQ] = useState(() => nextQ(0, []));
-    const [qi, setQi] = useState(0);
+    const [hist, setHist] = useState(() => init ? init.hist || [] : []);
+    const [q, setQ] = useState(() => nextQ(hist.length, hist));
+    const [qi, setQi] = useState(() => hist.length);
     const [fb, setFb] = useState(null);
     const [picked, setPicked] = useState(null);
-    const [t0] = useState(() => Date.now());
+    const [t0] = useState(() => init ? init.t0 : Date.now());
     const [qt0, setQt0] = useState(() => Date.now());
-    const [done, setDone] = useState(false);
+    const [done, setDone] = useState(replay);
+    useEffect(() => {
+      if (P && !init) P.save({ t0, hist: [] });
+    }, []);
     const [memo, setMemo] = useState(() => !!q.memo);
     const perQ = spec.perQSecs ? spec.perQSecs(s, qi) : null;
     const running = !done && !fb && !memo && picked == null;
@@ -2272,6 +2305,7 @@ var TIP_DRILL = (function() {
     function record(ok, given, extra) {
       const h = { ok, given: q.givenText ? q.givenText(given) : given, kind: q.kind, text: q.text, answer: q.answer, explain: q.explain, ms: Date.now() - qt0, ...extra || {} };
       setHist((x) => [...x, h]);
+      if (P) P.save({ t0, hist: [...hist, h] });
       return h;
     }
     function advance(nh) {
@@ -2364,8 +2398,11 @@ var TIP_DRILL = (function() {
       const extra = spec.summary ? Object.fromEntries(spec.summary(hist, s).filter((m) => m.key).map((m) => [m.key, m.raw])) : {};
       return { score: Math.round(score * 100) / 100, correct: c, wrong, total: n, acc: n ? c / n : 0, avgMs: okMs.length ? okMs.reduce((a, b) => a + b, 0) / okMs.length : null, bestStreak: best, ...extra };
     }, [done]);
-    Jt(done, res, onFinish);
-    const errIds = TIP_READY.useErrLog(done && !!res, hist, spec.__id);
+    Jt(done && !replay, res, onFinish);
+    useEffect(() => {
+      if (P && done && !replay) P.save({ t0, hist, done: true });
+    }, [done]);
+    const errIds = TIP_READY.useErrLog(done && !replay && !!res, hist, spec.__id);
     if (done && res) {
       const outOf = total || res.total;
       return /* @__PURE__ */ TH(
@@ -8745,6 +8782,57 @@ var TIP_READY = (function() {
     });
     return { cur, best, today: days.has(dkey(Date.now())), days: days.size };
   }
+  const RUN = "dailyRun", SECS = 300;
+  const resOf = (hist) => {
+    const n = hist.length, c = hist.filter((h) => h.ok).length, wrong = hist.filter((h) => !h.ok && !h.skipped && !h.timedOut).length;
+    const okMs = hist.filter((h) => h.ok).map((h) => h.ms);
+    let best = 0, run = 0;
+    hist.forEach((h) => {
+      run = h.ok ? run + 1 : 0;
+      best = Math.max(best, run);
+    });
+    const parts = {};
+    Object.keys(PART).forEach((k) => {
+      const L = hist.filter((h) => h.part === k);
+      parts[k] = [L.filter((h) => h.ok).length, L.length];
+    });
+    return { score: c, correct: c, wrong, total: n, acc: n ? c / n : 0, avgMs: okMs.length ? okMs.reduce((a, b) => a + b, 0) / okMs.length : null, bestStreak: best, parts };
+  };
+  const playedOn = (G, day) => (G.games.daily && G.games.daily.plays || []).some((p) => dkey(p.ts) === day);
+  function settleStale(G) {
+    const r = G[RUN], today = dkey(Date.now());
+    if (!r) return false;
+    if (r.day === today) {
+      if (r.done || Date.now() - r.t0 < SECS * 1e3) return false;
+      if (!playedOn(G, today)) {
+        const D = G.games.daily || (G.games.daily = { plays: [] });
+        D.plays.push({ ts: r.t0, diff: "Easy", v: 1, ...resOf(r.hist || []) });
+      }
+      r.done = true;
+      return true;
+    }
+    if (!r.done && (r.hist || []).length && !playedOn(G, r.day)) {
+      const D = G.games.daily || (G.games.daily = { plays: [] });
+      D.plays.push({ ts: r.t0, diff: "Easy", v: 1, ...resOf(r.hist) });
+      D.plays.sort((a, b) => a.ts - b.ts);
+    }
+    delete G[RUN];
+    return true;
+  }
+  function dailyGate(progress) {
+    const today = dkey(Date.now()), r = progress[RUN] && progress[RUN].day === today ? progress[RUN] : null;
+    const plays = (progress.games.daily && progress.games.daily.plays || []).filter((p) => dkey(p.ts) === today);
+    const over = r && !r.done && Date.now() - r.t0 >= SECS * 1e3;
+    if (r && r.done || over || plays.length) {
+      const p = plays[0];
+      return { locked: true, review: !!r, note: (p ? `Done today: ${p.score} / 20. ` : "Today's challenge is finished. ") + "The next challenge arrives at midnight." };
+    }
+    if (r) {
+      const left = Math.max(0, Math.round(SECS - (Date.now() - r.t0) / 1e3));
+      return { resume: true, note: `In progress: question ${(r.hist || []).length + 1} of 20, ${Math.floor(left / 60)}:${pad(left % 60)} left. The clock keeps running while the challenge is closed.` };
+    }
+    return null;
+  }
   const daily = TIP_DRILL.trainer({
     id: "daily",
     name: "Daily Challenge",
@@ -8753,9 +8841,24 @@ var TIP_READY = (function() {
     blurb: "The same 20 questions for everyone today: mental maths, sequences, probability and order books, five minutes at most. Play once a day to keep your streak.",
     fields: [],
     presets: { Easy: {}, Medium: {}, Hard: {} },
-    note: "A new set arrives at midnight. Replays are saved but the questions stay the same until then."
+    note: "One attempt a day; a new set arrives at midnight. If you leave mid-way you carry on from the same question, but the five-minute clock does not stop.",
+    noReplay: true,
+    gate: dailyGate,
+    onOpen: (ctx) => {
+      if (ctx.progress[RUN] && !ctx.progress[RUN].done) ctx.tipUpdate((G) => {
+        settleStale(G);
+      });
+    }
   }, {
     gen: dgen,
+    usePersist: () => {
+      const { progress, tipUpdate } = Lt();
+      const day = dkey(Date.now());
+      const r = progress[RUN];
+      return { run: r && r.day === day ? r : null, save: (x) => tipUpdate((G) => {
+        G[RUN] = { day, ...x };
+      }) };
+    },
     count: () => 20,
     sessionSecs: () => 300,
     seed: () => seedOf(dkey(Date.now())),
@@ -8854,6 +8957,12 @@ var TIP_READY = (function() {
     const list = FIRMS.map((x) => ({ ...x, s: firmScore(x, st), d: firmScore(x, st) - firmScore(x, wk) }));
     const pick = (stars.length ? list.filter((x) => stars.includes(x.id)) : list).sort((a, b) => b.s - a.s).slice(0, 3);
     const today = plays.filter((p) => dkey(p.ts) === dkey(Date.now()));
+    const gt = dailyGate(ctx.progress);
+    useEffect(() => {
+      if (ctx.progress[RUN] && !ctx.progress[RUN].done) ctx.tipUpdate((G) => {
+        settleStale(G);
+      });
+    }, []);
     const played = new Set(plays.map((p) => dkey(p.ts)));
     const week = Array.from({ length: 7 }, (_, i) => {
       const d = /* @__PURE__ */ new Date();
@@ -8861,7 +8970,7 @@ var TIP_READY = (function() {
       const k = dkey(d);
       return { k, on: played.has(k), today: i === 6, l: "SMTWTFS"[d.getDay()] };
     });
-    return /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "grid2 tip-dash2 rd-dash" }, /* @__PURE__ */ TH("div", { className: "card tip-act rd-daily" }, /* @__PURE__ */ TH("div", { className: "tip-act-h" }, /* @__PURE__ */ TH("span", { className: "gicon", style: { background: "var(--warn-soft)", color: "var(--warn)" } }, TH(se, { name: "flame" })), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("b", null, "Daily Challenge"), /* @__PURE__ */ TH("div", { className: "small muted" }, sk.today ? `Done today: ${today[0].score} / 20 · ${sk.cur}-day streak` : sk.cur ? `${sk.cur}-day streak · play today to keep it` : "20 questions, 5 minutes, the same for everyone"))), /* @__PURE__ */ TH("div", { className: "rd-week", "aria-label": "Daily Challenge, last 7 days" }, week.map((d) => /* @__PURE__ */ TH("span", { key: d.k, className: "rd-day" + (d.on ? " on" : "") + (d.today ? " today" : ""), title: d.k }, /* @__PURE__ */ TH("i", null, d.on ? "✓" : ""), /* @__PURE__ */ TH("em", null, d.l)))), /* @__PURE__ */ TH("button", { className: "btn" + (sk.today ? "" : " primary"), onClick: () => go("trainers", "daily") }, sk.today ? "Play again" : "Start today's")), /* @__PURE__ */ TH("div", { className: "card rd-dcard" }, /* @__PURE__ */ TH("div", { className: "row" }, /* @__PURE__ */ TH("b", null, "Firm readiness"), /* @__PURE__ */ TH("span", { className: "sp" }), /* @__PURE__ */ TH("button", { className: "link", onClick: () => go("firms") }, "See all ", FIRMS.length, TH(se, { name: "right" }))), pick.map((x) => /* @__PURE__ */ TH("button", { key: x.id, type: "button", className: "rd-row sm", onClick: () => go("firms", x.id) }, /* @__PURE__ */ TH("span", { className: "rd-name" }, /* @__PURE__ */ TH("b", null, x.name)), /* @__PURE__ */ TH(Bar, { v: x.s }), /* @__PURE__ */ TH("span", { className: "rd-num " + tone(x.s) }, x.s))), /* @__PURE__ */ TH("div", { className: "small muted" }, stars.length ? "Your starred firms" : "Your top firms · star firms in the Firms tab to pin them here"))), /* @__PURE__ */ TH(Mistakes, null));
+    return /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "grid2 tip-dash2 rd-dash" }, /* @__PURE__ */ TH("div", { className: "card tip-act rd-daily" }, /* @__PURE__ */ TH("div", { className: "tip-act-h" }, /* @__PURE__ */ TH("span", { className: "gicon", style: { background: "var(--warn-soft)", color: "var(--warn)" } }, TH(se, { name: "flame" })), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("b", null, "Daily Challenge"), /* @__PURE__ */ TH("div", { className: "small muted" }, sk.today ? `Done today: ${today[0].score} / 20 · ${sk.cur}-day streak` : sk.cur ? `${sk.cur}-day streak · play today to keep it` : "20 questions, 5 minutes, the same for everyone"))), /* @__PURE__ */ TH("div", { className: "rd-week", "aria-label": "Daily Challenge, last 7 days" }, week.map((d) => /* @__PURE__ */ TH("span", { key: d.k, className: "rd-day" + (d.on ? " on" : "") + (d.today ? " today" : ""), title: d.k }, /* @__PURE__ */ TH("i", null, d.on ? "✓" : ""), /* @__PURE__ */ TH("em", null, d.l)))), /* @__PURE__ */ TH("button", { className: "btn" + (gt && gt.locked ? "" : " primary"), onClick: () => go("trainers", "daily") }, gt && gt.locked ? gt.review ? "See today's result" : "Done for today" : gt && gt.resume ? "Resume" : "Start today's")), /* @__PURE__ */ TH("div", { className: "card rd-dcard" }, /* @__PURE__ */ TH("div", { className: "row" }, /* @__PURE__ */ TH("b", null, "Firm readiness"), /* @__PURE__ */ TH("span", { className: "sp" }), /* @__PURE__ */ TH("button", { className: "link", onClick: () => go("firms") }, "See all ", FIRMS.length, TH(se, { name: "right" }))), pick.map((x) => /* @__PURE__ */ TH("button", { key: x.id, type: "button", className: "rd-row sm", onClick: () => go("firms", x.id) }, /* @__PURE__ */ TH("span", { className: "rd-name" }, /* @__PURE__ */ TH("b", null, x.name)), /* @__PURE__ */ TH(Bar, { v: x.s }), /* @__PURE__ */ TH("span", { className: "rd-num " + tone(x.s) }, x.s))), /* @__PURE__ */ TH("div", { className: "small muted" }, stars.length ? "Your starred firms" : "Your top firms · star firms in the Firms tab to pin them here"))), /* @__PURE__ */ TH(Mistakes, null));
   }
   return { STAGES, FIRMS, View, DashTop, Mistakes, TagPick, useErrLog, guess, stageScore, allStages, firmScore, streakOf, TAGS };
 })();

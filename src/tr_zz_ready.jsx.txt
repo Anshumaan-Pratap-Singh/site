@@ -377,12 +377,52 @@ var TIP_READY = (function () {
     sorted.forEach(k => { const [y, m, dd] = k.split("-").map(Number), t = new Date(y, m - 1, dd).getTime(); run = prev != null && Math.round((t - prev) / DAY) === 1 ? run + 1 : 1; best = Math.max(best, run); prev = t; });
     return { cur, best, today: days.has(dkey(Date.now())), days: days.size };
   }
+  /* one run a day: the run in progress is kept in progress.dailyRun = { day, t0, hist, done } (synced with the
+     rest of progress), so reopening resumes at the first unanswered question; the clock keeps running while closed.
+     A run left unfinished on an earlier day is scored with what was answered and dated the day it started. */
+  const RUN = "dailyRun", SECS = 300;
+  const resOf = hist => {
+    const n = hist.length, c = hist.filter(h => h.ok).length, wrong = hist.filter(h => !h.ok && !h.skipped && !h.timedOut).length;
+    const okMs = hist.filter(h => h.ok).map(h => h.ms); let best = 0, run = 0; hist.forEach(h => { run = h.ok ? run + 1 : 0; best = Math.max(best, run); });
+    const parts = {}; Object.keys(PART).forEach(k => { const L = hist.filter(h => h.part === k); parts[k] = [L.filter(h => h.ok).length, L.length]; });
+    return { score: c, correct: c, wrong, total: n, acc: n ? c / n : 0, avgMs: okMs.length ? okMs.reduce((a, b) => a + b, 0) / okMs.length : null, bestStreak: best, parts };
+  };
+  const playedOn = (G, day) => ((G.games.daily && G.games.daily.plays) || []).some(p => dkey(p.ts) === day);
+  function settleStale(G) {
+    const r = G[RUN], today = dkey(Date.now());
+    if (!r) return false;
+    if (r.day === today) {
+      if (r.done || Date.now() - r.t0 < SECS * 1000) return false;
+      if (!playedOn(G, today)) { const D = G.games.daily || (G.games.daily = { plays: [] }); D.plays.push({ ts: r.t0, diff: "Easy", v: 1, ...resOf(r.hist || []) }); }
+      r.done = true; return true;
+    }
+    if (!r.done && (r.hist || []).length && !playedOn(G, r.day)) {
+      const D = G.games.daily || (G.games.daily = { plays: [] });
+      D.plays.push({ ts: r.t0, diff: "Easy", v: 1, ...resOf(r.hist) }); D.plays.sort((a, b) => a.ts - b.ts);
+    }
+    delete G[RUN]; return true;
+  }
+  function dailyGate(progress) {
+    const today = dkey(Date.now()), r = progress[RUN] && progress[RUN].day === today ? progress[RUN] : null;
+    const plays = ((progress.games.daily && progress.games.daily.plays) || []).filter(p => dkey(p.ts) === today);
+    const over = r && !r.done && Date.now() - r.t0 >= SECS * 1000;
+    if ((r && r.done) || over || plays.length) {
+      const p = plays[0];
+      return { locked: true, review: !!r, note: (p ? `Done today: ${p.score} / 20. ` : "Today's challenge is finished. ") + "The next challenge arrives at midnight." };
+    }
+    if (r) { const left = Math.max(0, Math.round(SECS - (Date.now() - r.t0) / 1000)); return { resume: true, note: `In progress: question ${(r.hist || []).length + 1} of 20, ${Math.floor(left / 60)}:${pad(left % 60)} left. The clock keeps running while the challenge is closed.` }; }
+    return null;
+  }
   const daily = TIP_DRILL.trainer({
     id: "daily", name: "Daily Challenge", fixed: true, version: 1,
     blurb: "The same 20 questions for everyone today: mental maths, sequences, probability and order books, five minutes at most. Play once a day to keep your streak.",
     fields: [], presets: { Easy: {}, Medium: {}, Hard: {} },
-    note: "A new set arrives at midnight. Replays are saved but the questions stay the same until then.",
-  }, { gen: dgen, count: () => 20, sessionSecs: () => 300, seed: () => seedOf(dkey(Date.now())), fast: true, okMs: 300, badMs: 1200,
+    note: "One attempt a day; a new set arrives at midnight. If you leave mid-way you carry on from the same question, but the five-minute clock does not stop.",
+    noReplay: true, gate: dailyGate,
+    onOpen: ctx => { if (ctx.progress[RUN] && !ctx.progress[RUN].done) ctx.tipUpdate(G => { settleStale(G); }); },
+  }, { gen: dgen,
+    usePersist: () => { const { progress, tipUpdate } = Lt(); const day = dkey(Date.now()); const r = progress[RUN];
+      return { run: r && r.day === day ? r : null, save: x => tipUpdate(G => { G[RUN] = { day, ...x }; }) }; }, count: () => 20, sessionSecs: () => 300, seed: () => seedOf(dkey(Date.now())), fast: true, okMs: 300, badMs: 1200,
     onRecord: q => ({ part: q.part }),
     summary: hist => { const parts = {}; Object.keys(PART).forEach(k => { const L = hist.filter(h => h.part === k); parts[k] = [L.filter(h => h.ok).length, L.length]; });
       return [{ label: "By part", value: Object.keys(PART).map(k => parts[k][0] + "/" + parts[k][1]).join(" · "), sub: Object.values(PART).join(" · "), key: "parts", raw: parts }]; } });
@@ -457,6 +497,8 @@ var TIP_READY = (function () {
     const list = FIRMS.map(x => ({ ...x, s: firmScore(x, st), d: firmScore(x, st) - firmScore(x, wk) }));
     const pick = (stars.length ? list.filter(x => stars.includes(x.id)) : list).sort((a, b) => b.s - a.s).slice(0, 3);
     const today = plays.filter(p => dkey(p.ts) === dkey(Date.now()));
+    const gt = dailyGate(ctx.progress);
+    useEffect(() => { if (ctx.progress[RUN] && !ctx.progress[RUN].done) ctx.tipUpdate(G => { settleStale(G); }); }, []);
     const played = new Set(plays.map(p => dkey(p.ts)));
     const week = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - 6 + i); const k = dkey(d); return { k, on: played.has(k), today: i === 6, l: "SMTWTFS"[d.getDay()] }; });
     return (
@@ -466,7 +508,7 @@ var TIP_READY = (function () {
             <div className="tip-act-h"><span className="gicon" style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>{TH(se, { name: "flame" })}</span>
               <div><b>Daily Challenge</b><div className="small muted">{sk.today ? `Done today: ${today[0].score} / 20 · ${sk.cur}-day streak` : sk.cur ? `${sk.cur}-day streak · play today to keep it` : "20 questions, 5 minutes, the same for everyone"}</div></div></div>
             <div className="rd-week" aria-label="Daily Challenge, last 7 days">{week.map(d => <span key={d.k} className={"rd-day" + (d.on ? " on" : "") + (d.today ? " today" : "")} title={d.k}><i>{d.on ? "✓" : ""}</i><em>{d.l}</em></span>)}</div>
-            <button className={"btn" + (sk.today ? "" : " primary")} onClick={() => go("trainers", "daily")}>{sk.today ? "Play again" : "Start today's"}</button>
+            <button className={"btn" + (gt && gt.locked ? "" : " primary")} onClick={() => go("trainers", "daily")}>{gt && gt.locked ? (gt.review ? "See today's result" : "Done for today") : gt && gt.resume ? "Resume" : "Start today's"}</button>
           </div>
           <div className="card rd-dcard">
             <div className="row"><b>Firm readiness</b><span className="sp"></span><button className="link" onClick={() => go("firms")}>See all {FIRMS.length}{TH(se, { name: "right" })}</button></div>
