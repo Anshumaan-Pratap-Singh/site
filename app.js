@@ -4009,7 +4009,7 @@ var TIP_SHAPES = (function() {
     hedge: (r) => {
       const V = r.int(2, 40), b = r.pick([0.6, 0.8, 0.9, 1, 1.1, 1.2, 1.5]), F = r.pick([2e3, 2500, 4e3, 4800, 5e3]), m = r.pick([10, 20, 50]);
       const v = b * V * 1e6 / (F * m);
-      return { q: S_`You hold a $${V}m portfolio with beta ${b}. The index future is ${F} with multiplier ${m}. How many contracts do you sell (to the nearest whole contract)?`, v: Math.round(v), a: String(Math.round(v)), tol: 0.6, x: S_`$${b} \times ${V}{,}000{,}000 / (${F} \times ${m}) = ${v.toFixed(1)}$, so ${Math.round(v)} contracts.` };
+      return { q: S_`You hold a \$${V}m portfolio with beta ${b}. The index future is ${F} with multiplier ${m}. How many contracts do you sell (to the nearest whole contract)?`, v: Math.round(v), a: String(Math.round(v)), tol: 0.6, x: S_`$${b} \times ${V}{,}000{,}000 / (${F} \times ${m}) = ${v.toFixed(1)}$, so ${Math.round(v)} contracts.` };
     }
   };
   const r2 = (v) => Math.round(v * 100) / 100;
@@ -6908,7 +6908,7 @@ var TIP_MMT = (function() {
     },
     (r) => {
       const k = r.int(1, 6), N = k + r.int(2, 8);
-      return { k: "ruin", q: `You start with $${k} and bet $1 on fair coin flips until you reach $${N} or go broke. What is the probability you reach $${N}?`, a: k / N, p: 1, why: `For a fair game the chance of reaching N from k is k/N = ${k}/${N}.` };
+      return { k: "ruin", q: `You start with \\$${k} and bet \\$1 on fair coin flips until you reach \\$${N} or go broke. What is the probability you reach \\$${N}?`, a: k / N, p: 1, why: `For a fair game the chance of reaching N from k is k/N = ${k}/${N}.` };
     },
     (r) => {
       const prev = r.pick([0.01, 0.02, 0.05, 0.1]), sens = r.pick([0.9, 0.95, 0.99]), fp = r.pick([0.05, 0.1, 0.02]);
@@ -6949,7 +6949,7 @@ var TIP_MMT = (function() {
       const cost = r.int(2, 5), pay = r.int(6, 15);
       const ev = pay / 6 + 3.5 * 0 - cost;
       const a = (pay - cost * 6) / 6;
-      return { k: "game", q: `A game costs $${cost} to play. A die is rolled and you win $${pay} if it shows a six, nothing otherwise. What is your expected profit per game?`, a, why: `${pay}/6 − ${cost} = ${sig(a)}.` };
+      return { k: "game", q: `A game costs \\$${cost} to play. A die is rolled and you win \\$${pay} if it shows a six, nothing otherwise. What is your expected profit per game?`, a, why: `${pay}/6 − ${cost} = ${sig(a)}.` };
     },
     (r) => {
       const n = r.int(3, 6);

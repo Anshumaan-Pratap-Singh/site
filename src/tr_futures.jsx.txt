@@ -27,7 +27,7 @@
     calendar: r => { const S = r.int(20, 600) * 10, rr = r.pick([2, 3, 4, 5]) / 100, d1 = r.pick([30, 60, 91]), d2 = d1 + r.pick([60, 91, 182]); const v = S * rr * (d2 - d1) / 365;
       return { q: S_`Spot ${S}, rates ${rr * 100}%, no dividends. Futures expire in ${d1} and ${d2} days. What is the fair calendar spread (far minus near)?`, v, a: f2(v), tol: 0.03, x: S_`$${S} \times ${rr} \times (${d2} - ${d1})/365 = ${f2(v)}$.` }; },
     hedge: r => { const V = r.int(2, 40), b = r.pick([0.6, 0.8, 0.9, 1, 1.1, 1.2, 1.5]), F = r.pick([2000, 2500, 4000, 4800, 5000]), m = r.pick([10, 20, 50]); const v = b * V * 1e6 / (F * m);
-      return { q: S_`You hold a $${V}m portfolio with beta ${b}. The index future is ${F} with multiplier ${m}. How many contracts do you sell (to the nearest whole contract)?`, v: Math.round(v), a: String(Math.round(v)), tol: 0.6, x: S_`$${b} \times ${V}{,}000{,}000 / (${F} \times ${m}) = ${v.toFixed(1)}$, so ${Math.round(v)} contracts.` }; },
+      return { q: S_`You hold a \$${V}m portfolio with beta ${b}. The index future is ${F} with multiplier ${m}. How many contracts do you sell (to the nearest whole contract)?`, v: Math.round(v), a: String(Math.round(v)), tol: 0.6, x: S_`$${b} \times ${V}{,}000{,}000 / (${F} \times ${m}) = ${v.toFixed(1)}$, so ${Math.round(v)} contracts.` }; },
   };
   /* ---------- more drill types (19 Nov) ---------- */
   const r2 = v => Math.round(v * 100) / 100;
