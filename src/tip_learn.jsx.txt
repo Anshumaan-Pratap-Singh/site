@@ -178,7 +178,7 @@ var TIP_LEARN = (function () {
               <input className="inp num grow" value={val} onChange={e => { setVal(e.target.value); setRes(null); }} onKeyDown={e => e.key === "Enter" && val.trim() && check()} placeholder="Your answer" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
               <button className="btn primary" onClick={check} disabled={!val.trim()}>Check</button>
             </div>
-            {res ? <div className={"small " + (res.ok ? "pos" : "neg")} style={{ marginTop: 6, fontWeight: 600 }}>{isNaN(res.parsed) ? "Couldn't read that. Try a number or fraction." : res.ok ? "Correct (" + ie(res.parsed, 4) + ")" : "Not quite: you entered " + ie(res.parsed, 4) + (ta.st.wrong >= 3 && ta.st.graded === "m" ? ". Recorded as missed." : "")}</div> : null}
+            {res ? <div className={"small " + (res.ok ? "pos" : "")} style={{ marginTop: 6, fontWeight: 600 }}>{isNaN(res.parsed) ? "Couldn't read that. Try a number or fraction." : res.ok ? "Correct (" + ie(res.parsed, 4) + ")" : "Not quite: you entered " + ie(res.parsed, 4) + (ta.st.wrong >= 3 && ta.st.graded === "m" ? ". Recorded as missed." : "")}</div> : null}
           </div>
         ) : null}
         {q.hints && q.hints.length ? (
@@ -482,7 +482,6 @@ var TIP_LEARN = (function () {
           <div className="tip-lh-bar"><i style={{ width: (n ? 100 * k / n : 0) + "%" }}></i></div>
           {L.drill ? <div className="tip-lh-drill"><button className="btn primary" onClick={() => TIP_MMT.drill(L.drill)}>{TH(se, { name: "zap" })}Drill this in the Mental Math Trainer</button></div> : null}
         </header>
-        <nav className="tip-ltoc" aria-label="Sections">{secs.map((x, i) => <button key={x.id} onClick={() => go(x.id)}><span>{i + 1}</span>{x.t}</button>)}</nav>
         <div className="tip-lintro">{ML(L.intro, "div")}</div>
         {(L.sections || []).map((x, i) => (
           <section key={i} id={"ls" + i} className="tip-lsec">

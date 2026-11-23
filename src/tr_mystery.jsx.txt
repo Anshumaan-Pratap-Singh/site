@@ -38,7 +38,7 @@
       notes="Change one feature at a time only when you have to. A guess that changes two features at once and scores the same tells you less than you think." />;
     const set = (k, v) => setG(x => { const n = x.slice(); n[k] = v; return n; });
     return (
-      <K.Stage title="Mystery Figure" sub={`Figure ${ri + 1} of ${s.rounds}`} stats={[{ label: "Guesses", value: tries.length, pop: true }, s.hints ? { label: "Still possible", value: left } : { label: "Solver", value: "?" }]} total={s.rounds} results={hist.map(h => h.ok)} at={ri}>
+      <K.Stage title="Mystery Figure" sub={`Figure ${ri + 1} of ${s.rounds}`} stats={[{ label: "Guesses", value: tries.length, pop: true }, { label: "Solver", value: "?" }]} total={s.rounds} results={hist.map(h => h.ok)} at={ri}>
         <div className="oa-q">
           <div className="my-grid">
             <div className="my-build"><Fig f={g} size={110} />
@@ -55,8 +55,8 @@
   TIP_TRAINERS.register({
     id: "mystery", name: "Mystery Figure", metric: "score", unit: " pts", version: 2, playFilter: K.versioned(2),
     blurb: "A Mastermind-style deduction game like the hypothesis-testing tasks in Arctic Shores-style assessments: each guess only tells you how many of shape, colour and shading are right. Find the figure in as few guesses as an efficient solver.",
-    fields: [{ key: "rounds", label: "Figures", type: "num", min: 2, max: 12 }, { key: "hints", label: "Show how many figures are still possible", type: "bool" }],
-    presets: { Easy: { rounds: 3, hints: true }, Medium: { rounds: 5, hints: false }, Hard: { rounds: 8, hints: false } },
+    fields: [{ key: "rounds", label: "Figures", type: "num", min: 2, max: 12 }],
+    presets: { Easy: { rounds: 3, hints: false }, Medium: { rounds: 5, hints: false }, Hard: { rounds: 8, hints: false } },
     note: "48 possible figures: 4 shapes × 4 colours × 3 shadings.",
     component: Game,
   });
