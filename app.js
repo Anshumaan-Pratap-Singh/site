@@ -8325,7 +8325,7 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       ]
     },
     janestreet: {
-      checked: "22 Nov 2026",
+      checked: "23 Nov 2026",
       programmes: [
         {
           id: "fttp27",
@@ -8348,9 +8348,9 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
           id: "insight",
           name: "INSIGHT, London",
           who: "Women, transgender and gender-expansive undergraduates",
-          when: "Tracks include Trading and Research and Software Engineering. The last London run was 13–18 April 2026",
-          apply: "2027 London dates were not listed when checked; the 2026 deadline was in mid-January.",
-          url: "https://www.janestreet.com/insight-ldn-email"
+          when: "5–10 April 2027 in London. Tracks include Trading and Research and Software Engineering",
+          apply: "Applications are open on the Jane Street site. No deadline was shown when checked; the 2026 deadline was in mid-January.",
+          url: "https://www.janestreet.com/apply-insight-ldn/"
         },
         {
           id: "qtint",
@@ -8671,14 +8671,14 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       sources: [S("XTX Markets: internship posting", "https://job-boards.greenhouse.io/xtxmarketstechnologies/jobs/6688989003")]
     },
     drw: {
-      checked: C,
+      checked: "23 Nov 2026",
       programmes: [
         {
           id: "disc",
           name: "Discover DRW – London",
           who: "Maths, statistics, physics or CS students at UK or European universities graduating Dec 2027 – Jun 2028",
           when: "Two days in London",
-          apply: "Strong participants are fast-tracked in the interview process for the internship.",
+          apply: "The 2026 edition (31 Mar – 1 Apr 2026) has passed. 2027 dates are not announced yet; watch DRW's careers page. Strong participants are fast-tracked in the interview process for the internship.",
           url: "https://job-boards.greenhouse.io/drweng/jobs/7435235"
         },
         {
@@ -8731,7 +8731,7 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       ]
     },
     maven: {
-      checked: C,
+      checked: "23 Nov 2026",
       programmes: [
         {
           id: "ams27",
@@ -8745,8 +8745,8 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
           id: "lon27",
           name: "London Trader Summer Internship 2027",
           who: "Penultimate-year students",
-          when: "Summer 2027",
-          apply: "Opened 7 Sept 2026; one application per cycle.",
+          when: "21 June – 20 August 2027 (nine weeks)",
+          apply: "Closed 21 Oct 2026; one application per cycle.",
           url: "https://www.tradermath.org/firms/maven-securities/jobs/amsterdam-trader-summer-internship-2027-in-amsterdam-4a7585"
         }
       ],
@@ -8847,7 +8847,7 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       sources: [S("Two Sigma: QR Intern Summer 2027", "https://simplify.jobs/p/d7896522-5218-4362-8092-60cacc29a642")]
     },
     deshaw: {
-      checked: C,
+      checked: "23 Nov 2026",
       programmes: [
         {
           id: "ins27",
@@ -8863,7 +8863,7 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
           name: "Trader/Analyst Intern (London) – Summer 2027",
           who: "Any degree; usually students approaching their final year",
           when: "10 weeks, June to August 2027",
-          apply: "D. E. Shaw picks its intern class early in the year, so apply by the end of 2026.",
+          apply: "Applications for the 2027 class are closed.",
           url: "https://www.deshaw.com/careers/trader-analyst-intern-london-summer-2027-5862"
         }
       ],
@@ -9145,15 +9145,15 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       sources: [S("Graviton: QR Intern", "https://job-boards.greenhouse.io/gravitonresearchcapital/jobs/8630903002")]
     },
     wintermute: {
-      checked: C,
+      checked: "23 Nov 2026",
       programmes: [
         {
           id: "at",
           name: "Algorithmic Trading Internship (London)",
           who: "Students with the right to intern in the UK",
           when: "Flexible, one to six months",
-          apply: "Apply online. Trading knowledge isn't required, but they test your trading intuition; Python helps.",
-          url: "https://builtin.com/job/algorithmic-trading-internship-summer-2026/7057410"
+          apply: "No internship open when checked; the Summer 2026 role has gone. Watch Wintermute's job board. Trading knowledge isn't required, but they test your trading intuition; Python helps.",
+          url: "https://jobs.lever.co/wintermute-trading"
         }
       ],
       stages: [

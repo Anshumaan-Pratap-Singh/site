@@ -63,7 +63,7 @@ var TIP_FIRMINFO = (function () {
     },
 
     janestreet: {
-      checked: "22 Nov 2026",
+      checked: "23 Nov 2026",
       programmes: [
         { id: "fttp27", deadlines: [{ l: "Applications", at: "2027-01-03T23:59:00Z" }], name: "First-year Trading and Technology Programme (FTTP), London", who: "First-year undergraduates in maths, physics, computer science or other STEM subjects",
           when: "21–25 March 2027 at Jane Street's London office",
@@ -73,9 +73,9 @@ var TIP_FIRMINFO = (function () {
           when: "13–16 January 2027 in London", apply: "See the programme page for the deadline.",
           url: "https://www.janestreet.com/focus-ldn-email.html" },
         { id: "insight", name: "INSIGHT, London", who: "Women, transgender and gender-expansive undergraduates",
-          when: "Tracks include Trading and Research and Software Engineering. The last London run was 13–18 April 2026",
-          apply: "2027 London dates were not listed when checked; the 2026 deadline was in mid-January.",
-          url: "https://www.janestreet.com/insight-ldn-email" },
+          when: "5–10 April 2027 in London. Tracks include Trading and Research and Software Engineering",
+          apply: "Applications are open on the Jane Street site. No deadline was shown when checked; the 2026 deadline was in mid-January.",
+          url: "https://www.janestreet.com/apply-insight-ldn/" },
         { id: "qtint", name: "Quantitative Trader Internship, London", who: "Strong quantitative thinkers; no specific degree required",
           when: "June to September", apply: "Apply on Jane Street's site; no deadline is listed.",
           url: "https://www.janestreet.com/join-jane-street/position/8474407002" },

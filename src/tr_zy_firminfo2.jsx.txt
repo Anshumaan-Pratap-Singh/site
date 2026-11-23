@@ -124,10 +124,10 @@
       topics: [{ name: "Statistics and regression", links: [BANK] }, { name: "Python and data analysis", links: [CODE] }, why("XTX")],
       sources: [S("XTX Markets: internship posting", "https://job-boards.greenhouse.io/xtxmarketstechnologies/jobs/6688989003")] },
 
-    drw: { checked: C,
+    drw: { checked: "23 Nov 2026",
       programmes: [
         { id: "disc", name: "Discover DRW – London", who: "Maths, statistics, physics or CS students at UK or European universities graduating Dec 2027 – Jun 2028", when: "Two days in London",
-          apply: "Strong participants are fast-tracked in the interview process for the internship.", url: "https://job-boards.greenhouse.io/drweng/jobs/7435235" },
+          apply: "The 2026 edition (31 Mar – 1 Apr 2026) has passed. 2027 dates are not announced yet; watch DRW's careers page. Strong participants are fast-tracked in the interview process for the internship.", url: "https://job-boards.greenhouse.io/drweng/jobs/7435235" },
         { id: "qta", name: "Quantitative Trading Analyst Intern (London)", who: "Students with a quantitative background", when: "10 weeks, summer 2027; ends with a presentation to senior leadership",
           apply: "Apply online.", url: "https://job-boards.greenhouse.io/drweng/jobs/7957243" },
       ],
@@ -155,12 +155,12 @@
       sources: [S("Akuna: careers posting", "https://akunacapital.com/careers/job/8018856/"), S("Akuna: Trading Immersion Program", "https://builtin.com/job/trading-immersion-program/8369630"),
         S("Candidate reports (Glassdoor, Akuna)", "https://www.glassdoor.co.in/Interview/AKUNA-CAPITAL-Interview-E608116-RVW93838185.htm")] },
 
-    maven: { checked: C,
+    maven: { checked: "23 Nov 2026",
       programmes: [
         { id: "ams27", name: "Amsterdam Trader Summer Internship 2027", who: "Penultimate-year undergraduate or master's students with the right to work there", when: "21 June – 20 August 2027; the first three weeks are options theory classes in London",
           apply: "Closed 20 Oct 2026. Maven takes one application per candidate per cycle; strong interns may join the next year's Graduate Trader Programme.",
           url: "https://www.kadoa.com/quant/job/mavensecurities-amsterdam-trader-summer-internship-2027-4b612016" },
-        { id: "lon27", name: "London Trader Summer Internship 2027", who: "Penultimate-year students", when: "Summer 2027", apply: "Opened 7 Sept 2026; one application per cycle.",
+        { id: "lon27", name: "London Trader Summer Internship 2027", who: "Penultimate-year students", when: "21 June – 20 August 2027 (nine weeks)", apply: "Closed 21 Oct 2026; one application per cycle.",
           url: "https://www.tradermath.org/firms/maven-securities/jobs/amsterdam-trader-summer-internship-2027-in-amsterdam-4a7585" },
       ],
       stages: [
@@ -222,12 +222,12 @@
       topics: [{ name: "Statistics and machine learning basics", links: [BANK] }, { name: "Probability", links: PROB }, why("Two Sigma")],
       sources: [S("Two Sigma: QR Intern Summer 2027", "https://simplify.jobs/p/d7896522-5218-4362-8092-60cacc29a642")] },
 
-    deshaw: { checked: C,
+    deshaw: { checked: "23 Nov 2026",
       programmes: [
         { id: "ins27", name: "Insight Programme (London)", who: "Students curious about investing and strategy", deadlines: [{ l: "Applications", at: "2027-01-04T23:59:00+00:00" }],
           when: "One day, 8 April 2027 (Discretionary Investing, Strategy and Business Development)", apply: "Applications close 11:59 PM on 4 Jan 2027.", url: "https://campus.deshaw.com/" },
         { id: "ta27", name: "Trader/Analyst Intern (London) – Summer 2027", who: "Any degree; usually students approaching their final year", when: "10 weeks, June to August 2027",
-          apply: "D. E. Shaw picks its intern class early in the year, so apply by the end of 2026.", url: "https://www.deshaw.com/careers/trader-analyst-intern-london-summer-2027-5862" },
+          apply: "Applications for the 2027 class are closed.", url: "https://www.deshaw.com/careers/trader-analyst-intern-london-summer-2027-5862" },
       ],
       stages: [
         { name: "Online tests", detail: "Candidates report logic and numerical reasoning tests.", links: [T("numreason", "Numerical Reasoning"), T("seq", "Sequence Trainer")] },
@@ -399,10 +399,10 @@
       topics: [{ name: "Probability and statistics", links: PROB }],
       sources: [S("Graviton: QR Intern", "https://job-boards.greenhouse.io/gravitonresearchcapital/jobs/8630903002")] },
 
-    wintermute: { checked: C,
+    wintermute: { checked: "23 Nov 2026",
       programmes: [
         { id: "at", name: "Algorithmic Trading Internship (London)", who: "Students with the right to intern in the UK", when: "Flexible, one to six months",
-          apply: "Apply online. Trading knowledge isn't required, but they test your trading intuition; Python helps.", url: "https://builtin.com/job/algorithmic-trading-internship-summer-2026/7057410" },
+          apply: "No internship open when checked; the Summer 2026 role has gone. Watch Wintermute's job board. Trading knowledge isn't required, but they test your trading intuition; Python helps.", url: "https://jobs.lever.co/wintermute-trading" },
       ],
       stages: [
         { name: "Tests", detail: "Trading-intuition and maths questions, plus Python.", links: [...MM, CODE] },
