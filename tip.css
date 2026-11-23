@@ -2324,3 +2324,11 @@ button.cd-cell { cursor: pointer; transition: border-color .15s, transform .12s 
 .lgx.lgx-stanchart.lgx-stanchart.lgx-stanchart i:nth-child(4) { --s: 84px; opacity: 0; transform: none; transform-origin: 50% 50%; clip-path: none; filter: none; animation: none; background: var(--tc); -webkit-mask: url(logos/fx/stanchart_r4.png) center / contain no-repeat; mask: url(logos/fx/stanchart_r4.png) center / contain no-repeat;  animation: nc-sc3 6s cubic-bezier(.2,.7,.2,1) infinite;  }
 .lgx.lgx-jefferies.lgx-jefferies.lgx-jefferies i:nth-child(1) { --s: 84px; opacity: 0; transform: none; transform-origin: 50% 50%; clip-path: none; filter: none; animation: none; background: var(--tc); -webkit-mask: url(logos/jefferies.png) center / contain no-repeat; mask: url(logos/jefferies.png) center / contain no-repeat;  animation: nc-wipeD 6s cubic-bezier(.2,.7,.2,1) infinite;  }
 @media (prefers-reduced-motion: reduce) { .lgx[class*=lgx-] i { animation: none !important; } }
+/* small dropdown arrows: one size (Firms > Tracker programme arrows), right when closed, down when open, 1px up when open and 1px down when closed */
+.tf-car, .trk-chev { display: inline-block !important; font-size: 167% !important; line-height: 1 !important; transform-origin: 50% 50%; transition: transform .15s var(--tm-out) !important; transform: translateY(1px) rotate(-90deg) !important; }
+.tf-btn[aria-expanded="true"] .tf-car,
+.trk-acc.on .trk-chev,
+.trk-det[open] > summary .trk-chev,
+.trk2-sec:not(.shut) .trk2-h .trk-chev,
+.trk-th2[aria-expanded="true"] .trk-chev { transform: translateY(-1px) rotate(0deg) !important; }
+@media (prefers-reduced-motion: reduce) { .tf-car, .trk-chev { transition: none !important; } }
