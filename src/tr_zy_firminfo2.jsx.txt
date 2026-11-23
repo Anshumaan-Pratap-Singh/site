@@ -417,19 +417,7 @@
       topics: [{ name: "Crypto market making", links: MM }],
       sources: [S("Keyrock: careers", "https://keyrock.com/careers/")] },
 
-    rothesay: { checked: C,
-      programmes: [
-        { id: "tao27", name: "2027 Summer Internship – Trading and Asset Origination (London)", who: "Penultimate-year students graduating in summer 2028", when: "Eight weeks from June 2027, starting with a fundamentals week",
-          apply: "Closed 8 Nov 2026. The application asks for a comment on Rothesay's position in the pension buyout market.", url: "https://opportunitiesfeed.com/2026/10/15/summer-internship-programme/" },
-        { id: "se27", name: "2027 Summer Internship – Software Engineering", who: "Penultimate-year students graduating in summer 2028", deadlines: [{ l: "Applications", at: "2026-12-01T23:59:00+00:00" }],
-          when: "Eight weeks from June 2027", apply: "Deadline 1 Dec 2026; may close earlier.", url: "https://www.brightnetwork.co.uk/graduate-jobs/rothesay/2027-summer-internship-programme-software-engineering" },
-      ],
-      stages: [
-        { name: "Application", detail: "CV plus written answers about Rothesay and the buyout market.", links: [] },
-        { name: "Tests and interviews", detail: "Numerical ability and interviews.", links: [T("numreason", "Numerical Reasoning")] },
-      ],
-      topics: [{ name: "Pension risk transfer and interest rates", links: [] }, why("Rothesay")],
-      sources: [S("Rothesay: graduate and intern programmes", "https://www.rothesay.com/about-us/working-here/careers/graduate-and-intern-programmes"), S("Rothesay: 2027 Software Engineering internship", "https://www.brightnetwork.co.uk/graduate-jobs/rothesay/2027-summer-internship-programme-software-engineering")] },
+
 
     geneva: { checked: C,
       programmes: [{ id: "us", name: "Trading internships (US)", who: "Mostly US students", when: "Summer", apply: "No UK programme found when checked; see the careers page.", url: "https://www.genevatrading.com/careers/" }],

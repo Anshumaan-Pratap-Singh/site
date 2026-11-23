@@ -12,7 +12,7 @@ var TIP_FIRMINFO = (function () {
     xtx: "xtxmarkets.com", virtu: "virtu.com", geneva: "genevatrading.com", graviton: "gravitontrading.com", twosigma: "twosigma.com",
     gresearch: "gresearch.com", deshaw: "deshaw.com", squarepoint: "squarepoint-capital.com", qrt: "qube-rt.com", point72: "point72.com",
     marshallwace: "mwam.com", man: "man.com", brevan: "brevanhoward.com", balyasny: "bamfunds.com", millennium: "mlp.com",
-    maverick: "maverickderivatives.com", rothesay: "rothesay.com",
+    maverick: "maverickderivatives.com",
   };
 
   const INFO = {
@@ -156,7 +156,7 @@ var TIP_FIRMINFO = (function () {
   const nextDeadline = (p, now) => { const t = now || Date.now(); const up = (p.deadlines || []).map(d => ({ ...d, ts: Date.parse(d.at) })).filter(d => d.ts > t).sort((a, b) => a.ts - b.ts); return up[0] || null; };
   const allProgrammes = () => Object.entries(INFO).flatMap(([fid, x]) => x.programmes.map(p => ({ ...p, fid, key: fid + ":" + p.id })));
   /* logo masks shipped with the artifact (private copy): white marks on transparent, recoloured in CSS */
-  const HAVE = ["akuna", "balyasny", "belvedere", "brevan", "citsec", "ctc", "davinci", "deshaw", "drw", "fiverings", "flow", "geneva", "graviton", "gresearch", "hrt", "imc", "janestreet", "jump", "keyrock", "mako", "man", "marshallwace", "maven", "maverick", "millennium", "optiver", "peak6", "point72", "qrt", "rothesay", "sig", "squarepoint", "tower", "twosigma", "virtu", "wintermute", "xtx"];
+  const HAVE = ["akuna", "balyasny", "belvedere", "brevan", "citsec", "ctc", "davinci", "deshaw", "drw", "fiverings", "flow", "geneva", "graviton", "gresearch", "hrt", "imc", "janestreet", "jump", "keyrock", "mako", "man", "marshallwace", "maven", "maverick", "millennium", "optiver", "peak6", "point72", "qrt", "sig", "squarepoint", "tower", "twosigma", "virtu", "wintermute", "xtx"];
   const logo = id => HAVE.includes(id) ? "logos/" + id + ".png" : null;
   return { DOMAINS, INFO, HAVE, logo, STATUS, nextDeadline, allProgrammes };
 })();
