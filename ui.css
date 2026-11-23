@@ -185,4 +185,4 @@ kbd { font: 500 11px/1 Inter, system-ui, sans-serif; padding: 3px 6px; border: 1
 .theme-opt:hover { background: var(--surface-2); }
 .theme-opt.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 /* theme switch: one cross-fade of the whole page (View Transitions), so text, backgrounds and borders change together */
-::view-transition-old(root), ::view-transition-new(root) { animation-duration: .4s; animation-timing-function: ease; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .3s; animation-timing-function: ease; }
