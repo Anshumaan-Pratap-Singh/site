@@ -305,7 +305,6 @@ var TIP_READY = (function () {
               <p className="small muted" style={{ margin: 0 }}>From TraderMaths firm guides and candidate reports, checked 22 Nov 2026. Formats vary by role, office and cycle.</p>
             </section>}
             {info ? <Stages info={info} go={go} /> : null}
-            <section className="card tip-panel"><Grading /></section>
           </div>
         </div>
         {info ? <Guide info={info} go={go} fid={f.id} /> : null}
