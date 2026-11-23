@@ -65,7 +65,6 @@ var TIP_READY = (function () {
     F("balyasny", "Balyasny", HF, ["Phone interview", "Team interviews and technical assessments"], { prob: 40, brain: 60 }),
     F("millennium", "Millennium", HF, ["Screening", "Team-matching assessments", "Interviews"], { reason: 30, prob: 30, brain: 40 }),
     F("maverick", "Maverick Derivatives", MM, ["CV screen", "60-minute aptitude test"], { arith: 35, reason: 35, prob: 30 }),
-    F("rothesay", "Rothesay", "Insurer", ["Online test", "Trader interview", "Assessment centre"], { reason: 40, prob: 20, brain: 40 }),
   ];
 
   /* ---------------- turning plays into 0..1 quality points ---------------- */

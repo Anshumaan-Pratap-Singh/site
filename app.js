@@ -9792,7 +9792,6 @@ var TIP_READY = (function() {
     F("balyasny", "Balyasny", HF, ["Phone interview", "Team interviews and technical assessments"], { prob: 40, brain: 60 }),
     F("millennium", "Millennium", HF, ["Screening", "Team-matching assessments", "Interviews"], { reason: 30, prob: 30, brain: 40 }),
     F("maverick", "Maverick Derivatives", MM, ["CV screen", "60-minute aptitude test"], { arith: 35, reason: 35, prob: 30 }),
-    F("rothesay", "Rothesay", "Insurer", ["Online test", "Trader interview", "Assessment centre"], { reason: 40, prob: 20, brain: 40 }),
     F("citadel", "Citadel", HF, ["Online application", "Behavioural first interview", "Technical interviews: probability and expected value"], { prob: 30, brain: 40, est: 10, reason: 20 }),
     F("capula", "Capula", HF, ["Talent team screen", "Technical interviews: mental maths, Greeks, brainteasers", "Programming test for some roles", "Interview day"], { arith: 25, prob: 25, brain: 30, code: 20 }),
     F("goldman", "Goldman Sachs", BK, ["Online application", "HireVue video interview", "Superday: back-to-back interviews"], { reason: 35, brain: 45, arith: 10, est: 10 }),
