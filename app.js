@@ -8796,7 +8796,7 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       sources: [S("CTC: Quant Trading Internship – Summer 2027", "https://job-boards.greenhouse.io/chicagotradingcampus/jobs/4718710005")]
     },
     gresearch: {
-      checked: C,
+      checked: "23 Nov 2026",
       programmes: [
         {
           id: "qr27",
@@ -8805,6 +8805,14 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
           when: "10 weeks, 21 June – 27 August 2027, central London",
           apply: "Apply for one internship only; G-Research considers you across its research roles. Top performers are considered for full-time roles.",
           url: "https://www.brightnetwork.co.uk/graduate-jobs/g-research/quant-research-internship-2027"
+        },
+        {
+          id: "sqf27",
+          name: "Spring into Quant Finance 2027",
+          who: "Quantitative students graduating in 2028 (bachelor's) or 2029 (master's or PhD). A first-year on a four-year MMath may qualify; a three-year BSc first-year does not.",
+          when: "Week-long residential, 4 – 9 April 2027, French Riviera",
+          apply: "Applications are open now. No closing date published, so apply early.",
+          url: "https://www.gresearch.com/spring-into-quant-finance"
         }
       ],
       stages: [
@@ -9052,7 +9060,7 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       sources: [S("Tower: internships", "https://tower-research.com/internship/"), S("TraderMaths: Tower QT/QR Internship 2027", "https://www.tradermath.org/firms/tower-research-capital/jobs/quantitative-trader-researcher-summer-internship-2027-2028-graduates-in-london-4a7468")]
     },
     virtu: {
-      checked: C,
+      checked: "23 Nov 2026",
       programmes: [
         {
           id: "qt27",
@@ -9061,6 +9069,24 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
           when: "10 weeks, 21 June – 27 August 2027",
           apply: "Apply online. Very hands-on: interns look for patterns that could improve trading algorithms.",
           url: "https://job-boards.greenhouse.io/virtu/jobs/8547254002"
+        },
+        {
+          id: "tech27",
+          name: "2027 Summer Internship – Technical (London/Dublin)",
+          who: "Students entering their final year, with strong quantitative skills and some programming",
+          when: "10 weeks, 21 June – 27 August 2027",
+          apply: "Apply online by 11 December 2026.",
+          url: "https://job-boards.greenhouse.io/virtu/jobs/8745933002",
+          deadlines: [{ l: "Applications close", at: "2026-12-11T23:59:00+00:00" }]
+        },
+        {
+          id: "cs27",
+          name: "2027 Summer Internship – Client Support (London/Dublin)",
+          who: "Students entering their final year, any degree, with an interest in markets",
+          when: "10 weeks, 21 June – 27 August 2027",
+          apply: "Apply online by 11 December 2026.",
+          url: "https://job-boards.greenhouse.io/virtu/jobs/8746197002",
+          deadlines: [{ l: "Applications close", at: "2026-12-11T23:59:00+00:00" }]
         }
       ],
       stages: [
