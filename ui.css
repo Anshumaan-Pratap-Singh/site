@@ -184,5 +184,5 @@ kbd { font: 500 11px/1 Inter, system-ui, sans-serif; padding: 3px 6px; border: 1
 .theme-opt svg { width: 18px; height: 18px; flex: none; }
 .theme-opt:hover { background: var(--surface-2); }
 .theme-opt.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
-/* theme switch: colours tween instead of snapping (class is on <html> only while switching) */
-html.theme-tween, html.theme-tween *, html.theme-tween *::before, html.theme-tween *::after { transition: background-color .4s ease, color .4s ease, border-color .4s ease, fill .4s ease, stroke .4s ease, box-shadow .4s ease !important; }
+/* theme switch: one cross-fade of the whole page (View Transitions), so text, backgrounds and borders change together */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .4s; animation-timing-function: ease; }
