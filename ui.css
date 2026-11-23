@@ -175,3 +175,12 @@ kbd { font: 500 11px/1 Inter, system-ui, sans-serif; padding: 3px 6px; border: 1
 /* pager: chip style */
 .pager button { font-family: inherit; font-variant-numeric: tabular-nums; }
 .pager button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+/* theme menu: Light / Dark / System */
+.theme-dd { position: relative; flex: none; }
+.theme-btn.open { background: var(--surface-2); }
+.theme-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; min-width: 170px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 6px; box-shadow: 0 10px 30px #00000024; animation: tm-pop .18s var(--tm-out) both; transform-origin: top right; }
+.theme-opt { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 9px; border: 0; background: none; border-radius: 8px; cursor: pointer; color: var(--text); font: inherit; font-size: 14px; text-align: left; }
+.theme-opt span { flex: 1; }
+.theme-opt svg { width: 18px; height: 18px; flex: none; }
+.theme-opt:hover { background: var(--surface-2); }
+.theme-opt.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
