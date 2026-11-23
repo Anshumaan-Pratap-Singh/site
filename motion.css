@@ -1,0 +1,47 @@
+/* Trading Interview Practice: one motion style for the whole app (23 Nov 2026).
+   Loaded last so it can retune earlier rules. Timings:
+   --mo-fast  0.15s  hover, colour, press
+   --mo-base  0.25s  movement: arrows, tab pill, accordions, page rise, theme fade
+   --mo-in    0.2s   pop-ups opening;  --mo-out 0.15s pop-ups closing (motion.js)
+   One easing curve, --mo-ease, everywhere. */
+:root { --mo-fast: .15s; --mo-base: .25s; --mo-in: .2s; --mo-ease: cubic-bezier(.3,.7,.3,1); }
+
+/* ---- retuned from earlier today ---- */
+.tf-car, .trk-chev { transition: transform var(--mo-base) var(--mo-ease) !important; }
+.tip-chev { transition: transform var(--mo-base) var(--mo-ease); }
+.tabs.has-pill::before { transition: transform var(--mo-base) var(--mo-ease), width var(--mo-base) var(--mo-ease), height var(--mo-base) var(--mo-ease), opacity var(--mo-fast) !important; }
+.tabs.has-pill .tab { transition: color var(--mo-fast) var(--mo-ease); }
+.tabs.pill-still::before { transition: none !important; }
+.theme-menu, .tf-pop { animation: tm-pop var(--mo-in) var(--mo-ease) both; }
+.modal-in { animation-duration: var(--mo-in); animation-timing-function: var(--mo-ease); }
+.toast { animation: mo-toast var(--mo-in) var(--mo-ease) both; }
+@keyframes mo-toast { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--mo-base); animation-timing-function: var(--mo-ease); }
+.pills button, :root[data-theme=dark] .pills button, .tip-seg button { transition: background-color var(--mo-fast) var(--mo-ease), border-color var(--mo-fast) var(--mo-ease), color var(--mo-fast) var(--mo-ease), transform var(--mo-fast) var(--mo-ease); }
+
+/* ---- 2, 7: hover and press ---- */
+.theme-btn, .ghost, .btn, .start, .link, .tip-key-i, .qrow, .trk-accb, .trk2-h, .trk-th2, .tip-sheet-h, .theme-opt, .tf-opt, .tf-btn, .rd-star, .rd-cstar, .tcard, .card.tip-act, .rd-card {
+  transition: background-color var(--mo-fast) var(--mo-ease), border-color var(--mo-fast) var(--mo-ease), color var(--mo-fast) var(--mo-ease), box-shadow var(--mo-fast) var(--mo-ease), filter var(--mo-fast) var(--mo-ease), transform var(--mo-fast) var(--mo-ease), opacity var(--mo-fast) var(--mo-ease);
+}
+.theme-btn:active, .ghost:active:not(:disabled), .start:active:not(:disabled), .tip-key-i:active, .theme-opt:active, .tf-opt:active { transform: scale(.96); }
+
+/* ---- 8: solved checkbox ---- */
+.check { transition: background-color var(--mo-fast) var(--mo-ease), border-color var(--mo-fast) var(--mo-ease), transform var(--mo-fast) var(--mo-ease); }
+.check.on { animation: mo-check var(--mo-base) var(--mo-ease); }
+.check.on svg { animation: mo-tick var(--mo-base) var(--mo-ease) both; }
+@keyframes mo-check { 0% { transform: scale(.8); } 60% { transform: scale(1.12); } 100% { transform: none; } }
+@keyframes mo-tick { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+
+/* ---- 12: skill-area and progress bars grow ---- */
+.tip-wbar i, .rd-bar i, .tip-lh-bar i { transition: width .5s var(--mo-ease); }
+
+/* ---- 15: tracker status picker and pill colours ---- */
+.tip-sel, .rd-track, .trk-st, .trk-dot { transition: background-color var(--mo-fast) var(--mo-ease), border-color var(--mo-fast) var(--mo-ease), color var(--mo-fast) var(--mo-ease); }
+
+/* ---- 16: glossary letter jump lands with a short highlight ---- */
+.mo-land { animation: mo-land .9s var(--mo-ease); }
+@keyframes mo-land { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001s !important; transition-duration: .001s !important; }
+}
