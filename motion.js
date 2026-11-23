@@ -42,7 +42,7 @@
       placePill(tabs, false);
       new MutationObserver(function () { placePill(tabs, true); })
         .observe(tabs, { subtree: true, attributes: true, attributeFilter: ['class'], childList: true });
-      if (window.ResizeObserver) new ResizeObserver(function () { placePill(tabs, false); }).observe(tabs);
+      if (window.ResizeObserver) new ResizeObserver(function () { placePill(tabs, true); }).observe(tabs);
     });
   }
 

@@ -45,3 +45,6 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001s !important; transition-duration: .001s !important; }
 }
+
+/* keep the page width steady when a short page has no scrollbar, so the header (and tab pill) never jumps */
+html { scrollbar-gutter: stable; }
