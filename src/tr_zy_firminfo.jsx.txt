@@ -106,11 +106,11 @@ var TIP_FIRMINFO = (function () {
     },
 
     imc: {
-      checked: "22 Nov 2026",
+      checked: "24 Nov 2026",
       programmes: [
         { id: "launchpad", name: "Launchpad – Trading (Amsterdam)", who: "STEM students at UK or European universities in their pre-penultimate year (the 2026 edition was for students graduating in 2028)",
-          when: "Two days in Amsterdam (5–6 May in 2026). IMC says all its 2027 EU programmes will be in Amsterdam",
-          apply: "2027 dates not announced when checked; join IMC's 2027 EU campus talent community to hear first. Standout participants are fast-tracked to final-round internship interviews. No visa support for these short events.",
+          when: "20–22 April 2027 in Amsterdam.",
+          apply: "Applications not open yet; join IMC's 2027 EU campus talent community to hear first. Standout participants are fast-tracked to final-round internship interviews. No visa support for these short events.",
           url: "https://job-boards.greenhouse.io/imc/jobs/4940448101" },
         { id: "ti27", name: "Trader Intern (Amsterdam, summer 2027)", who: "Penultimate-year students in maths, physics, econometrics or similar, graduating in 2028",
           when: "Starts 28 June 2027 with a week of classroom training",
