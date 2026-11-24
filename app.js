@@ -10257,13 +10257,16 @@ var TIP_READY = (function() {
       });
     }, []);
     const played = new Set(plays.map((p) => dkey(p.ts)));
+    /* fixed Monday-to-Sunday week (24 Nov): today keeps its own slot, later days stay empty */
+    const now0 = /* @__PURE__ */ new Date();
+    const mon = (now0.getDay() + 6) % 7;
     const week = Array.from({ length: 7 }, (_, i) => {
-      const d = /* @__PURE__ */ new Date();
-      d.setDate(d.getDate() - 6 + i);
+      const d = new Date(now0);
+      d.setDate(now0.getDate() - mon + i);
       const k = dkey(d);
-      return { k, on: played.has(k), today: i === 6, l: "SMTWTFS"[d.getDay()] };
+      return { k, on: played.has(k), today: i === mon, future: i > mon, l: "MTWTFSS"[i] };
     });
-    return /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "tip-dash2 rd-dash rd-dash-solo" }, /* @__PURE__ */ TH("div", { className: "card tip-act rd-daily" }, /* @__PURE__ */ TH("div", { className: "tip-act-h" }, /* @__PURE__ */ TH("span", { className: "gicon", style: { background: "var(--warn-soft)", color: "var(--warn)" } }, TH(se, { name: "flame" })), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("b", null, "Daily Challenge"), /* @__PURE__ */ TH("div", { className: "small muted" }, sk.today ? `Done today: ${today[0].score} / 20 · ${sk.cur}-day streak` : sk.cur ? `${sk.cur}-day streak · play today to keep it` : "20 questions, 5 minutes, the same for everyone"))), /* @__PURE__ */ TH("div", { className: "rd-week", "aria-label": "Daily Challenge, last 7 days" }, week.map((d) => /* @__PURE__ */ TH("span", { key: d.k, className: "rd-day" + (d.on ? " on" : "") + (d.today ? " today" : ""), title: d.k }, /* @__PURE__ */ TH("i", null, d.on ? "✓" : ""), /* @__PURE__ */ TH("em", null, d.l)))), /* @__PURE__ */ TH("button", { className: "btn" + (gt && gt.locked ? "" : " primary"), onClick: () => go("trainers", "daily") }, gt && gt.locked ? gt.review ? "See today's result" : "Done for today" : gt && gt.resume ? "Resume" : "Start today's"))), /* @__PURE__ */ TH(Mistakes, null));
+    return /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "tip-dash2 rd-dash rd-dash-solo" }, /* @__PURE__ */ TH("div", { className: "card tip-act rd-daily" }, /* @__PURE__ */ TH("div", { className: "tip-act-h" }, /* @__PURE__ */ TH("span", { className: "gicon", style: { background: "var(--warn-soft)", color: "var(--warn)" } }, TH(se, { name: "flame" })), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("b", null, "Daily Challenge"), /* @__PURE__ */ TH("div", { className: "small muted" }, sk.today ? `Done today: ${today[0].score} / 20 · ${sk.cur}-day streak` : sk.cur ? `${sk.cur}-day streak · play today to keep it` : "20 questions, 5 minutes, the same for everyone"))), /* @__PURE__ */ TH("div", { className: "rd-week", "aria-label": "Daily Challenge, last 7 days" }, week.map((d) => /* @__PURE__ */ TH("span", { key: d.k, className: "rd-day" + (d.on ? " on" : "") + (d.today ? " today" : "") + (d.future ? " future" : ""), title: d.k }, /* @__PURE__ */ TH("i", null, d.on ? "✓" : ""), /* @__PURE__ */ TH("em", null, d.l)))), /* @__PURE__ */ TH("button", { className: "btn" + (gt && gt.locked ? "" : " primary"), onClick: () => go("trainers", "daily") }, gt && gt.locked ? gt.review ? "See today's result" : "Done for today" : gt && gt.resume ? "Resume" : "Start today's"))), /* @__PURE__ */ TH(Mistakes, null));
   }
   return { STAGES, FIRMS, View, DashTop, Mistakes, TagPick, useErrLog, guess, stageScore, allStages, firmScore, streakOf, TAGS };
 })();

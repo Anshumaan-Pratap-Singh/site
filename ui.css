@@ -220,3 +220,4 @@ kbd { font: 500 11px/1 Inter, system-ui, sans-serif; padding: 3px 6px; border: 1
 .hero .grid4 > .stat:nth-child(4) > .gicon.streak-ic { position: static !important; width: 44px !important; height: 44px !important; border-radius: 12px; }
 .rd-daily .rd-week { height: auto !important; min-height: max-content; contain: none !important; overflow: visible; }
 .rd-daily .rd-day i { height: 38px !important; width: 100%; max-width: 38px; aspect-ratio: auto; }
+.rd-daily .rd-day.future i { opacity: .45; }
