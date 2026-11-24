@@ -10263,7 +10263,7 @@ var TIP_READY = (function() {
       const k = dkey(d);
       return { k, on: played.has(k), today: i === 6, l: "SMTWTFS"[d.getDay()] };
     });
-    return /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "grid2 tip-dash2 rd-dash" }, /* @__PURE__ */ TH("div", { className: "card tip-act rd-daily" }, /* @__PURE__ */ TH("div", { className: "tip-act-h" }, /* @__PURE__ */ TH("span", { className: "gicon", style: { background: "var(--warn-soft)", color: "var(--warn)" } }, TH(se, { name: "flame" })), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("b", null, "Daily Challenge"), /* @__PURE__ */ TH("div", { className: "small muted" }, sk.today ? `Done today: ${today[0].score} / 20 · ${sk.cur}-day streak` : sk.cur ? `${sk.cur}-day streak · play today to keep it` : "20 questions, 5 minutes, the same for everyone"))), /* @__PURE__ */ TH("div", { className: "rd-week", "aria-label": "Daily Challenge, last 7 days" }, week.map((d) => /* @__PURE__ */ TH("span", { key: d.k, className: "rd-day" + (d.on ? " on" : "") + (d.today ? " today" : ""), title: d.k }, /* @__PURE__ */ TH("i", null, d.on ? "✓" : ""), /* @__PURE__ */ TH("em", null, d.l)))), /* @__PURE__ */ TH("button", { className: "btn" + (gt && gt.locked ? "" : " primary"), onClick: () => go("trainers", "daily") }, gt && gt.locked ? gt.review ? "See today's result" : "Done for today" : gt && gt.resume ? "Resume" : "Start today's")), /* @__PURE__ */ TH("div", { className: "card rd-dcard" }, /* @__PURE__ */ TH("div", { className: "row" }, /* @__PURE__ */ TH("b", null, "Firm readiness"), /* @__PURE__ */ TH("span", { className: "sp" }), /* @__PURE__ */ TH("button", { className: "link", onClick: () => go("firms") }, "See all ", FIRMS.length, TH(se, { name: "right" }))), pick.map((x) => /* @__PURE__ */ TH("button", { key: x.id, type: "button", className: "rd-row sm", onClick: () => go("firms", x.id) }, /* @__PURE__ */ TH("span", { className: "rd-name" }, /* @__PURE__ */ TH("b", null, x.name)), /* @__PURE__ */ TH(Bar, { v: x.s }), /* @__PURE__ */ TH("span", { className: "rd-num " + tone(x.s) }, x.s))), /* @__PURE__ */ TH("div", { className: "small muted" }, stars.length ? "Your starred firms" : "Your top firms · star firms in the Firms tab to pin them here"))), /* @__PURE__ */ TH(Mistakes, null));
+    return /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "tip-dash2 rd-dash rd-dash-solo" }, /* @__PURE__ */ TH("div", { className: "card tip-act rd-daily" }, /* @__PURE__ */ TH("div", { className: "tip-act-h" }, /* @__PURE__ */ TH("span", { className: "gicon", style: { background: "var(--warn-soft)", color: "var(--warn)" } }, TH(se, { name: "flame" })), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("b", null, "Daily Challenge"), /* @__PURE__ */ TH("div", { className: "small muted" }, sk.today ? `Done today: ${today[0].score} / 20 · ${sk.cur}-day streak` : sk.cur ? `${sk.cur}-day streak · play today to keep it` : "20 questions, 5 minutes, the same for everyone"))), /* @__PURE__ */ TH("div", { className: "rd-week", "aria-label": "Daily Challenge, last 7 days" }, week.map((d) => /* @__PURE__ */ TH("span", { key: d.k, className: "rd-day" + (d.on ? " on" : "") + (d.today ? " today" : ""), title: d.k }, /* @__PURE__ */ TH("i", null, d.on ? "✓" : ""), /* @__PURE__ */ TH("em", null, d.l)))), /* @__PURE__ */ TH("button", { className: "btn" + (gt && gt.locked ? "" : " primary"), onClick: () => go("trainers", "daily") }, gt && gt.locked ? gt.review ? "See today's result" : "Done for today" : gt && gt.resume ? "Resume" : "Start today's"))), /* @__PURE__ */ TH(Mistakes, null));
   }
   return { STAGES, FIRMS, View, DashTop, Mistakes, TagPick, useErrLog, guess, stageScore, allStages, firmScore, streakOf, TAGS };
 })();
@@ -12354,6 +12354,19 @@ var TIP_LEARN = (function() {
     }
     return out;
   }
+  /* the clock is the only part of the mock window that redraws every tick (24 Nov fix: whole-window redraws made the maths numbers blink) */
+  function MockClock({ end, mm, onTimeout }) {
+    const now = TIP.useNow(true, 250);
+    const left = Math.max(0, end - now);
+    useEffect(() => {
+      if (left <= 0) onTimeout.current();
+    }, [left <= 0]);
+    return /* @__PURE__ */ TH("span", { className: "chip tip-clock" + (left < 6e4 ? " low" : "") }, mm(left / 1e3));
+  }
+  const scrollIn = (el) => el && el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  const MockPrompt = R.memo(function MockPrompt({ text }) {
+    return /* @__PURE__ */ TH("div", { className: "tip-mock-q" }, /* @__PURE__ */ TH(Zo, { className: "prob", text }));
+  });
   function Mock({ cfg, onClose }) {
     const { trading, progress, tipUpdate, toggleSolvedT } = Lt();
     const qs = useMemo(() => pickMock(trading, progress, cfg.n), []);
@@ -12363,8 +12376,7 @@ var TIP_LEARN = (function() {
     const [ans, setAns] = useState({});
     const [fin, setFin] = useState(null);
     const [ask, setAsk] = useState(false);
-    const now = TIP.useNow(!fin, 250);
-    const left = Math.max(0, end - (fin ? fin.ts : now));
+    const askOpen = R.useCallback(() => setAsk(true), []);
     const finish = () => {
       if (fin) return;
       const res = qs.map((q2) => {
@@ -12379,17 +12391,16 @@ var TIP_LEARN = (function() {
       res.forEach((r) => r.ok && toggleSolvedT(r.q.id, true));
       setFin({ ts: Date.now(), res, secs });
     };
-    useEffect(() => {
-      if (!fin && left <= 0) finish();
-    });
+    const finishRef = useRef(finish);
+    finishRef.current = finish;
     if (!qs.length) return /* @__PURE__ */ TH(Modal, { onClose, title: /* @__PURE__ */ TH("h3", { style: { margin: 0 } }, "Mock interview") }, /* @__PURE__ */ TH("p", { className: "muted" }, "No questions available."));
     const mm = (s) => Math.floor(s / 60) + ":" + pad(Math.floor(s % 60));
     if (fin) return /* @__PURE__ */ TH(MockReport, { fin, cfg, onClose });
     const q = qs[i];
     const answered = qs.filter((x) => (ans[x.id] || "").trim()).length;
-    return /* @__PURE__ */ TH(Modal, { onClose: () => setAsk(true), title: /* @__PURE__ */ TH(QHead, { q, extra: /* @__PURE__ */ TH("span", { className: "chip tip-clock" + (left < 6e4 ? " low" : "") }, mm(left / 1e3)) }) }, /* @__PURE__ */ TH("div", { className: "tip-mock-dots" }, qs.map((x, k) => /* @__PURE__ */ TH("button", { key: x.id, className: "tip-dot" + (k === i ? " on" : "") + ((ans[x.id] || "").trim() ? " done" : ""), onClick: () => setI(k), "aria-label": "Question " + (k + 1) }, k + 1))), /* @__PURE__ */ TH(Zo, { className: "prob", text: q.prompt }), /* @__PURE__ */ TH("div", { className: "box" }, /* @__PURE__ */ TH("div", { className: "small muted", style: { marginBottom: 6 } }, "Your answer (no feedback until the end)"), /* @__PURE__ */ TH("input", { key: q.id, className: "inp num", style: { width: "100%" }, value: ans[q.id] || "", onChange: (e) => setAns({ ...ans, [q.id]: e.target.value }), onKeyDown: (e) => {
+    return /* @__PURE__ */ TH(Modal, { onClose: askOpen, title: /* @__PURE__ */ TH(QHead, { q, extra: /* @__PURE__ */ TH(MockClock, { end, mm, onTimeout: finishRef }) }) }, ask ? /* @__PURE__ */ TH("div", { className: "box tip-confirm tip-confirm-top", ref: scrollIn }, /* @__PURE__ */ TH("b", null, "Finish now?"), " ", /* @__PURE__ */ TH("span", { className: "small muted" }, answered, " of ", qs.length, " answered. Unanswered questions count as missed."), /* @__PURE__ */ TH("div", { className: "row" }, /* @__PURE__ */ TH("span", { className: "sp" }), /* @__PURE__ */ TH("button", { className: "btn sm", onClick: () => setAsk(false) }, "Keep going"), /* @__PURE__ */ TH("button", { className: "btn sm", onClick: onClose }, "Quit without saving"), /* @__PURE__ */ TH("button", { className: "btn sm primary", onClick: finish }, "Finish and mark"))) : null, /* @__PURE__ */ TH("div", { className: "tip-mock-dots" }, qs.map((x, k) => /* @__PURE__ */ TH("button", { key: x.id, className: "tip-dot" + (k === i ? " on" : "") + ((ans[x.id] || "").trim() ? " done" : ""), onClick: () => setI(k), "aria-label": "Question " + (k + 1) }, k + 1))), /* @__PURE__ */ TH(MockPrompt, { key: q.id, text: q.prompt }), /* @__PURE__ */ TH("div", { className: "box" }, /* @__PURE__ */ TH("div", { className: "small muted", style: { marginBottom: 6 } }, "Your answer (no feedback until the end)"), /* @__PURE__ */ TH("input", { key: q.id, className: "inp num", style: { width: "100%" }, value: ans[q.id] || "", onChange: (e) => setAns({ ...ans, [q.id]: e.target.value }), onKeyDown: (e) => {
       if (e.key === "Enter" && i < qs.length - 1) setI(i + 1);
-    }, placeholder: "Answer", autoCapitalize: "off", autoCorrect: "off", spellCheck: false, autoFocus: true })), ask ? /* @__PURE__ */ TH("div", { className: "box tip-confirm" }, /* @__PURE__ */ TH("b", null, "Finish now?"), " ", /* @__PURE__ */ TH("span", { className: "small muted" }, answered, " of ", qs.length, " answered. Unanswered questions count as missed."), /* @__PURE__ */ TH("div", { className: "row" }, /* @__PURE__ */ TH("span", { className: "sp" }), /* @__PURE__ */ TH("button", { className: "btn sm", onClick: () => setAsk(false) }, "Keep going"), /* @__PURE__ */ TH("button", { className: "btn sm", onClick: onClose }, "Quit without saving"), /* @__PURE__ */ TH("button", { className: "btn sm primary", onClick: finish }, "Finish and mark"))) : null, /* @__PURE__ */ TH("div", { className: "divider" }), /* @__PURE__ */ TH("div", { className: "row" }, /* @__PURE__ */ TH("button", { className: "btn sm", disabled: i === 0, onClick: () => setI(i - 1) }, TH(se, { name: "left" }), "Prev"), /* @__PURE__ */ TH("span", { className: "small muted" }, answered, " / ", qs.length, " answered"), /* @__PURE__ */ TH("span", { className: "sp" }), i < qs.length - 1 ? /* @__PURE__ */ TH("button", { className: "btn sm", onClick: () => setI(i + 1) }, "Next", TH(se, { name: "right" })) : null, /* @__PURE__ */ TH("button", { className: "btn sm primary", onClick: () => setAsk(true) }, "Finish")));
+    }, placeholder: "Answer", autoCapitalize: "off", autoCorrect: "off", spellCheck: false, autoFocus: true })), null, /* @__PURE__ */ TH("div", { className: "divider" }), /* @__PURE__ */ TH("div", { className: "row" }, /* @__PURE__ */ TH("button", { className: "btn sm", disabled: i === 0, onClick: () => setI(i - 1) }, TH(se, { name: "left" }), "Prev"), /* @__PURE__ */ TH("span", { className: "small muted" }, answered, " / ", qs.length, " answered"), /* @__PURE__ */ TH("span", { className: "sp" }), i < qs.length - 1 ? /* @__PURE__ */ TH("button", { className: "btn sm", onClick: () => setI(i + 1) }, "Next", TH(se, { name: "right" })) : null, /* @__PURE__ */ TH("button", { className: "btn sm primary", onClick: () => setAsk(true) }, "Finish")));
   }
   function MockReport({ fin, cfg, onClose }) {
     const [open, setOpen] = useState(null);

@@ -48,3 +48,6 @@
 
 /* keep the page width steady when a short page has no scrollbar, so the header (and tab pill) never jumps */
 html { scrollbar-gutter: stable; }
+
+/* page entrance is one fade of the whole page (motion.js, 24 Nov): cards no longer rise in on their own */
+.tcard, .grid4 > .card { animation: none !important; }

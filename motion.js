@@ -2,7 +2,7 @@
    Adds motion without touching the React code. Timings match motion.css:
    fast 150ms (hover, colour), base 250ms (movement), pop-ups in 200ms / out 150ms.
    - top tabs: a pill that slides to the selected tab
-   - page change (tab or sub-tab): content rises in, cards stagger in, numbers count up,
+   - page change (tab or sub-tab): the whole page fades in at once, numbers count up,
      readiness rings fill and skill bars grow
    - search / filter results: new rows and cards fade in
    - accordions (Tracker, Formula sheet, <details> such as "How it's graded"): slide open and closed
@@ -21,28 +21,48 @@
       { duration: BASE, delay: delay || 0, easing: EASE, fill: 'backwards' });
   }
 
-  /* ---------- sliding tab pill ---------- */
+  /* ---------- sliding tab pill ----------
+     A real element moved with the Web Animations API (24 Nov). The old ::before pill moved by
+     CSS transitions on custom properties; Safari slid it but snapped its width at the end,
+     so the pill looked like it jumped when it landed. */
   function placePill(tabs, animate) {
+    var pill = tabs.__pill;
     var on = tabs.querySelector('.tab.on');
-    if (!on) { tabs.style.setProperty('--pill-o', '0'); return; }
-    if (!animate) tabs.classList.add('pill-still');
-    tabs.style.setProperty('--pill-x', on.offsetLeft + 'px');
-    tabs.style.setProperty('--pill-y', on.offsetTop + 'px');
-    tabs.style.setProperty('--pill-w', on.offsetWidth + 'px');
-    tabs.style.setProperty('--pill-h', on.offsetHeight + 'px');
-    tabs.style.setProperty('--pill-o', '1');
-    if (!animate) { void tabs.offsetWidth; tabs.classList.remove('pill-still'); }
+    if (!pill) return;
+    if (!on) { pill.style.opacity = '0'; tabs.__pr = null; return; }
+    var r = { x: on.offsetLeft, y: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight };
+    var p0 = tabs.__pr;
+    if (p0 && p0.x === r.x && p0.y === r.y && p0.w === r.w && p0.h === r.h) return;
+    if (pill.__anim) { pill.__anim.cancel(); pill.__anim = null; }
+    pill.style.transform = 'translate(' + r.x + 'px,' + r.y + 'px)';
+    pill.style.width = r.w + 'px';
+    pill.style.height = r.h + 'px';
+    pill.style.opacity = '1';
+    tabs.__pr = r;
+    if (!animate || !p0 || !pill.animate) return;
+    pill.__anim = pill.animate([
+      { transform: 'translate(' + p0.x + 'px,' + p0.y + 'px)', width: p0.w + 'px', height: p0.h + 'px' },
+      { transform: 'translate(' + r.x + 'px,' + r.y + 'px)', width: r.w + 'px', height: r.h + 'px' }
+    ], { duration: BASE, easing: EASE });
+    pill.__anim.onfinish = function () { pill.__anim = null; };
   }
   var tabsSeen = new WeakSet();
   function hookTabs() {
     document.querySelectorAll('.top .tabs').forEach(function (tabs) {
       if (tabsSeen.has(tabs)) return;
       tabsSeen.add(tabs);
-      tabs.classList.add('has-pill');
+      var pill = document.createElement('span');
+      pill.className = 'mo-pill';
+      pill.setAttribute('aria-hidden', 'true');
+      tabs.appendChild(pill);
+      tabs.__pill = pill;
+      tabs.classList.add('has-pill', 'has-pill2');
       placePill(tabs, false);
-      new MutationObserver(function () { placePill(tabs, true); })
-        .observe(tabs, { subtree: true, attributes: true, attributeFilter: ['class'], childList: true });
-      if (window.ResizeObserver) new ResizeObserver(function () { placePill(tabs, true); }).observe(tabs);
+      new MutationObserver(function () {
+        if (!pill.isConnected) tabs.appendChild(pill);   // React re-rendered the row: put the pill back
+        placePill(tabs, true);
+      }).observe(tabs, { subtree: true, attributes: true, attributeFilter: ['class'], childList: true });
+      if (window.ResizeObserver) new ResizeObserver(function () { placePill(tabs, false); }).observe(tabs);
     });
   }
 
@@ -81,27 +101,39 @@
     root.querySelectorAll('.rd-bar > i, .tip-wbar > i').forEach(growBar);
   }
 
-  /* ---------- page entrance: rise, cards stagger ---------- */
+  /* ---------- page entrance: one quick fade of the whole page (24 Nov) ----------
+     Before, the page rose in and its cards were staggered up to ~0.4 s apart, so some pages
+     arrived in pieces and others at once. Now every page fades in whole, the same way. */
   function enter(nodes) {
     pageBusy = true;
-    nodes.forEach(function (el) { rise(el, 0); });
-    var cards = [];
-    nodes.forEach(function (el) { el.querySelectorAll('.card, .tcard').forEach(function (c) { cards.push(c); }); });
-    var vh = window.innerHeight, k = 0;
-    cards.forEach(function (c) {
-      var r = c.getBoundingClientRect();
-      if (r.top > vh || r.bottom < 0 || k > 11) return;   // only what is on screen, at most 12
-      rise(c, 40 + 30 * k++, 10);
+    nodes.forEach(function (el) {
+      if (el.__fade) el.__fade.cancel();
+      el.__fade = el.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: IN, easing: EASE });
     });
     nodes.forEach(dressUp);
-    setTimeout(function () { pageBusy = false; }, BASE + 400);
+    setTimeout(function () { pageBusy = false; }, IN + 150);
   }
   function pageIn() {
     var app = document.querySelector('.app');
     if (!app) return;
     enter(Array.prototype.filter.call(app.children, function (el) { return el.tagName !== 'HEADER'; }));
   }
-  window.addEventListener('hashchange', function () { requestAnimationFrame(pageIn); });
+  /* Fade the new page the moment React puts it in (the observer below runs before the next paint),
+     so it never shows at full strength for a frame first. Two frames after a hash change with no
+     new page seen, fade what is there. */
+  var armedAt = 0;
+  function arm() { armedAt = performance.now(); }
+  function viewSwapped() {
+    if (!armedAt || performance.now() - armedAt > 1000) return false;
+    armedAt = 0; pageIn(); return true;
+  }
+  document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('.top .tabs .tab')) arm();
+  }, true);
+  window.addEventListener('hashchange', function () {
+    arm();
+    requestAnimationFrame(function () { requestAnimationFrame(function () { if (armedAt) { armedAt = 0; pageIn(); } }); });
+  });
   /* sub-tabs (Firms > Tracker etc.) don't change the address: animate what follows the switcher */
   document.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('.tip-seg button');
@@ -196,9 +228,11 @@
     muts.forEach(function (m) {
       m.addedNodes.forEach(function (n) {
         if (n.nodeType !== 1 || n.__leaving) return;
+        if (armedAt && n.parentElement && n.parentElement.classList.contains('app') && n.tagName !== 'HEADER' && viewSwapped()) return;
         if (n.matches(BODY)) { slide(n, true); dressUp(n); }
         else if (n.matches(ROW)) { queueRow(n); dressUp(n); }
-        else if (m.target.closest && m.target.closest('.scrim') && !n.matches('.scrim')) {
+        else if (m.target.closest && m.target.closest('.scrim') && !n.matches('.scrim') && !m.target.closest('.prob, .katex')) {
+          /* maths inside a question is skipped: a redraw re-inserts its nodes and the fade made the numbers blink (24 Nov) */
           /* question window: content swapped for the next / previous question */
           n.animate([{ opacity: 0 }, { opacity: 1 }], { duration: IN, easing: EASE });
         }
