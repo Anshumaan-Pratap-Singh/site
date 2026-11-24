@@ -205,3 +205,18 @@ kbd { font: 500 11px/1 Inter, system-ui, sans-serif; padding: 3px 6px; border: 1
 .tabs.has-pill2::before { content: none !important; display: none !important; }
 .tabs.has-pill2 .mo-pill { position: absolute; left: 0; top: 0; z-index: 0; border-radius: 9px; background: var(--surface); box-shadow: var(--shadow); pointer-events: none; will-change: transform, width; }
 :root[data-theme=dark] .tabs.has-pill2 .mo-pill { background: var(--text); }
+
+/* mobile dashboard (24 Nov): streak flame sits inline before its text at laptop size; week strip letters never run into the button */
+.stat:has(> .streak-ic) { display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: flex-start !important; gap: 12px !important; }
+.stat > .streak-ic { order: 0 !important; position: static !important; flex: none; width: 44px !important; height: 44px !important; margin: 0 !important; }
+.stat > .streak-ic + div { order: 1; min-width: 0; }
+.rd-daily .rd-week { align-items: start; margin-bottom: 4px; }
+.rd-daily .rd-day { min-width: 0; height: auto !important; }
+.rd-daily .rd-day i { height: auto !important; }
+.rd-daily .rd-day em { line-height: 1.2; }
+.rd-daily .rd-week { flex: none; }
+.stats .stat > span.gicon.streak-ic, .stat > span.gicon.streak-ic.streak-ic { width: 44px !important; height: 44px !important; min-width: 44px; border-radius: 12px; }
+.stat > span.gicon.streak-ic.streak-ic svg { width: 22px !important; height: 22px !important; }
+.hero .grid4 > .stat:nth-child(4) > .gicon.streak-ic { position: static !important; width: 44px !important; height: 44px !important; border-radius: 12px; }
+.rd-daily .rd-week { height: auto !important; min-height: max-content; contain: none !important; overflow: visible; }
+.rd-daily .rd-day i { height: 38px !important; width: 100%; max-width: 38px; aspect-ratio: auto; }
