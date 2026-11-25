@@ -8694,12 +8694,12 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
   const S = (t, url) => ({ t, url });
   Object.assign(TIP_FIRMINFO.INFO, {
     citsec: {
-      checked: C,
+      checked: "25 Nov 2026",
       programmes: [
         {
           id: "disc27",
           name: "Discover Citadel Securities – EMEA (London)",
-          who: "First- and second-year undergraduates in Europe graduating between Dec 2027 and Jun 2029",
+          who: "First- and second-year undergraduates in Europe graduating between Dec 2028 and Jun 2030",
           deadlines: [{ l: "Applications", at: "2027-01-29T23:59:00+00:00" }],
           when: "In person in London, end of March 2027 (two days)",
           apply: "Deadline 29 Jan 2027; selected attendees are told by 5 Feb 2027. Covers quant research, software engineering and trading.",
@@ -9227,14 +9227,14 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       sources: [S("Balyasny: QR Summer Internship (London)", "https://www.kadoa.com/quant/job/bamfunds-jobs-quantitative-researcher-quantitative-strategies-summer-i-a317ba60"), S("Pensions & Investments on hedge fund internships", "https://www.craincurrency.com/node/1013506")]
     },
     millennium: {
-      checked: C,
+      checked: "25 Nov 2026",
       programmes: [
         {
           id: "qr27",
           name: "2027 Quantitative Researcher Intern (London)",
           who: "Bachelor's or master's students in a technical discipline",
           when: "Summer 2027",
-          apply: "Apply online. Millennium's investment internship for London opened in February.",
+          apply: "Apply online. Millennium's 2027 investment internship for London is full and closed; other 2027 internships fill on a rolling basis.",
           url: "https://capd.mit.edu/jobs/millennium-management-llc-2027-quantitative-researcher-intern-london/"
         }
       ],
@@ -9299,7 +9299,7 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       sources: [S("Virtu: 2027 Internship – Quantitative Trading", "https://job-boards.greenhouse.io/virtu/jobs/8547254002")]
     },
     mako: {
-      checked: "24 Nov 2026",
+      checked: "25 Nov 2026",
       programmes: [
         {
           id: "si",
@@ -9309,7 +9309,7 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
           apply: "Apply online; focuses on options markets.",
           url: "https://www.tradermath.org/firms/mako-trading/jobs/mako-summer-internship-trading-technology-in-london-9eb4d6"
         },
-        { id: "gt", name: "Graduate Trader (London)", who: "Final-year students and graduates", when: "Rolling", apply: "Apply online.", url: "https://mako.com/career" }
+        { id: "gt", name: "Graduate Trader (London)", who: "Final-year students and graduates", when: "Starts late September; an 18-month programme", apply: "Apply online.", url: "https://mako.com/career" }
       ],
       stages: [
         { name: "Online tests", detail: "Candidates report numerical and sequence tests.", links: [...MATH, T("seq", "Sequence Trainer")] },
@@ -9319,13 +9319,13 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       sources: [S("Mako: careers", "https://mako.com/career"), S("TraderMaths: Mako Summer Internship", "https://www.tradermath.org/firms/mako-trading/jobs/mako-summer-internship-trading-technology-in-london-9eb4d6")]
     },
     fiverings: {
-      checked: C,
+      checked: "25 Nov 2026",
       programmes: [
         {
           id: "si27",
           name: "Summer Intern 2027 – Quantitative Trader (New York)",
           who: "Graduating Winter 2027 – Summer 2028; students outside the US can apply",
-          when: "Summer 2027 in New York",
+          when: "9 weeks, early June to early August 2027, New York",
           apply: "Apply online. Five Rings also runs a four-week January winter internship and hires 2027 graduates in London and Amsterdam.",
           url: "https://job-boards.greenhouse.io/fiveringsllc/jobs/5139668008"
         }
@@ -9511,8 +9511,8 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       sources: [S("Glassdoor: Citi Global Markets summer analyst", "https://www.glassdoor.co.in/Interview/Citi-Interview-E8843-RVW96344510.htm"), S("Glassdoor: Citi spring week and summer interviews", "https://clear.glassdoor.nl/Interview/Citi-Spring-Week-Intern-Interview-Questions-EI_IE8843.0,4_KO5,23.htm")]
     },
     wellsfargo: {
-      checked: C,
-      programmes: [{ "id": "p0", "name": "Spring Week 2027 (London)", "who": "See the posting", "when": "Spring 2027", "apply": "No deadline listed; many banks recruit on a rolling basis, so apply early.", "url": "https://icasfoundation.org.uk/community/current-students/insight-opportunities-spring-2027" }],
+      checked: "25 Nov 2026",
+      programmes: [{ "id": "p0", "name": "Spring Week 2027 (London)", "who": "See the posting", "when": "April 2027", "apply": "No deadline listed; many banks recruit on a rolling basis, so apply early.", "url": "https://icasfoundation.org.uk/community/current-students/insight-opportunities-spring-2027" }],
       stages: [
         { name: "Video interview", detail: "A London candidate describes a video interview first.", links: [BANK] },
         { name: "Final interviews", detail: "Then two back-to-back interviews with two interviewers each, mainly behavioural.", links: [G("superday", "Superday Simulation"), BANK] }

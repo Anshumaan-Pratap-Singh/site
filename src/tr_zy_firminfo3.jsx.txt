@@ -80,8 +80,8 @@
         { name: "Pitch a commodity — would it already be priced in?", links: [L("futures1", "Futures"), L("options1", "Calls and puts"), G("fermi", "Fermi Estimation")] },
         { name: "Where are fixed income markets heading?", links: [] }],
       sources: [S("Glassdoor: Citi Global Markets summer analyst", "https://www.glassdoor.co.in/Interview/Citi-Interview-E8843-RVW96344510.htm"), S("Glassdoor: Citi spring week and summer interviews", "https://clear.glassdoor.nl/Interview/Citi-Spring-Week-Intern-Interview-Questions-EI_IE8843.0,4_KO5,23.htm")] },
-    wellsfargo: { checked: C,
-      programmes: [{"id": "p0", "name": "Spring Week 2027 (London)", "who": "See the posting", "when": "Spring 2027", "apply": "No deadline listed; many banks recruit on a rolling basis, so apply early.", "url": "https://icasfoundation.org.uk/community/current-students/insight-opportunities-spring-2027"}],
+    wellsfargo: { checked: "25 Nov 2026",
+      programmes: [{"id": "p0", "name": "Spring Week 2027 (London)", "who": "See the posting", "when": "April 2027", "apply": "No deadline listed; many banks recruit on a rolling basis, so apply early.", "url": "https://icasfoundation.org.uk/community/current-students/insight-opportunities-spring-2027"}],
       stages: [
         { name: "Video interview", detail: "A London candidate describes a video interview first.", links: [BANK] },
         { name: "Final interviews", detail: "Then two back-to-back interviews with two interviewers each, mainly behavioural.", links: [G("superday", "Superday Simulation"), BANK] }],
