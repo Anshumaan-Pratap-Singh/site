@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Trading Interview Practice</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Trading Practice">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#254068">
 <script>
 (function(){var t=null;try{t=localStorage.getItem('tradermath-theme');}catch(e){}
 if(t!=='light'&&t!=='dark'){t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}
@@ -25,5 +32,10 @@ document.documentElement.setAttribute('data-theme',t);})();
 <script src="app.js"></script>
 <script src="anim.js"></script>
 <script src="motion.js"></script>
+<script>
+/* offline Home Screen app: only on the GitHub Pages site (and local testing), never in the Claude artifact or the Android app */
+if ('serviceWorker' in navigator && /(^|\.)github\.io$|^localhost$|^127\.0\.0\.1$/.test(location.hostname))
+  window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+</script>
 </body>
 </html>

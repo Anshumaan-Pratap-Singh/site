@@ -1,0 +1,25 @@
+"""Writes sw.js, the offline cache for the GitHub Pages site (Home Screen app on iPad / iPhone / Android browsers).
+Run from the site folder after adding or removing files:  python3 src/make_sw.py.txt
+- core files (html, css, js, json, small images): served from the cache at once, then refreshed in the background,
+  so edits (like the daily firm check) arrive on the next launch without re-running this script.
+- big files (clang/, pyodide/): cached once; their cache name is a hash of their contents, so they are fetched
+  again only when one of them changes (re-run this script then)."""
+import hashlib, json, os, pathlib, sys
+ROOT = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else '.').resolve()
+SKIP_DIRS = {'.git', '.github', 'android', 'src', 'docs', 'node_modules'}
+SKIP_FILES = {'sw.js', 'README.md', 'SOURCES.md', '.gitignore', 'icon-source.svg'}
+core, big = [], []
+for p in sorted(ROOT.rglob('*')):
+    rel = p.relative_to(ROOT).as_posix()
+    if not p.is_file() or rel.split('/')[0] in SKIP_DIRS or p.name in SKIP_FILES or p.name.startswith('.'): continue
+    (big if rel.startswith(('clang/', 'pyodide/')) else core).append(rel)
+h = hashlib.sha256()
+for rel in big: h.update(rel.encode()); h.update((ROOT / rel).read_bytes())
+big_v = h.hexdigest()[:10]
+core_v = hashlib.sha256('\n'.join(core).encode()).hexdigest()[:10]
+tpl = (ROOT / 'src' / 'sw.template.js.txt').read_text()
+out = tpl.replace('__CORE__', json.dumps(['./'] + core, indent=0)).replace('__BIG__', json.dumps(big, indent=0)) \
+         .replace('__CORE_V__', core_v).replace('__BIG_V__', big_v)
+(ROOT / 'sw.js').write_text(out)
+print(f'sw.js: {len(core)} core files (v {core_v}), {len(big)} big files (v {big_v}), '
+      f'{sum((ROOT / r).stat().st_size for r in core + big) / 1e6:.1f} MB')
