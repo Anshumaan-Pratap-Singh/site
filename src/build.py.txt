@@ -223,6 +223,9 @@ P('C++ & Python \\xB7 Python runs live in your browser',
   'C++ & Python \\xB7 both run in your browser')
 P('if(!a.length&&!l.length)return{fatal:\'No "tradingQuestions" or "codingQuestions" arrays found.\'}',
   'if(!a.length&&!l.length)return{fatal:t.kind==="backup"||t.progress?\'This is a backup file. Open the Restore Backup tab to load it.\':\'No "tradingQuestions" or "codingQuestions" arrays found.\'}')
+# Android app: Export Backup hands the file to the app's save dialog (WBAndroid bridge in MainActivity)
+P('if(p&&p.code==="declined")return}s(d)}',
+  'if(p&&p.code==="declined")return}if(window.WBAndroid&&window.WBAndroid.saveFile)try{window.wbToast=t,window.WBAndroid.saveFile(v,d);return}catch{}s(d)}')
 # the Pyodide loader is stored with the app (pyodide/pyodide.js, 0.26.4), not fetched from jsDelivr
 P('Ug="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"', 'Ug=new URL("pyodide/pyodide.js",location.href).href')
 # safety: never overwrite a bigger live app.js in the artifact root (parts of it were patched on the bundle; see build notes)

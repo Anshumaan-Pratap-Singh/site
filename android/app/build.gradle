@@ -1,0 +1,39 @@
+plugins { id "com.android.application" }
+
+// Version comes from the workflow: VERSION_CODE = run number, VERSION_NAME = tag without the "v".
+def vCode = (System.getenv("VERSION_CODE") ?: "1") as int
+def vName = System.getenv("VERSION_NAME") ?: "1.0"
+
+android {
+    namespace "com.anshumaan.tradingpractice"
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.anshumaan.tradingpractice"
+        minSdk 24
+        targetSdk 34
+        versionCode vCode
+        versionName vName
+    }
+    signingConfigs {
+        release {
+            // The keystore is decoded from the KEYSTORE_B64 secret by the workflow; it is never in the repo.
+            storeFile file(System.getenv("KEYSTORE_FILE") ?: "missing.jks")
+            storePassword System.getenv("KEYSTORE_PASSWORD")
+            keyAlias "tradingpractice"
+            keyPassword System.getenv("KEYSTORE_PASSWORD")
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    androidResources { noCompress += ["json", "js", "mjs", "css", "html", "wasm"] }
+}
+
+dependencies {
+    implementation "androidx.webkit:webkit:1.11.0"
+    implementation "androidx.core:core:1.13.1"
+}

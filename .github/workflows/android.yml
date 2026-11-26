@@ -1,0 +1,88 @@
+# Builds the offline Android app (the whole Trading Interview Practice site packed inside, C++ and Python included) and attaches the signed APK to a GitHub Release.
+# Run it by pushing a tag like v1.0.0, or from the Actions tab (Run workflow).
+# Needs two repository secrets: KEYSTORE_B64 (the keystore, base64) and KEYSTORE_PASSWORD.
+name: Android APK
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version name, e.g. 1.0.1"
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the signing secrets
+        id: keys
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then echo "ok=false" >> "$GITHUB_OUTPUT"; else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Version
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then V="${{ github.event.inputs.version }}"; else V="${GITHUB_REF_NAME#v}"; fi
+          echo "name=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Pack the site into the app
+        run: |
+          D=android/app/src/main/assets/site
+          mkdir -p "$D"
+          cp index.html *.css *.js "$D"/
+          cp -r data cards logos clang pyodide icons "$D"/
+          rm -f "$D/cards/court/SOURCES.md"
+          ls -R "$D" | head -40
+
+      - name: Without the secrets, only check that the app compiles
+        if: steps.keys.outputs.ok != 'true'
+        run: |
+          gradle -p android assembleDebug --no-daemon --stacktrace
+          echo "::error::The app compiles, but no APK was released: add the KEYSTORE_B64 and KEYSTORE_PASSWORD secrets (Settings > Secrets and variables > Actions), then run this again."
+          exit 1
+
+      - name: Build and sign
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          VERSION_NAME: ${{ steps.v.outputs.name }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          export KEYSTORE_FILE="$RUNNER_TEMP/release.jks"
+          gradle -p android assembleRelease --no-daemon --stacktrace
+          cp android/app/build/outputs/apk/release/app-release.apk "trading-interview-practice-${VERSION_NAME}.apk"
+          rm -f "$RUNNER_TEMP/release.jks"
+
+      - name: Attach to a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.name }}
+        run: |
+          TAG="v$V"
+          NOTES="Offline Android app of Trading Interview Practice: every tab, trainer and game, with the C++ and Python runners, works without internet (firm links open in your browser). Install over the previous version to keep your progress (don't uninstall first). Progress in the app is separate from the Claude artifact: move it with Export Backup and Load Question Pack > Restore Backup."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "trading-interview-practice-$V.apk" --clobber
+          else
+            gh release create "$TAG" "trading-interview-practice-$V.apk" --title "Trading Interview Practice $V" --notes "$NOTES" --target "${{ github.sha }}"
+          fi

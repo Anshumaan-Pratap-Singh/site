@@ -34,3 +34,11 @@ A full bug sweep (headless Chrome at 474, 375 and 1180 px, every page, every que
 - All 326 trading questions open with no KaTeX errors and accept their exact value; the nine rounded answers and percent answers now pass.
 - Backup → restore in a fresh browser keeps attempts and the review queue.
 - SPSC C++ solution 9/9, starter 3/9 (no hang). Python runs with no network access to jsDelivr.
+
+# Android app (26 Nov 2026)
+
+- `android/`: WebView app (package `com.anshumaan.tradingpractice`, launcher name "Trading Practice"), copied from the Maths Workbook app. Pages load from `https://appassets.androidplatform.net/assets/`, so progress stays across updates installed over the old app. `.wasm` is served as `application/wasm` and stored uncompressed.
+- Export Backup uses the `WBAndroid.saveFile` bridge (Android save dialog); patch also in `build.py`.
+- Icon: `icons/icon-source.svg` (gold scale, the app's A♠ and K♥ cards and dice in the bowls, green/red candles, Maths Workbook navy gradient). Adaptive layers in `android/app/src/main/res/drawable-nodpi`.
+- `.github/workflows/android.yml`: push a tag `vX.Y.Z` (or Run workflow) to build, sign and attach `trading-interview-practice-X.Y.Z.apk` to a GitHub Release. Needs repo secrets `KEYSTORE_B64` and `KEYSTORE_PASSWORD` (key alias `tradingpractice`).
+- Offline check (all non-local requests blocked): every tab loads, Python 4/4 and C++ 3/3 on Top of Book, Export Backup reaches the bridge. Only Google Fonts is unreachable (falls back to system fonts).
