@@ -225,7 +225,7 @@ var TIP_MM = (function () {
           setTape(t => [{ txt: I.reveal(st, nk), tone: "info" }, ...t].slice(0, 12));
           setK(nk); openQuote(nk, true);
         } else settle();
-      }, take ? 300 : 1100);
+      }, I === dice ? (take ? 0 : 50) : take ? 300 : 1100); /* dice: the reply line slides in, then 50 ms later the next die drops */
     }
     function settle() { setPhase("settle"); }
     useEffect(() => { if (phase === "quote" && !take && left <= 0) submitQuote(true); }, [left <= 0, phase]);

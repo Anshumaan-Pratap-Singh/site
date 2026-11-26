@@ -2797,7 +2797,7 @@ var TIP_MM = (function() {
           setK(nk);
           openQuote(nk, true);
         } else settle();
-      }, take ? 300 : 1100);
+      }, I === dice ? (take ? 0 : 50) : take ? 300 : 1100); /* dice: the reply line slides in, then 50 ms later the next die drops */
     }
     function settle() {
       setPhase("settle");
