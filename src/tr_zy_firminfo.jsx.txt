@@ -63,14 +63,14 @@ var TIP_FIRMINFO = (function () {
     },
 
     janestreet: {
-      checked: "23 Nov 2026",
+      checked: "26 Nov 2026",
       programmes: [
         { id: "fttp27", deadlines: [{ l: "Applications", at: "2027-01-03T23:59:00Z" }], name: "First-year Trading and Technology Programme (FTTP), London", who: "First-year undergraduates in maths, physics, computer science or other STEM subjects",
           when: "21–25 March 2027 at Jane Street's London office",
           apply: "Deadline 3 Jan 2027, 23:59 GMT; decisions by 15 Jan 2027. Talks, games and activities; no finance knowledge needed.",
           url: "https://www.janestreet.com/fttp-ldn-email" },
         { id: "focus27", name: "FOCUS, London", who: "First-year students at universities in Europe, the Middle East or Africa who have faced barriers to advanced STEM opportunities",
-          when: "13–16 January 2027 in London", apply: "See the programme page for the deadline.",
+          when: "13–16 January 2027 in London", apply: "Closed: the deadline was 8 Nov 2026.",
           url: "https://www.janestreet.com/focus-ldn-email.html" },
         { id: "insight", name: "INSIGHT, London", who: "Women, transgender and gender-expansive undergraduates",
           when: "5–10 April 2027 in London. Tracks include Trading and Research and Software Engineering",

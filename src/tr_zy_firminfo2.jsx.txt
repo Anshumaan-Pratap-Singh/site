@@ -275,12 +275,12 @@
       topics: [{ name: "A stock pitch and why you like it", links: [] }, why("Point72")],
       sources: [S("eFinancialCareers: Point72 Spring Insight Programme 2027", "https://www.efinancialcareers.co.uk/jobs-UK-London-2027_Point72_Academy_Spring_Insight_Programme_-_UK.id24840936"), S("Point72: Academy summer internship", "https://job-boards.greenhouse.io/point72/jobs/8435134002")] },
 
-    marshallwace: { checked: C,
+    marshallwace: { checked: "26 Nov 2026",
       programmes: [
         { id: "tech27", name: "Technology Intern – London 2027", who: "Open to first-year students, considered alongside penultimate years", when: "28 June – 3 September 2027, fully in office",
           apply: "Apply online.", url: "https://www.mwam.com/technology-internship-programme/" },
-        { id: "qr27", name: "Quant Research Intern – London 2027", who: "Penultimate-year master's or PhD students in STEM (not bachelor's)", when: "28 June – 3 September 2027", apply: "Apply online.",
-          url: "https://www.brightnetwork.co.uk/graduate-jobs/marshall-wace/quant-research-intern-london-2027" },
+        { id: "qr27", name: "Quant Research Intern – London 2027", who: "Penultimate-year master's or PhD students in STEM (not bachelor's)", when: "28 June – 3 September 2027", apply: "Closes 12 Jan 2027, 12pm GMT.",
+          url: "https://www.mwam.com/quantitative-research-internship/", deadlines: [{ l: "Applications", at: "2027-01-12T12:00:00+00:00" }] },
       ],
       stages: [
         { name: "Online assessment", detail: "Coding or maths tests depending on the track.", links: [CODE, ...PROB] },
