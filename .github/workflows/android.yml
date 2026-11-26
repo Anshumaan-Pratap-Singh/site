@@ -1,11 +1,14 @@
 # Builds the offline Android app (the whole Trading Interview Practice site packed inside, C++ and Python included) and attaches the signed APK to a GitHub Release.
-# Run it by pushing a tag like v1.0.0, publishing a GitHub Release with such a tag, or from the Actions tab (Run workflow).
+# Run it by changing android/VERSION on main (the usual way: it builds and releases v<that version>), pushing a tag like v1.0.0,
+# publishing a GitHub Release with such a tag, or from the Actions tab (Run workflow).
 # Needs two repository secrets: KEYSTORE_B64 (the keystore, base64) and KEYSTORE_PASSWORD.
 name: Android APK
 
 on:
   push:
     tags: ["v*"]
+    branches: [main]
+    paths: ["android/VERSION"]
   release:
     types: [published]
   workflow_dispatch:
@@ -49,7 +52,7 @@ jobs:
       - name: Version
         id: v
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then V="${{ github.event.inputs.version }}"; else V="${GITHUB_REF_NAME#v}"; fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then V="${{ github.event.inputs.version }}"; elif [ "$GITHUB_REF_TYPE" = "branch" ]; then V="$(tr -d ' \n' < android/VERSION)"; else V="${GITHUB_REF_NAME#v}"; fi
           echo "name=$V" >> "$GITHUB_OUTPUT"
 
       - name: Pack the site into the app
