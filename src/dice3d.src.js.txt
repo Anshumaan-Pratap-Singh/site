@@ -2,6 +2,7 @@
    with a question mark; when it is revealed, a real die drops into its place and tumbles onto its face. Falls back to the 2D dice if WebGL is unavailable. */
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const PIPS = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
 const NORM = { 1: [0, 0, 1], 6: [0, 0, -1], 3: [1, 0, 0], 4: [-1, 0, 0], 2: [0, 1, 0], 5: [0, -1, 0] };
@@ -17,7 +18,13 @@ function assets() {
   const bodyGeo = new RoundedBoxGeometry(1, 1, 1, 6, 0.12);
   const bodyMat = new THREE.MeshStandardMaterial({ color: '#ece6d8', roughness: 0.38 });
   const pipMat = new THREE.MeshStandardMaterial({ color: '#1f3a60', roughness: 0.55 });
-  const pipGeo = new THREE.CircleGeometry(0.095, 32);
+  /* all 21 pips merged into one geometry, so a die is 2 draw calls instead of 22 */
+  const pip = new THREE.CircleGeometry(0.095, 32), parts = [], mx = new THREE.Matrix4();
+  for (const [n, nv] of Object.entries(NORM)) {
+    const N = new THREE.Vector3(...nv), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), N);
+    for (const [i, j] of PIPS[n]) { const pos = new THREE.Vector3(i * 0.26, j * 0.26, 0).applyQuaternion(q).addScaledVector(N, 0.503); parts.push(pip.clone().applyMatrix4(mx.compose(pos, q, new THREE.Vector3(1, 1, 1)))); }
+  }
+  const pipGeo = mergeGeometries(parts); pip.dispose(); parts.forEach(g => g.dispose());
   /* an unrevealed die: a flat circle with a question mark, facing the screen (not a 3D die) */
   const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
   g.fillStyle = 'rgba(111,134,168,0.2)'; g.beginPath(); g.arc(128, 128, 112, 0, Math.PI * 2); g.fill();
@@ -29,10 +36,7 @@ function assets() {
 }
 function faceDie() {
   const A = assets(), g = new THREE.Group(); const body = new THREE.Mesh(A.bodyGeo, A.bodyMat); body.castShadow = true; g.add(body);
-  for (const [n, nv] of Object.entries(NORM)) {
-    const N = new THREE.Vector3(...nv), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), N);
-    for (const [i, j] of PIPS[n]) { const p = new THREE.Mesh(A.pipGeo, A.pipMat); p.quaternion.copy(q); p.position.copy(new THREE.Vector3(i * 0.26, j * 0.26, 0).applyQuaternion(q)).addScaledVector(N, 0.503); g.add(p); }
-  }
+  g.add(new THREE.Mesh(A.pipGeo, A.pipMat)); /* pips lie flat on the faces, so they cast no shadow */
   return g;
 }
 function backDie() { const sp = new THREE.Sprite(assets().backMat); sp.scale.set(1.2, 1.2, 1); sp.userData.flat = true; return sp; }
@@ -64,7 +68,12 @@ function at(p, t) {
 }
 
 export function supported() {
-  try { const c = document.createElement('canvas'); return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'))); } catch (e) { return false; }
+  if (supported.v != null) return supported.v;
+  try {
+    const c = document.createElement('canvas'), gl = window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'));
+    const lose = gl && gl.getExtension('WEBGL_lose_context'); lose && lose.loseContext(); /* free the test context straight away */
+    return (supported.v = !!gl);
+  } catch (e) { return (supported.v = false); }
 }
 
 /* the table: transparent, so the panel's own colour (light or dark theme) shows through and nothing ever flashes black */
@@ -74,11 +83,11 @@ export function Table(canvas, onLost) {
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.VSMShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
-  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); onLost && onLost(); }, { once: true });
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); dead = true; onLost && onLost(); }, { once: true });
   const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 2, 0.1, 100);
   scene.add(new THREE.HemisphereLight('#fffaf0', '#a89d88', 0.9));
   const sun = new THREE.DirectionalLight('#ffffff', 1.9); sun.position.set(-2.5, 7, 3.2); sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024); sun.shadow.radius = 9; sun.shadow.blurSamples = 16; sun.shadow.bias = -0.0005;
+  sun.shadow.mapSize.set(768, 768); sun.shadow.radius = 7; sun.shadow.blurSamples = 10; /* same softness as 1024/16 at about half the cost */ sun.shadow.bias = -0.0005;
   Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 4, bottom: -4, near: 1, far: 20 }); scene.add(sun);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.28 }));
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
@@ -117,7 +126,18 @@ export function Table(canvas, onLost) {
     const pr = renderer.getPixelRatio();
     if (canvas.width !== Math.round(w * pr) || canvas.height !== Math.round(h * pr)) { renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); frame(slots.length || 3); }
   }
-  function draw() { if (dead) return; resize(); renderer.render(scene, cam); }
+  let onScreen = true;
+  const io = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver(es => { onScreen = es[es.length - 1].isIntersecting; if (onScreen) draw(); }) : null; io && io.observe(canvas);
+  function draw() { if (dead || !onScreen || document.hidden) return; resize(); renderer.render(scene, cam); }
+  /* compile every shader (die, sprite, shadow passes) before the first roll, so nothing compiles mid-roll */
+  let warmed = false;
+  function prewarm() {
+    if (warmed || dead) return; warmed = true;
+    const d = faceDie(), b = backDie(); d.position.set(0, 0.5, 0); b.position.set(1.5, 0.55, 0); scene.add(d, b);
+    try { renderer.compile(scene, cam); renderer.render(scene, cam); } catch (e) { }
+    scene.remove(d, b);
+  }
+  function stop() { anims.forEach(a => a.done = true); anims = []; if (raf) cancelAnimationFrame(raf); raf = 0; }
   /* frames follow the screen's own refresh rate, and only while a die is moving */
   function loop(now) {
     raf = 0;
@@ -127,10 +147,23 @@ export function Table(canvas, onLost) {
   function kick() { if (!raf) raf = requestAnimationFrame(loop); }
   const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => draw()) : null; ro && ro.observe(canvas);
   return {
-    setAll, reveal, draw,
-    dispose() { dead = true; if (raf) cancelAnimationFrame(raf); ro && ro.disconnect(); renderer.dispose(); try { renderer.forceContextLoss(); } catch (e) { } }
+    canvas, setAll, reveal, draw, prewarm, stop, get dead() { return dead; },
+    dispose() { dead = true; if (raf) cancelAnimationFrame(raf); ro && ro.disconnect(); io && io.disconnect(); renderer.dispose(); try { renderer.forceContextLoss(); } catch (e) { } }
   };
 }
+
+/* One table (one WebGL context, shaders already compiled) is kept and reused by every game, instead of a new
+   context and a fresh shader compile each time a game starts. It is set up while the dice page is idle. */
+let TB = null; const lostFns = new Set();
+function table() {
+  if (TB && !TB.dead) return TB;
+  const c = document.createElement('canvas'); c.className = 'd3-row'; c.style.cssText = 'width:100%;height:100%;display:block;background:transparent';
+  TB = Table(c, () => { TB = null; lostFns.forEach(f => f()); }); return TB;
+}
+export function warm() { try { if (supported()) table().prewarm(); } catch (e) { } }
+const idle = f => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 1500 }) : setTimeout(f, 300));
+function maybeWarm() { if (/dice/i.test(location.hash)) idle(warm); }
+window.addEventListener('hashchange', maybeWarm); if (document.readyState === 'complete') maybeWarm(); else window.addEventListener('load', maybeWarm);
 
 /* React row: <TIP_DICE3D.Row values={[...]} k={revealed count} fallback={2D element} /> */
 export function Row({ values, k, fallback, height }) {
@@ -139,8 +172,9 @@ export function Row({ values, k, fallback, height }) {
   const [ok, setOk] = R.useState(() => supported());
   R.useEffect(() => {
     if (!ok || !ref.current) return;
-    try { tb.current = Table(ref.current, () => setOk(false)); tb.current.setAll(values, k); } catch (e) { setOk(false); }
-    return () => { tb.current && tb.current.dispose(); tb.current = null; };
+    const lost = () => setOk(false); lostFns.add(lost);
+    try { const t = table(); t.prewarm(); ref.current.appendChild(t.canvas); tb.current = t; t.setAll(values, k); } catch (e) { setOk(false); }
+    return () => { lostFns.delete(lost); const t = tb.current; tb.current = null; if (t) { t.stop(); t.canvas.remove(); } };
   }, [ok]);
   R.useEffect(() => {
     const t = tb.current; if (!t) return;
@@ -150,6 +184,6 @@ export function Row({ values, k, fallback, height }) {
     prev.current = { k, key };
   }, [k, values.join(',')]);
   if (!ok) return fallback;
-  return TH('canvas', { ref, className: 'd3-row', style: { width: '100%', height: (height || 128) + 'px', display: 'block', background: 'transparent' }, role: 'img', 'aria-label': values.map((v, i) => i < k ? v : '?').join(', ') });
+  return TH('div', { ref, className: 'd3-wrap', style: { width: '100%', height: (height || 128) + 'px' }, role: 'img', 'aria-label': values.map((v, i) => i < k ? v : '?').join(', ') });
 }
-window.TIP_DICE3D = { Row, Table, supported };
+window.TIP_DICE3D = { Row, Table, supported, warm };
