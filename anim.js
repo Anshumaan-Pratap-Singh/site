@@ -159,7 +159,7 @@
     var node = onlyText(big);
     if (node) {
       var final = node.nodeValue, t = parse(final);
-      if (t && t.v !== 0) { written.set(node, fmt(0, t)); node.nodeValue = fmt(0, t); setTimeout(function () { tick(node, 0, final, 900); }, 250); }
+      if (t && t.v !== 0 && !reduce) { written.set(node, fmt(0, t)); node.nodeValue = fmt(0, t); setTimeout(function () { tick(node, 0, final, 900); }, 250); }
     }
     card.querySelectorAll('.stat-v').forEach(function (b) {
       var n = onlyText(b), v = n && n.nodeValue, t = parse(v);

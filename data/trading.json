@@ -722,7 +722,7 @@
    "answer": {
     "value": 4.666666666666667,
     "display": "$\\frac{14}{3} \\approx \\$4.67$",
-    "tolerance": 0.001
+    "tolerance": 0.010333
    },
    "hints": [
     "Work backwards: with one roll left the game is worth $3.5$.",
@@ -803,7 +803,7 @@
    "answer": {
     "value": 4.761904761904762,
     "display": "Toss twice: $HT \\to$ heads, $TH \\to$ tails, otherwise repeat. Expected tosses $\\frac{1}{p(1-p)} \\approx 4.76$",
-    "tolerance": 0.001
+    "tolerance": 0.009048
    },
    "hints": [
     "$\\mathbb{P}(HT) = \\mathbb{P}(TH)$ whatever $p$ is.",
@@ -1147,7 +1147,7 @@
     "Use parity: is the number of red hats you can see even or odd?"
    ],
    "solution": [
-    "The back prisoner says \"red\" if they see an odd number of red hats and \"blue\" if even. Their own survival is 50/50.",
+    "The back prisoner says \"red\" if they see an odd number of red hats and \"blue\" if even. Their own survival is 50–50.",
     "The next prisoner counts the red hats in front. Comparing with the announced parity tells them their own colour.",
     "Each later prisoner knows the parity, has heard every answer behind them (all correct after the first), and sees everyone in front, so they can deduce their own hat.",
     "So $99$ are guaranteed. The same idea works for $k$ colours using the sum of hat values mod $k$."
@@ -1225,7 +1225,7 @@
    "solution": [
     "Fair value $\\mathbb{E}[S] = 3.5 + 3.5 = 7$.",
     "$\\text{Var}(S) = 2\\cdot\\frac{35}{12} = \\frac{35}{6}$, so $\\sigma \\approx 2.42$.",
-    "A reasonable quote is something like $6.5 / 7.5$, narrow enough to be credible. Widen it if you suspect the counterparty knows a die, and skew it once you have inventory."
+    "A reasonable quote is something like $6.5$–$7.5$, narrow enough to be credible. Widen it if you suspect the counterparty knows a die, and skew it once you have inventory."
    ]
   },
   {
@@ -1549,7 +1549,7 @@
    "answer": {
     "value": 4.472222222222222,
     "display": "$\\frac{161}{36} \\approx \\$4.47$",
-    "tolerance": 0.001
+    "tolerance": 0.008931
    },
    "hints": [
     "$\\mathbb{P}(\\max \\le k) = (k/6)^2$.",
@@ -1751,7 +1751,7 @@
     "uniform",
     "expectation"
    ],
-   "prompt": "A unit stick is broken at a uniformly random point. Find the expected length of the smaller piece, and the expected ratio of the smaller piece to the larger.",
+   "prompt": "A unit stick is broken at a uniformly random point. Find the expected length of the smaller piece, and the expected ratio of the smaller piece to the larger. (Give the expected ratio as the answer.)",
    "answer": {
     "value": 0.3862943611198906,
     "display": "Smaller piece: $\\frac14$; ratio: $2\\ln 2 - 1 \\approx 0.386$",
@@ -2010,7 +2010,7 @@
    "answer": {
     "value": 1.1917808219178083,
     "display": "$\\binom{30}{2}/365 \\approx 1.19$; $\\mathbb{P}(\\text{none}) \\approx e^{-1.19} \\approx 0.30$",
-    "tolerance": 0.001
+    "tolerance": 0.003568
    },
    "hints": [
     "One indicator per pair; each pair matches with probability $\\frac{1}{365}$."
@@ -2156,7 +2156,7 @@
     "law of total variance",
     "eve"
    ],
-   "prompt": "Roll a fair die to get $N$, then flip $N$ fair coins. Let $H$ be the number of heads. Find $\\mathbb{E}[H]$ and $\\text{Var}(H)$.",
+   "prompt": "Roll a fair die to get $N$, then flip $N$ fair coins. Let $H$ be the number of heads. Find $\\mathbb{E}[H]$ and $\\text{Var}(H)$. (Give $\\text{Var}(H)$ as the answer.)",
    "answer": {
     "value": 1.6041666666666667,
     "display": "$\\mathbb{E}[H] = \\frac74$, $\\text{Var}(H) = \\frac{77}{48} \\approx 1.604$",
@@ -2957,7 +2957,7 @@
    "solution": [
     "$\\mathbb{E} = 100\\cdot\\frac12 = 50$ and $\\text{Var} = 100\\cdot\\frac14 = 25$, so $\\sigma = 5$.",
     "By the normal approximation, about $95\\%$ of outcomes lie within $\\pm2\\sigma$: $[40, 60]$.",
-    "A market such as $49 / 51$ is reasonable. If the counterparty has seen some of the flips, widen it and move it towards their information."
+    "A market such as $49$–$51$ is reasonable. If the counterparty has seen some of the flips, widen it and move it towards their information."
    ]
   },
   {
@@ -3101,7 +3101,7 @@
    "answer": {
     "value": 1.5874507866387546,
     "display": "$0.1\\sqrt{252} \\approx 1.59$",
-    "tolerance": 0.002
+    "tolerance": 0.00493
    },
    "hints": [
     "Mean scales with $T$; standard deviation scales with $\\sqrt T$."
@@ -3122,7 +3122,7 @@
     "adverse selection",
     "market making"
    ],
-   "prompt": "A contract pays \\$100 if a coin lands heads, else \\$0. You quote $49 / 51$, and each incoming trader takes one lot. $20\\%$ of traders know the outcome and trade the right way; $80\\%$ are uninformed and buy or sell at random. What is your expected profit per trade?",
+   "prompt": "A contract pays \\$100 if a coin lands heads, else \\$0. You quote $49$–$51$, and each incoming trader takes one lot. $20\\%$ of traders know the outcome and trade the right way; $80\\%$ are uninformed and buy or sell at random. What is your expected profit per trade?",
    "answer": {
     "value": -9,
     "display": "$-\\$9$ per trade",
@@ -3135,7 +3135,7 @@
    "solution": [
     "Uninformed trades: you earn the half-spread, $+1$ in expectation.",
     "Informed trades: you lose $100 - 51 = 49$ (they buy before heads) or $49 - 0 = 49$ (they sell before tails).",
-    "$\\mathbb{E} = 0.8(+1) + 0.2(-49) = -9$. To break even you would need the half-spread $h$ with $0.8h = 0.2(50 - h)$, i.e. $h = 10$: quote $40/60$."
+    "$\\mathbb{E} = 0.8(+1) + 0.2(-49) = -9$. To break even you would need the half-spread $h$ with $0.8h = 0.2(50 - h)$, i.e. $h = 10$: quote $40$–$60$."
    ]
   },
   {
@@ -3262,7 +3262,7 @@
    ],
    "solution": [
     "$$\\mathbb{E}[\\max] = 6 - \\frac{0 + 1 + 8 + 27 + 64 + 125}{216} = 6 - \\frac{225}{216} = \\frac{1071}{216} = \\frac{119}{24} \\approx 4.96.$$",
-    "$\\mathbb{P}(\\max = 6) = 1 - (5/6)^3 \\approx 42\\%$, so the distribution is heavily concentrated near $5$ and $6$. Quote something like $4.8 / 5.1$."
+    "$\\mathbb{P}(\\max = 6) = 1 - (5/6)^3 \\approx 42\\%$, so the distribution is heavily concentrated near $5$ and $6$. Quote something like $4.8$–$5.1$."
    ]
   },
   {
@@ -4214,7 +4214,7 @@
    "answer": {
     "value": 0.10549819927971188,
     "display": "$\\frac{39 \\cdot 26 \\cdot 13}{51 \\cdot 50 \\cdot 49} \\approx 0.105$",
-    "tolerance": 0.000211
+    "tolerance": 0.001998
    },
    "hints": [
     "Place the aces one at a time into the $52$ card slots."
@@ -5572,7 +5572,7 @@
    "answer": {
     "value": 0.7029147548427459,
     "display": "$1 - e^{-\\lambda}$ with $\\lambda = \\binom{100}{3}/365^2 \\approx 1.21$: about $0.70$",
-    "tolerance": 0.001406
+    "tolerance": 0.004415
    },
    "hints": [
     "Count triples of people. Each triple shares a birthday with probability $\\frac{1}{365^2}$."
@@ -7444,7 +7444,7 @@
    "answer": {
     "value": 1.6666666666666667,
     "display": "$\\frac{5}{3} \\approx 1.67$ (variance $10$ vs $\\frac{25}{3}$)",
-    "tolerance": 0.001
+    "tolerance": 0.005833
    },
    "hints": [
     "Both games are symmetric about $5$, so the means agree. Compare $\\mathbb{E}[(X-5)^2]$.",
@@ -7870,7 +7870,7 @@
    "answer": {
     "value": 2.8333333333333335,
     "display": "$\\frac{17}{6} \\approx \\$2.83$",
-    "tolerance": 0.001
+    "tolerance": 0.007583
    },
    "hints": [
     "Best strategy: always guess the colour that has more balls left (either one on a tie).",

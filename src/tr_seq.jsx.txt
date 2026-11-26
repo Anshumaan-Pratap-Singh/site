@@ -6,32 +6,130 @@
   const K = TIP_KIT;
   const PR = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71];
 
-  /* each family returns {seq, next, rule, kind}; level 1-3 */
-  const FAM = [
-    (r, L) => { const a = r.int(1, 30), d = r.pick(L > 1 ? [7, 9, 11, 13, -6, -8, 12, 15] : [2, 3, 4, 5, 6, -3]); const s = [0, 1, 2, 3, 4].map(i => a + i * d); return { seq: s, next: a + 5 * d, rule: `add ${d}`, kind: "arith" }; },
-    (r, L) => { const a = r.int(1, 6), q = r.pick(L > 1 ? [3, 4, -2] : [2, 3]); const s = [0, 1, 2, 3, 4].map(i => a * Math.pow(q, i)); return { seq: s, next: a * Math.pow(q, 5), rule: `multiply by ${q}`, kind: "geo" }; },
-    (r, L) => { const a = r.int(1, 9), d = r.int(1, 4), e = r.int(1, L > 1 ? 4 : 2); const s = [a]; let step = d; for (let i = 0; i < 5; i++) { s.push(s[i] + step); step += e; } return { seq: s.slice(0, 5), next: s[5], rule: `differences grow by ${e} (${d}, ${d + e}, ${d + 2 * e}, …)`, kind: "quad" }; },
-    (r, L) => { const k = r.int(1, L > 1 ? 9 : 4), off = r.pick([0, 1, -1, 2]); const s = [1, 2, 3, 4, 5].map(i => (i + k) * (i + k) + off); return { seq: s, next: (6 + k) * (6 + k) + off, rule: `squares${off ? (off > 0 ? " plus " + off : " minus " + -off) : ""} (${k + 1}², ${k + 2}², …)`, kind: "squares" }; },
-    (r, L) => { const k = r.int(0, 3), off = r.pick([0, 1, -1]); const s = [1, 2, 3, 4, 5].map(i => Math.pow(i + k, 3) + off); return { seq: s, next: Math.pow(6 + k, 3) + off, rule: `cubes${off ? (off > 0 ? " plus 1" : " minus 1") : ""}`, kind: "cubes" }; },
-    (r, L) => { const a = r.int(1, 6), b = r.int(1, 8); const s = [a, b]; for (let i = 2; i < 7; i++) s.push(s[i - 1] + s[i - 2]); return { seq: s.slice(0, 6), next: s[6], rule: "each term is the sum of the previous two", kind: "fib" }; },
-    (r, L) => { const a = r.int(2, 9), m = r.pick([2, 3]), c = r.pick([1, -1, 2, 3]); const s = [a]; for (let i = 0; i < 5; i++) s.push(s[i] * m + c); return { seq: s.slice(0, 5), next: s[5], rule: `×${m} then ${c > 0 ? "+" + c : "−" + -c}`, kind: "affine" }; },
-    (r, L) => { const a = r.int(2, 20), x = r.int(2, 9), y = r.pick([2, 3]); const s = [a]; for (let i = 0; i < 6; i++) s.push(i % 2 ? s[i] * y : s[i] + x); return { seq: s.slice(0, 6), next: s[6], rule: `alternately +${x} and ×${y}`, kind: "alt" }; },
-    (r, L) => { const a = r.int(1, 10), d = r.int(2, 6), b = r.int(30, 60), e = r.int(2, 7) * -1; const A = [0, 1, 2, 3].map(i => a + i * d), B = [0, 1, 2, 3].map(i => b + i * e); const s = [A[0], B[0], A[1], B[1], A[2], B[2], A[3]]; return { seq: s, next: B[3], rule: `two interleaved series: +${d} and ${e}`, kind: "interleave" }; },
-    (r, L) => { const i0 = r.int(0, 8); const s = PR.slice(i0, i0 + 6); return { seq: s, next: PR[i0 + 6], rule: "consecutive primes", kind: "primes" }; },
-    (r, L) => { const i0 = r.int(1, 8); const t = n => n * (n + 1) / 2; const s = [0, 1, 2, 3, 4].map(i => t(i0 + i)); return { seq: s, next: t(i0 + 5), rule: "triangular numbers (differences 1 more each time)", kind: "tri" }; },
-    (r, L) => { const a = r.int(1, 5); const i0 = r.int(0, 4); const s = [a]; for (let i = 0; i < 5; i++) s.push(s[i] + PR[i0 + i]); return { seq: s.slice(0, 5), next: s[5], rule: `differences are consecutive primes (${PR[i0]}, ${PR[i0 + 1]}, …)`, kind: "pdiff" }; },
-    (r, L) => { const a = r.int(1, 4); const s = [a]; for (let i = 1; i < 6; i++) s.push(s[i - 1] * (i + 1)); return { seq: s.slice(0, 5), next: s[5], rule: "multiply by 2, 3, 4, 5, …", kind: "fact" }; },
-    (r, L) => { const q = r.pick([2, 4]), nx = q === 2 ? r.int(5, 30) : r.int(1, 6), a = nx * Math.pow(q, 4); const s = [0, 1, 2, 3].map(i => a / Math.pow(q, i)); return { seq: s, next: nx, rule: `divide by ${q}`, kind: "div" }; },
-    (r, L) => { const a = r.int(1, 6), b = r.int(1, 6); const s = [a, b]; for (let i = 2; i < 7; i++) s.push(s[i - 1] * s[i - 2]); return s[5] < 5000 ? { seq: s.slice(0, 5), next: s[5], rule: "each term is the product of the previous two", kind: "prod" } : null; },
+  /* each family returns {seq, next, rule, kind} (or null to redraw). lv = [lowest, highest] rule level that uses it:
+     1 Core rules, 2 All rules, 3 All rules with bigger steps. */
+  const tri = n => n * (n + 1) / 2;
+  const dsum = n => String(Math.abs(n)).split("").reduce((a, c) => a + +c, 0);
+  const run = (a, f, n) => { const s = [a]; for (let i = 1; i < n; i++) s.push(f(s[i - 1], i, s)); return s; };
+  const out = (s, n, rule, kind) => ({ seq: s.slice(0, n), next: s[n], rule, kind });
+  const nth = (f, i0, n) => { const s = []; for (let i = 0; i <= n; i++) s.push(f(i0 + i)); return s; };
+  const F = [
+    /* ---- the original 15 ---- */
+    [1, 3, (r, L) => { const a = r.int(1, 30), d = r.pick(L > 1 ? [7, 9, 11, 13, -6, -8, 12, 15] : [2, 3, 4, 5, 6, -3]); const s = [0, 1, 2, 3, 4].map(i => a + i * d); return { seq: s, next: a + 5 * d, rule: `add ${d}`, kind: "arith" }; }],
+    [1, 3, (r, L) => { const a = r.int(1, 6), q = r.pick(L > 1 ? [3, 4, -2] : [2, 3]); const s = [0, 1, 2, 3, 4].map(i => a * Math.pow(q, i)); return { seq: s, next: a * Math.pow(q, 5), rule: `multiply by ${q}`, kind: "geo" }; }],
+    [1, 3, (r, L) => { const a = r.int(1, 9), d = r.int(1, 4), e = r.int(1, L > 1 ? 4 : 2); const s = [a]; let step = d; for (let i = 0; i < 5; i++) { s.push(s[i] + step); step += e; } return { seq: s.slice(0, 5), next: s[5], rule: `differences grow by ${e} (${d}, ${d + e}, ${d + 2 * e}, …)`, kind: "quad" }; }],
+    [1, 3, (r, L) => { const k = r.int(1, L > 1 ? 9 : 4), off = r.pick([0, 1, -1, 2]); const s = [1, 2, 3, 4, 5].map(i => (i + k) * (i + k) + off); return { seq: s, next: (6 + k) * (6 + k) + off, rule: `squares${off ? (off > 0 ? " plus " + off : " minus " + -off) : ""} (${k + 1}², ${k + 2}², …)`, kind: "squares" }; }],
+    [1, 3, (r, L) => { const k = r.int(0, 3), off = r.pick([0, 1, -1]); const s = [1, 2, 3, 4, 5].map(i => Math.pow(i + k, 3) + off); return { seq: s, next: Math.pow(6 + k, 3) + off, rule: `cubes${off ? (off > 0 ? " plus 1" : " minus 1") : ""}`, kind: "cubes" }; }],
+    [1, 3, (r, L) => { const a = r.int(1, 6), b = r.int(1, 8); const s = [a, b]; for (let i = 2; i < 7; i++) s.push(s[i - 1] + s[i - 2]); return { seq: s.slice(0, 6), next: s[6], rule: "each term is the sum of the previous two", kind: "fib" }; }],
+    [1, 3, (r, L) => { const a = r.int(2, 9), m = r.pick([2, 3]), c = r.pick([1, -1, 2, 3]); const s = [a]; for (let i = 0; i < 5; i++) s.push(s[i] * m + c); return { seq: s.slice(0, 5), next: s[5], rule: `×${m} then ${c > 0 ? "+" + c : "−" + -c}`, kind: "affine" }; }],
+    [1, 3, (r, L) => { const a = r.int(2, 20), x = r.int(2, 9), y = r.pick([2, 3]); const s = [a]; for (let i = 0; i < 6; i++) s.push(i % 2 ? s[i] * y : s[i] + x); return { seq: s.slice(0, 6), next: s[6], rule: `alternately +${x} and ×${y}`, kind: "alt" }; }],
+    [2, 3, (r, L) => { const a = r.int(1, 10), d = r.int(2, 6), b = r.int(30, 60), e = r.int(2, 7) * -1; const A = [0, 1, 2, 3].map(i => a + i * d), B = [0, 1, 2, 3].map(i => b + i * e); const s = [A[0], B[0], A[1], B[1], A[2], B[2], A[3]]; return { seq: s, next: B[3], rule: `two interleaved series: +${d} and ${e}`, kind: "interleave" }; }],
+    [2, 3, (r, L) => { const i0 = r.int(0, 8); const s = PR.slice(i0, i0 + 6); return { seq: s, next: PR[i0 + 6], rule: "consecutive primes", kind: "primes" }; }],
+    [2, 3, (r, L) => { const i0 = r.int(1, 8); const s = [0, 1, 2, 3, 4].map(i => tri(i0 + i)); return { seq: s, next: tri(i0 + 5), rule: "triangular numbers (differences 1 more each time)", kind: "tri" }; }],
+    [2, 3, (r, L) => { const a = r.int(1, 5); const i0 = r.int(0, 4); const s = [a]; for (let i = 0; i < 5; i++) s.push(s[i] + PR[i0 + i]); return { seq: s.slice(0, 5), next: s[5], rule: `differences are consecutive primes (${PR[i0]}, ${PR[i0 + 1]}, …)`, kind: "pdiff" }; }],
+    [2, 3, (r, L) => { const a = r.int(1, 4); const s = [a]; for (let i = 1; i < 6; i++) s.push(s[i - 1] * (i + 1)); return { seq: s.slice(0, 5), next: s[5], rule: "multiply by 2, 3, 4, 5, …", kind: "fact" }; }],
+    [2, 3, (r, L) => { const q = r.pick([2, 4]), nx = q === 2 ? r.int(5, 30) : r.int(1, 6), a = nx * Math.pow(q, 4); const s = [0, 1, 2, 3].map(i => a / Math.pow(q, i)); return { seq: s, next: nx, rule: `divide by ${q}`, kind: "div" }; }],
+    [2, 3, (r, L) => { const a = r.int(1, 6), b = r.int(1, 6); const s = [a, b]; for (let i = 2; i < 7; i++) s.push(s[i - 1] * s[i - 2]); return s[5] < 5000 ? { seq: s.slice(0, 5), next: s[5], rule: "each term is the product of the previous two", kind: "prod" } : null; }],
+
+    /* ---- core additions ---- */
+    [1, 2, r => { const a = r.int(60, 120), d = r.int(3, 12); return out(nth(i => a - i * d, 0, 5), 5, `subtract ${d}`, "down"); }],
+    [1, 2, r => { const a = r.int(1, 9), d = r.pick([10, 20, 25, 50, 100]); return out(nth(i => a + i * d, 0, 5), 5, `add ${d}`, "round"); }],
+    [1, 3, r => { const nx = r.int(1, 12), q = 2; return out(nth(i => nx * Math.pow(q, 5 - i), 0, 5), 5, "halve each time", "halve"); }],
+    [1, 3, r => { const k = r.int(1, 6); return out(nth(i => (2 * (i + k) - 1) ** 2, 0, 5), 5, "squares of odd numbers", "oddsq"); }],
+    [1, 3, r => { const k = r.int(1, 6); return out(nth(i => (2 * (i + k)) ** 2, 0, 5), 5, "squares of even numbers", "evensq"); }],
+    [1, 3, r => { const k = r.int(1, 6); return out(nth(i => (i + k) * (i + k + 1), 0, 5), 5, "n(n + 1): 1×2, 2×3, 3×4, …", "pronic"); }],
+    [1, 3, r => { const c = r.pick([0, 1, -1, 3, 5]), k = r.int(0, 2); return out(nth(i => Math.pow(2, i + k) + c, 0, 5), 5, `powers of 2${c ? (c > 0 ? " plus " + c : " minus " + -c) : ""}`, "pow2"); }],
+    [1, 3, r => { const k = r.int(1, 4); return out(nth(i => Math.pow(10, i + k) - 1, 0, 4), 4, "9, 99, 999, …: one more 9 each time", "nines"); }],
+    [1, 2, r => { const a = r.int(1, 9), x = r.int(3, 9), y = r.int(1, x - 1); return out(run(a, (v, i) => i % 2 ? v + x : v - y, 8), 7, `alternately +${x} and −${y}`, "updown"); }],
+    [1, 3, r => { const a = r.int(1, 6), d = r.pick([2, 3]); const s = [a]; for (let i = 0; i < 6; i++) s.push(s[i] + d * Math.pow(2, i)); return out(s, 5, `differences double (${d}, ${2 * d}, ${4 * d}, …)`, "dgeo"); }],
+    [1, 3, r => { const a = r.int(1, 9), x = r.int(2, 6), y = r.int(7, 12); return out(run(a, (v, i) => v + (i % 2 ? x : y), 8), 7, `differences alternate ${x} and ${y}`, "d2alt"); }],
+    [1, 2, r => { const a = r.int(2, 6), x = r.pick([2, 3]), y = r.pick([2, 3]); return out(run(a, (v, i) => v * (i % 2 ? x : y), 7), 6, `multiply by ${x} and ${y} in turn`, "mulalt"); }],
+    [1, 2, r => { const a = r.int(5, 40), d = r.int(2, 9), b = r.int(1, 9); const A = nth(i => a + i * d, 0, 4), B = nth(i => b * Math.pow(2, i), 0, 4); return out([A[0], B[0], A[1], B[1], A[2], B[2], A[3], B[3]], 7, `two interleaved series: +${d} and ×2`, "interag"); }],
+    [1, 3, r => { const k = r.int(0, 5); return out(nth(i => (i + k + 1) * (i + k + 1) - (i + k + 1), 0, 5), 5, "n² − n", "nsqn"); }],
+
+    /* ---- all rules ---- */
+    [2, 3, (r, L) => { const a = r.int(1, 5), d = r.int(1, 3); const s = [a]; for (let i = 0; i < 6; i++) s.push(s[i] + d * Math.pow(3, i)); return out(s, 5, `differences triple (${d}, ${3 * d}, ${9 * d}, …)`, "dgeo3"); }],
+    [2, 3, r => { const a = r.int(1, 9), b = r.int(1, 3), c = r.int(1, 4); const s = [a]; let x = b, y = c; for (let i = 0; i < 7; i++) { s.push(s[i] + x); [x, y] = [y, x + y]; } return out(s, 6, `differences follow a Fibonacci rule (${b}, ${c}, ${b + c}, …)`, "dfib"); }],
+    [2, 3, r => { const a = r.int(1, 9), k = r.int(1, 3); return out(run(a, (v, i) => v + (i + k - 1) ** 2, 7), 6, `add ${k}², ${k + 1}², ${k + 2}², …`, "dsq"); }],
+    [2, 3, r => { const a = r.int(0, 9); return out(run(a, (v, i) => v + i ** 3, 7), 6, "add 1³, 2³, 3³, …", "dcube"); }],
+    [2, 3, r => { const a = r.int(1, 9), i0 = r.int(0, 3); return out(run(a, (v, i) => v + tri(i + i0), 7), 6, "differences are triangular numbers", "dtri"); }],
+    [2, 3, r => { const k = r.int(0, 4); return out(nth(i => (i + k + 1) * (i + k + 2) * (i + k + 3) / 6, 0, 5), 5, "tetrahedral numbers (sums of triangular numbers)", "tetra"); }],
+    [2, 3, r => { const k = r.int(0, 4); return out(nth(i => (i + k + 1) * (3 * (i + k + 1) - 1) / 2, 0, 5), 5, "pentagonal numbers: n(3n − 1)/2", "penta"); }],
+    [2, 3, r => { const k = r.int(0, 4); return out(nth(i => (i + k + 1) * (2 * (i + k + 1) - 1), 0, 5), 5, "hexagonal numbers: n(2n − 1)", "hexa"); }],
+    [2, 3, r => { const k = r.int(0, 4); return out(nth(i => (i + k + 1) ** 2 + (i + k) ** 2, 0, 5), 5, "n² + (n − 1)²: sums of consecutive squares", "csq"); }],
+    [2, 3, r => { const k = r.int(1, 4); return out(nth(i => Math.pow(2, i + k) - 1, 0, 5), 5, "2ⁿ − 1 (double and add 1)", "mers"); }],
+    [2, 3, r => { const k = r.int(0, 3); return out(nth(i => Math.pow(2, i + k) + i + k, 0, 5), 5, "2ⁿ + n", "pow2n"); }],
+    [2, 3, r => { const c = r.pick([0, 1, -1, 2]), k = r.int(0, 2); return out(nth(i => Math.pow(3, i + k) + c, 0, 5), 5, `powers of 3${c ? (c > 0 ? " plus " + c : " minus " + -c) : ""}`, "pow3"); }],
+    [2, 3, r => { const k = r.int(1, 4); return out(nth(i => (i + k) ** 3 - (i + k), 0, 5), 5, "n³ − n", "ncube"); }],
+    [2, 3, r => { const m = r.int(2, 7), k = r.int(0, 3); return out(nth(i => m * (i + k + 1) ** 2, 0, 5), 5, `${m} × squares`, "msq"); }],
+    [2, 3, r => { const a = r.int(1, 5), b = r.int(1, 5), c = r.int(1, 5); const s = [a, b, c]; for (let i = 3; i < 8; i++) s.push(s[i - 1] + s[i - 2] + s[i - 3]); return out(s, 7, "each term is the sum of the previous three", "trib"); }],
+    [2, 3, r => { const a = r.int(1, 5), b = r.int(1, 6); const s = [a, b]; for (let i = 2; i < 8; i++) s.push(s[i - 1] + 2 * s[i - 2]); return out(s, 6, "previous term plus twice the one before", "rec12"); }],
+    [2, 3, r => { const a = r.int(1, 4), b = r.int(2, 6), c = r.int(1, 3); const s = [a, b]; for (let i = 2; i < 8; i++) s.push(s[i - 1] + s[i - 2] + c); return out(s, 6, `sum of the previous two, plus ${c}`, "fibc"); }],
+    [2, 3, r => { const a = r.int(2, 6), m = r.pick([3, 4]), c = r.pick([1, -1, 2, -2]); return out(run(a, v => v * m + c, 6), 5, `×${m} then ${c > 0 ? "+" + c : "−" + -c}`, "affine3"); }],
+    [2, 3, r => { const a = r.int(2, 9), m = r.pick([2, 3]), c = r.int(2, 6); return out(run(a, v => (v - c) * m, 6), 5, `subtract ${c}, then ×${m}`, "subthen"); }],
+    [2, 3, r => { const a = r.int(5, 12), y = r.int(2, 4); return out(run(a, (v, i) => i % 2 ? v * 2 : v - y, 8), 7, `alternately ×2 and −${y}`, "mulsub"); }],
+    [2, 3, r => { const a = r.int(1, 9), d = r.int(2, 6), q = r.pick([2, 3]), b = r.int(1, 4); const A = nth(i => a + i * d, 0, 4), B = nth(i => b * Math.pow(q, i), 0, 4); return out([A[0], B[0], A[1], B[1], A[2], B[2], A[3], B[3]], 7, `two interleaved series: +${d} and ×${q}`, "interag2"); }],
+    [2, 3, r => { const k = r.int(1, 5), a = r.int(1, 15), d = r.int(2, 9); const A = nth(i => (i + k) ** 2, 0, 4), B = nth(i => a + i * d, 0, 4); return out([A[0], B[0], A[1], B[1], A[2], B[2], A[3], B[3]], 7, `squares interleaved with +${d}`, "intersq"); }],
+    [2, 3, r => { const i0 = r.int(0, 4); return out(nth(i => PR[i0 + i] ** 2, 0, 5), 5, "squares of consecutive primes", "prsq"); }],
+    [2, 3, r => { const i0 = r.int(0, 6), c = r.pick([1, -1]); return out(nth(i => PR[i0 + i] + c, 0, 6), 6, `consecutive primes ${c > 0 ? "plus" : "minus"} 1`, "prpm"); }],
+    [2, 3, r => { const i0 = r.int(0, 3); return out(nth(i => PR[i0 + 2 * i], 0, 5), 5, "every other prime", "pr2"); }],
+    [2, 3, r => { const i0 = r.int(0, 6); return out(nth(i => 2 * PR[i0 + i], 0, 5), 5, "double the primes", "prx2"); }],
+    [2, 3, r => { const a = r.int(10, 60); return out(run(a, v => v + dsum(v), 7), 6, "add the digit sum of the previous term", "digsum"); }],
+    [2, 3, r => { const a = r.int(60, 99), d = r.int(1, 3); return out(run(a, (v, i) => v - d * i, 7), 6, `subtract ${d}, ${2 * d}, ${3 * d}, …`, "quaddown"); }],
+    [2, 3, r => { const a = r.int(1, 9), x = r.int(2, 4); return out(run(a, (v, i) => i % 3 === 0 ? v * 2 : v + x, 8), 7, `+${x}, +${x}, ×2, repeating`, "period3"); }],
+    [2, 3, r => { const a = r.int(1, 6), d = r.int(2, 5); const A = nth(i => a + i * d, 0, 3), B = nth(i => 10 * a + i * d * 2, 0, 3), C = nth(i => 40 - i * d, 0, 3); return out([A[0], B[0], C[0], A[1], B[1], C[1], A[2], B[2], C[2]], 8, "three interleaved series", "inter3"); }],
+    [2, 3, r => { const a = r.int(1, 6); return out(run(a, (v, i) => v * 2 + i, 7), 6, "double, then add 1, 2, 3, …", "dbladd"); }],
+    [2, 3, r => { const a = r.int(2, 8); return out(nth(i => a * (i + 1) + (i + 1) ** 2, 0, 5), 5, `n² + ${a}n`, "quadf"); }],
+    [2, 3, r => { const d = r.pick([0.5, 0.25, 0.75, 1.5]), a = r.int(1, 9); return out(nth(i => a + i * d, 0, 5), 5, `add ${d}`, "decstep"); }],
+
+    /* ---- bigger steps and rarer rules (rule level 3 only) ---- */
+    [3, 3, r => { const a = r.pick([8, 16, 32, 64]), q = 1.5; return out(nth(i => a * Math.pow(q, i), 0, 5), 5, "multiply by 1.5", "geo15"); }],
+    [3, 3, r => { const a = r.int(1, 5), q = -3; return out(nth(i => a * Math.pow(q, i), 0, 5), 5, "multiply by −3", "geoneg"); }],
+    [3, 3, r => { const a = r.int(1, 9), b = r.int(1, 4), c = r.int(1, 3); const s = [a]; let d = b, e = c; for (let i = 0; i < 6; i++) { s.push(s[i] + d); d += e; e += 1; } return out(s, 6, "third differences constant", "cubicd"); }],
+    [3, 3, () => out([1, 1, 2, 5, 14, 42, 132, 429], 6, "Catalan numbers", "catalan")],
+    [3, 3, r => { const k = r.int(1, 2); return out(nth(i => Math.pow(i + k, i + k), 0, 4), 4, "nⁿ", "nn")}],
+    [3, 3, r => { const a = r.int(1, 3); return out(run(a, (v, i) => v * (i + 1) + 1, 7), 5, "×2 +1, ×3 +1, ×4 +1, …", "multinc")}],
+    [3, 3, r => { const a = r.int(1, 3), b = r.int(1, 4); const s = [a, b]; for (let i = 2; i < 8; i++) s.push(2 * s[i - 1] + s[i - 2]); return out(s, 6, "twice the previous term plus the one before", "pell"); }],
+    [3, 3, r => { const a = r.int(1, 3), b = r.int(a + 1, a + 4); const s = [a, b]; for (let i = 2; i < 8; i++) s.push(3 * s[i - 1] - s[i - 2]); return out(s, 6, "three times the previous minus the one before", "rec31"); }],
+    [3, 3, r => { const k = r.int(1, 3); const s = []; for (let i = 0; i < 5; i++) { s.push((i + k) ** 2); s.push((i + k) ** 3); } return out(s, 8, "squares and cubes interleaved", "sqcube"); }],
+    [3, 3, r => { const a = r.int(1, 4), m = r.pick([5, 6, 7]), c = r.pick([1, -1, 2]); return out(run(a, v => v * m + c, 6), 5, `×${m} then ${c > 0 ? "+" + c : "−" + -c}`, "affine5"); }],
+    [3, 3, r => { const a = r.int(100, 900), d = r.int(13, 47); return out(nth(i => a + i * d, 0, 5), 5, `add ${d}`, "arithbig"); }],
+    [3, 3, r => { const a = r.int(2000, 9000), d = r.int(111, 999); return out(nth(i => a - i * d, 0, 5), 5, `subtract ${d}`, "downbig"); }],
+    [3, 3, r => { const a = r.int(11, 99), x = r.int(11, 40), y = r.int(2, 3); return out(run(a, (v, i) => i % 2 ? v * y : v + x, 7), 6, `alternately +${x} and ×${y}`, "altbig"); }],
+    [3, 3, r => { const a = r.int(10, 40), b = r.int(10, 40); const s = [a, b]; for (let i = 2; i < 8; i++) s.push(s[i - 1] + s[i - 2]); return out(s, 7, "each term is the sum of the previous two", "fibbig"); }],
+    [3, 3, r => { const k = r.int(11, 40), off = r.int(-9, 9); return out(nth(i => (i + k) ** 2 + off, 0, 5), 5, `squares${off ? (off > 0 ? " plus " + off : " minus " + -off) : ""} from ${k}²`, "sqbig"); }],
+    [3, 3, r => { const k = r.int(5, 15); return out(nth(i => (i + k) ** 3, 0, 5), 5, `cubes from ${k}³`, "cubebig"); }],
+    [3, 3, r => { const a = r.int(1, 30), d = r.int(5, 15), e = r.int(3, 9); const s = [a]; let st = d; for (let i = 0; i < 6; i++) { s.push(s[i] + st); st += e; } return out(s, 6, `differences grow by ${e}`, "quadbig"); }],
+    [3, 3, r => { const a = r.int(3, 9), m = r.pick([2, 3]); return out(run(a, (v, i) => v * m - i, 7), 6, `×${m}, then subtract 1, 2, 3, …`, "mulminus"); }],
+    [3, 3, r => { const i0 = r.int(5, 12); return out(nth(i => PR[i0 + i] * PR[i0 + i + 1], 0, 5), 5, "products of consecutive primes", "prprod"); }],
+    [3, 3, r => { const a = r.int(2, 9), d = r.int(3, 9); return out(run(a, (v, i) => i % 2 ? v * v : v + d, 7), 5, `alternately +${d} and square`, "addsq"); }],
+    [3, 3, r => { const i0 = r.int(1, 6); return out(nth(i => tri(i0 + i) ** 2, 0, 5), 5, "squares of triangular numbers (sums of cubes)", "trisq"); }],
+    [3, 3, r => { const a = r.int(1, 9), b = r.int(1, 9), c = r.int(1, 9); return out(nth(i => a * i * i * i + b * i + c, 1, 5), 5, `${a}n³ + ${b}n + ${c}`, "cubicf"); }],
+    [3, 3, r => { const i0 = r.int(0, 4); let t = 0; return out(nth(i => (t += PR[i]), 0, 5 + i0).slice(i0), 5, "running totals of the primes (2, 2 + 3, 2 + 3 + 5, …)", "prsum"); }],
   ];
+  const FAM = F.map(([lo, hi, f]) => Object.assign(f, { lo, hi }));
+  /* a shown sequence must not also fit a simpler rule that gives a different next term */
+  function clash(seq, next) {
+    const n = seq.length, d = seq.slice(1).map((v, j) => v - seq[j]);
+    if (d.every(x => x === d[0]) && seq[n - 1] + d[0] !== next) return true;
+    if (seq.every(v => v !== 0)) { const q = seq.slice(1).map((v, j) => v / seq[j]); if (q.every(x => Math.abs(x - q[0]) < 1e-12) && Math.abs(seq[n - 1] * q[0] - next) > 1e-9) return true; }
+    if (n >= 4) { const d2 = d.slice(1).map((v, j) => v - d[j]); if (d2.every(x => x === d2[0]) && seq[n - 1] + d[d.length - 1] + d2[0] !== next) return true; }
+    return new Set(seq).size < 3;
+  }
   const LEVEL = { Easy: 1, Medium: 2, Hard: 3 };
   const fmt = v => Number.isInteger(v) ? String(v) : String(Math.round(v * 1000) / 1000);
 
   function gen(r, s) {
     const L = s.level || 2;
-    const pool = FAM.filter((f, i) => L >= 2 || i < 8);
+    const pool = FAM.filter(f => f.lo <= L && L <= f.hi);
+    const lim = L >= 3 ? 99999 : 9999;
     let q = null;
-    while (!q || q.seq.some(v => !isFinite(v)) || Math.abs(q.next) > 1e6) q = r.pick(pool)(r, L);
+    for (let t = 0; t < 200; t++) {
+      q = r.pick(pool)(r, L);
+      if (q && q.seq.every(v => isFinite(v) && Math.abs(v) <= lim) && isFinite(q.next) && Math.abs(q.next) <= lim && !clash(q.seq, q.next)) break;
+      q = null;
+    }
+    if (!q) { const a = r.int(1, 30), d = r.int(2, 9); q = { seq: [0, 1, 2, 3, 4].map(i => a + i * d), next: a + 5 * d, rule: `add ${d}`, kind: "arith" }; }
     const ans = q.next;
     const body = <div className="sq-row">{q.seq.map((v, i) => <span key={i} className="sq-t" style={{ animationDelay: i * 0.05 + "s" }}>{fmt(v)}</span>)}<span className="sq-t q">?</span></div>;
     const base = { text: q.seq.map(fmt).join(", ") + ", ?", kind: q.kind, answer: fmt(ans), explain: "Rule: " + q.rule + ".", prompt: <div className="col" style={{ alignItems: "center", gap: 10 }}><div className="oa-lbl">What comes next?</div>{body}</div> };
@@ -45,7 +143,7 @@
 
   TIP_TRAINERS.register(trainer({
     id: "seq", name: "Sequence Trainer", version: 2,
-    blurb: "Number series as in the IMC, Optiver and Flow Traders numerical tests: arithmetic, geometric, second differences, squares and cubes, primes, interleaved and recursive rules. One clock per question; typed answers or five options.",
+    blurb: "Number series as in the IMC, Optiver and Flow Traders numerical tests: over 80 rule types, from steps and ratios to second and third differences, figurate numbers, primes, interleaved series and recursive rules. One clock per question; typed answers or five options.",
     fields: [
       { key: "count", label: "Questions", type: "num", min: 5, max: 50 },
       { key: "time", label: "Time per question", type: "num", min: 5, max: 90, unit: "s" },

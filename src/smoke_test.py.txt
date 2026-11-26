@@ -37,6 +37,9 @@ class Run:
     def __init__(self, page):
         self.page, self.errors, self.where, self.checked = page, [], 'start', 0
         page.on('pageerror', lambda e: self.errors.append(f'[{self.where}] page error: {e}'))
+        # missing files of the app itself are errors (the console message for them is ignored below)
+        page.on('response', lambda r: r.status >= 400 and r.url.startswith(page.url.split('#')[0].rsplit('/', 1)[0])
+                and 'favicon' not in r.url and self.errors.append(f'[{self.where}] HTTP {r.status} {r.url}'))
         page.on('console', lambda m: m.type == 'error' and not any(s in m.text for s in IGNORE)
                 and self.errors.append(f'[{self.where}] console: {m.text[:300]}'))
 

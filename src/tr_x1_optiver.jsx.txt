@@ -9,7 +9,7 @@
   const C = (n, k) => { if (k < 0 || k > n) return 0; let r = 1; for (let i = 1; i <= k; i++) r = r * (n - k + i) / i; return r; };
   const r3 = v => Math.round(v * 1000) / 1000;
   const sig = v => { const a = Math.abs(v); return a >= 100 ? (Number.isInteger(Math.round(v * 2) / 2) ? String(Math.round(v)) : (Math.round(v * 2) / 2).toFixed(1)) : a >= 10 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : v.toFixed(3); };
-  const pct = v => (v * 100).toFixed(v < 0.01 ? 2 : 1) + "%";
+  const pct = v => +(v * 100).toFixed(v < 0.01 ? 2 : 1) + "%";
 
   /* ---------- question families with exact answers (shared by Beat the Odds and Intervals) ---------- */
   /* each returns { q, a, p (true if a probability), why, k (kind) } */

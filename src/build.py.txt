@@ -19,8 +19,10 @@ SRC = ROOT / 'src'
 ap = argparse.ArgumentParser()
 ap.add_argument('--esbuild', default='esbuild')
 ap.add_argument('--out', default=str(ROOT))
+ap.add_argument('--force', action='store_true', help='overwrite a bigger live app.js')
 args = ap.parse_args()
 OUT = pathlib.Path(args.out)
+OUT.mkdir(parents=True, exist_ok=True)
 
 
 def src(name):
@@ -204,10 +206,34 @@ P('if(e.lang==="C++"){if(e.judge){', 'if(e.lang==="C++"){if(e.cpp)return TIP.TH(
 
 P('"Python runs in your browser with Pyodide. C++ opens in Compiler Explorer (godbolt.org). To run C++ inside the app, enter a Judge0 endpoint. Note that artifact pages block calls to other sites, so this only works once the app is hosted on your own website."',
   '"Python (Pyodide) and C++ (Clang 22) are stored in this app and run on your device. A Judge0 endpoint is optional and only works once the app is hosted on your own website, since artifact pages block calls to other sites."')
+# ---------- 8. bug fixes (26 Nov): % answers, √ and 2ln2, backup restore keeps all progress, tiny answers, labels ----------
+P('return{ok:Math.abs(a-t.value)<=l,parsed:a}}',
+  'let ok=Math.abs(a-t.value)<=l;!ok&&/%\\s*$/.test(String(e))&&Math.abs(a*100-t.value)<=l&&(ok=!0,a*=100);return{ok,parsed:a}}')
+P('.replace(/π/g,"pi")',
+  '.replace(/π/g,"pi").replace(/√/g,"sqrt")')
+P('/[(\\dpse]/.test(n())',
+  '/[(\\dpsel]/.test(n())')
+P('function i5(e,t){',
+  'function tipMergeExtra(a,t){const skip={solvedT:1,solvedC:1,days:1,fermi:1,games:1,gdel:1,settings:1,updated:1,v:1},isO=x=>x&&typeof x=="object"&&!Array.isArray(x),key=v=>v&&typeof v=="object"?(v.id!=null?"i"+v.id:v.ts!=null?"t"+v.ts:JSON.stringify(v)):String(v),cap={mocks:50,errs:400};for(const k of Object.keys(t||{})){if(skip[k])continue;const x=a[k],y=t[k];if(y==null)continue;if(x==null){a[k]=JSON.parse(JSON.stringify(y));continue}if(k==="dailyRun")continue;if(Array.isArray(x)&&Array.isArray(y)){const s=new Set(x.map(key));let m=[...x,...y.filter(v=>!s.has(key(v)))];if(m.every(v=>v&&typeof v.ts=="number"))m.sort((p,q)=>p.ts-q.ts);cap[k]&&(m=m.slice(-cap[k]));a[k]=m;continue}if(isO(x)&&isO(y))for(const[j,v]of Object.entries(y)){const w=x[j];if(w==null)x[j]=v;else if(k==="les"&&typeof w=="number"&&typeof v=="number")x[j]=w|v;else if(isO(w)&&isO(v)&&typeof v.t=="number"&&typeof w.t=="number"&&v.t>w.t)x[j]=v}}}\nfunction tipAns(x){return isFinite(x)&&x!==0&&Math.abs(x)<1e-3?x.toPrecision(3):ie(x,4)}\nfunction i5(e,t){')
+P('return a.settings={...t.settings||{},...a.settings||{}},a.updated=Date.now(),a}',
+  'return tipMergeExtra(a,t),a.settings={...t.settings||{},...a.settings||{}},a.updated=Date.now(),a}')
+P('`Correct (${ie(k.parsed,4)})`:`Not quite: you entered ${ie(k.parsed,4)}`',
+  '`Correct (${tipAns(k.parsed)})`:`Not quite: you entered ${tipAns(k.parsed)}`')
+P('C++ & Python \\xB7 Python runs live in your browser',
+  'C++ & Python \\xB7 both run in your browser')
+P('if(!a.length&&!l.length)return{fatal:\'No "tradingQuestions" or "codingQuestions" arrays found.\'}',
+  'if(!a.length&&!l.length)return{fatal:t.kind==="backup"||t.progress?\'This is a backup file. Open the Restore Backup tab to load it.\':\'No "tradingQuestions" or "codingQuestions" arrays found.\'}')
+# the Pyodide loader is stored with the app (pyodide/pyodide.js, 0.26.4), not fetched from jsDelivr
+P('Ug="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"', 'Ug=new URL("pyodide/pyodide.js",location.href).href')
+# safety: never overwrite a bigger live app.js in the artifact root (parts of it were patched on the bundle; see build notes)
+_live = ROOT / 'app.js'
+if OUT.resolve() == ROOT.resolve() and _live.exists() and '--force' not in sys.argv[1:] and len(P.s.encode('utf8')) < 0.98 * _live.stat().st_size:
+    sys.exit('refusing to overwrite app.js: the rebuild is %d bytes, the live file %d bytes. Build with --out DIR, or pass --force.' % (len(P.s.encode('utf8')), _live.stat().st_size))
 (OUT / 'app.js').write_text(P.s, encoding='utf8')
 
 H = Patcher(src('base-index.html').read_text(encoding='utf8'))
 H('<title>Tradermath</title>', '<title>Trading Interview Practice</title>')
-H('<link rel="stylesheet" href="anim.css">', '<link rel="stylesheet" href="anim.css">\n<link rel="stylesheet" href="tip.css">')
+H('<link rel="stylesheet" href="anim.css">', '<link rel="stylesheet" href="anim.css">\n<link rel="stylesheet" href="tip.css">\n<link rel="stylesheet" href="motion.css">')
+H('<script src="anim.js"></script>', '<script src="anim.js"></script>\n<script src="motion.js"></script>')
 (OUT / 'index.html').write_text(H.s, encoding='utf8')
 print('built app.js:', len(P.s), 'bytes')

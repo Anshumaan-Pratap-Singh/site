@@ -3,7 +3,7 @@
    with negative marking for wrong answers and no penalty for skipping. */
 (function () {
   const { TH } = TIP;
-  const { trainer, options, frac } = TIP_DRILL;
+  const { trainer, options, frac, gcd } = TIP_DRILL;
   const K = TIP_KIT;
   const round = (v, d) => Math.round(v * Math.pow(10, d)) / Math.pow(10, d);
   const show = v => Number.isInteger(v) ? v.toLocaleString("en-GB").replace(/,/g, ",") : String(round(v, 4));
@@ -26,6 +26,14 @@
     fmul: r => { const a = r.pick([2, 3, 4, 5, 6, 7, 8, 9]), b = r.pick([2, 3, 4, 5, 6, 7, 8, 9]), n1 = r.int(1, a - 1), n2 = r.int(1, b - 1); return { q: `\\frac{${n1}}{${a}} \\times \\frac{${n2}}{${b}}`, a: n1 * n2 / (a * b), frac: frac(n1 * n2, a * b), kind: "fmul" }; },
     sq: r => { const a = r.pick([13, 14, 15, 16, 17, 18, 19, 21, 23, 25, 35, 45, 55, 65, 75, 85, 95, 48, 52, 98, 102]); return { q: `${a}^2`, a: a * a, kind: "sq" }; },
     neg: r => { const a = r.int(-60, 60), b = r.int(-60, -2), c = r.int(2, 12); return { q: `${a} + (${b}) \\times ${c}`, a: a + b * c, kind: "neg" }; },
+    /* question forms added 26 Nov: conversions, comparison and the other fraction operations */
+    d2f: r => { const d = r.pick([2, 4, 5, 8, 10, 20, 25]), n = r.int(1, d - 1); const f = frac(n, d); if (!f.includes("/")) return null; const dec = String(round(n / d, 4)); return { q: `${dec} \\text{ as a fraction}`, txt: `${dec} as a fraction`, a: n / d, frac: f, kind: "d2f" }; },
+    p2f: r => { const p = r.pick([5, 10, 12.5, 15, 20, 25, 30, 37.5, 40, 45, 60, 62.5, 75, 80, 87.5]); const f = frac(p * 10, 1000); return { q: `${p}\\% \\text{ as a fraction}`, txt: `${p}% as a fraction`, a: p / 100, frac: f, kind: "p2f" }; },
+    m2i: r => { const d = r.pick([2, 3, 4, 5, 6, 8]), n = r.int(1, d - 1), w = r.int(1, 6); if (gcd(n, d) > 1) return null; return { q: `${w}\\tfrac{${n}}{${d}} \\text{ as an improper fraction}`, txt: `${w} ${n}/${d} as an improper fraction`, a: (w * d + n) / d, frac: `${w * d + n}/${d}`, kind: "m2i" }; },
+    i2d: r => { const d = r.pick([2, 4, 5, 8, 20, 25]), n = r.int(d + 1, 4 * d); if (n % d === 0) return null; return { q: `\\frac{${n}}{${d}} \\text{ as a decimal}`, a: round(n / d, 4), kind: "i2d" }; },
+    fcmp: r => { const b = r.pick([3, 4, 5, 6, 7, 8, 9, 11, 12]), d = r.pick([3, 4, 5, 6, 7, 8, 9, 11, 12].filter(x => x !== b)), a = r.int(1, b - 1), c = r.int(1, d - 1); if (a * d === b * c || Math.abs(a / b - c / d) > 0.15) return null; const big = a / b > c / d ? [a, b] : [c, d]; return { q: `\\text{larger of } \\frac{${a}}{${b}} \\text{ and } \\frac{${c}}{${d}}`, txt: `larger of ${a}/${b} and ${c}/${d}`, a: big[0] / big[1], frac: frac(big[0], big[1]), other: [a * d < b * c ? a : c, a * d < b * c ? b : d], kind: "fcmp" }; },
+    fsub: r => { const a = r.pick([2, 3, 4, 5, 6, 8]), b = r.pick([2, 3, 4, 5, 6, 8].filter(x => x !== a)), n1 = r.int(1, a - 1), n2 = r.int(1, b - 1); const num = n1 * b - n2 * a, den = a * b; if (num <= 0) return null; return { q: `\\frac{${n1}}{${a}} - \\frac{${n2}}{${b}}`, a: num / den, frac: frac(num, den), kind: "fsub" }; },
+    fdiv: r => { const a = r.pick([2, 3, 4, 5, 6, 8]), b = r.pick([2, 3, 4, 5, 6, 8]), n1 = r.int(1, a - 1), n2 = r.int(1, b - 1); return { q: `\\frac{${n1}}{${a}} \\div \\frac{${n2}}{${b}}`, a: n1 * b / (a * n2), frac: frac(n1 * b, a * n2), kind: "fdiv" }; },
   };
   const MIX = { core: ["add", "sub", "mul", "div", "pct", "fof", "dmul", "dadd"], all: Object.keys(T) };
 
@@ -36,12 +44,13 @@
   }
   function gen(r, s) {
     let q = null;
-    while (!q) q = T[r.pick(MIX[s.mix] || MIX.all)](r);
+    const keys = s.forms === "f2d" ? ["f2d"] : (MIX[s.mix] || MIX.all);
+    while (!q) q = T[r.pick(keys)](r);
     const ans = q.a;
     if (s.format === "typed") return {
-      text: q.q.replace(/\\times/g, "×").replace(/\\div/g, "÷").replace(/\\text\{ ([^}]*) \}/g, " $1 ").replace(/\\frac\{(\d+)\}\{(\d+)\}/g, "$1/$2").replace(/\\%/g, "%").replace(/\\text\{([^}]*)\}/g, "$1"),
+      text: q.txt || q.q.replace(/\\times/g, "×").replace(/\\div/g, "÷").replace(/\\text\{ ([^}]*) \}/g, " $1 ").replace(/\\frac\{(\d+)\}\{(\d+)\}/g, "$1/$2").replace(/\\%/g, "%").replace(/\\text\{([^}]*)\}/g, "$1"),
       kind: q.kind, answer: q.frac || show(ans), prompt: <div className="oa-big"><TIP.Tex t={q.q} /></div>,
-      input: "num", placeholder: q.frac ? "fraction or decimal" : "Answer", check: v => Math.abs(TIP_DRILL.num(v) - ans) <= (q.frac || !Number.isInteger(ans * 1e4) ? 0.0006 : 1e-6),
+      input: "num", placeholder: /^(d2f|p2f|m2i)$/.test(q.kind) ? "fraction, e.g. 3/8" : q.frac ? "fraction or decimal" : "Answer", check: v => (!/^(d2f|p2f|m2i)$/.test(q.kind) || String(v).includes("/")) && Math.abs(TIP_DRILL.num(v) - ans) <= (q.frac || !Number.isInteger(ans * 1e4) ? 0.0006 : 1e-6),
     };
     /* fraction answers get fraction distractors: the classic slips (add tops and bottoms, off-by-one, flipped) */
     let opts, fr = null;
@@ -49,6 +58,7 @@
       const [n, d] = q.frac.includes("/") ? q.frac.split("/").map(Number) : [Number(q.frac), 1];
       const c = [[n + 1, d], [Math.max(1, n - 1), d], [n, d + 1], [n, Math.max(2, d - 1)], [d, n], [n * 2, d * 2 + 1], [n + d, d * 2]];
       fr = new Map([[q.frac, ans]]);
+      if (q.other) fr.set(frac(q.other[0], q.other[1]), q.other[0] / q.other[1]);
       r.shuffle(c).forEach(([x, y]) => { const f = frac(x, y), v = x / y; if (fr.size < 4 && ![...fr.values()].some(u => Math.abs(u - v) < 1e-9)) fr.set(f, v); });
       opts = r.shuffle([...fr.values()]);
     } else opts = options(r, ans, 4, (rr, a, g) => dist(rr, a, g));
@@ -57,7 +67,7 @@
     const fracOf = v => { for (const [f, u] of fr) if (Math.abs(u - v) < 1e-9) return f; return show(v); };
     const tex = f => f.replace(/^(\d+)\/(\d+)$/, "\\frac{$1}{$2}");
     return {
-      text: q.q.replace(/\\times/g, "×").replace(/\\div/g, "÷").replace(/\\text\{ ([^}]*) \}/g, " $1 ").replace(/\\frac\{(\d+)\}\{(\d+)\}/g, "$1/$2").replace(/\\%/g, "%").replace(/\\text\{([^}]*)\}/g, "$1"),
+      text: q.txt || q.q.replace(/\\times/g, "×").replace(/\\div/g, "÷").replace(/\\text\{ ([^}]*) \}/g, " $1 ").replace(/\\frac\{(\d+)\}\{(\d+)\}/g, "$1/$2").replace(/\\%/g, "%").replace(/\\text\{([^}]*)\}/g, "$1"),
       kind: q.kind, answer: q.frac || show(ans),
       prompt: <div className="oa-big"><TIP.Tex t={q.q} /></div>,
       input: "choice", cols: 4,
@@ -68,18 +78,19 @@
 
   TIP_TRAINERS.register(trainer({
     id: "frac", name: "80-in-8 Mental Maths", version: 2, noSpeed: true,
-    blurb: "The Optiver 80-in-8 as candidates report it: 80 four-option questions in 8 minutes on whole numbers, decimals, fractions and percentages, answered in order with no skipping, +1 right and −1 wrong. Fractions are sometimes shown unsimplified. A typed-answer practice mode is included.",
+    blurb: "The Optiver 80-in-8 as candidates report it: 80 four-option questions in 8 minutes on whole numbers, decimals, fractions and percentages, answered in order with no skipping, +1 right and −1 wrong. Fractions are sometimes shown unsimplified. A typed-answer practice mode is included, with conversions (decimal, percentage and mixed number to fraction), comparisons and all four fraction operations. Type fraction answers with \"/\"; equivalent fractions count.",
     fields: [
       { key: "format", label: "Answer format", type: "sel", choices: [{ value: "mc", label: "Real test: 4 options" }, { value: "typed", label: "Practice: type the answer" }] },
       { key: "count", label: "Questions", type: "num", min: 10, max: 100 },
       { key: "mins", label: "Time limit", type: "num", min: 1, max: 15, unit: " min" },
       { key: "mix", label: "Question mix", type: "sel", choices: [{ value: "core", label: "Arithmetic, decimals, percentages" }, { value: "all", label: "Everything incl. fractions and squares" }] },
+      { key: "forms", label: "Question forms", type: "sel", choices: [{ value: "all", label: "All forms" }, { value: "f2d", label: "Fraction → decimal only" }] },
       { key: "pen", label: "Wrong answers", type: "sel", choices: [{ value: 0, label: "No penalty" }, { value: 1, label: "−1 point" }] },
     ],
     presets: {
-      Easy: { count: 40, mins: 8, mix: "core", pen: 0, format: "mc" },
-      Medium: { count: 60, mins: 8, mix: "all", pen: 1, format: "mc" },
-      Hard: { count: 80, mins: 8, mix: "all", pen: 1, format: "mc" },
+      Easy: { count: 40, mins: 8, mix: "core", pen: 0, format: "mc", forms: "all" },
+      Medium: { count: 60, mins: 8, mix: "all", pen: 1, format: "mc", forms: "all" },
+      Hard: { count: 80, mins: 8, mix: "all", pen: 1, format: "mc", forms: "all" },
     },
     note: "Keys 1–4 or A–D pick an answer. 80 questions in 8 minutes is 6 seconds each; candidates report a pass line around 55 net.",
     summary: null,

@@ -178,7 +178,7 @@ var TIP_LEARN = (function () {
               <input className="inp num grow" value={val} onChange={e => { setVal(e.target.value); setRes(null); }} onKeyDown={e => e.key === "Enter" && val.trim() && check()} placeholder="Your answer" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
               <button className="btn primary" onClick={check} disabled={!val.trim()}>Check</button>
             </div>
-            {res ? <div className={"small " + (res.ok ? "pos" : "")} style={{ marginTop: 6, fontWeight: 600 }}>{isNaN(res.parsed) ? "Couldn't read that. Try a number or fraction." : res.ok ? "Correct (" + ie(res.parsed, 4) + ")" : "Not quite: you entered " + ie(res.parsed, 4) + (ta.st.wrong >= 3 && ta.st.graded === "m" ? ". Recorded as missed." : "")}</div> : null}
+            {res ? <div className={"small " + (res.ok ? "pos" : "")} style={{ marginTop: 6, fontWeight: 600 }}>{isNaN(res.parsed) ? "Couldn't read that. Try a number or fraction." : res.ok ? "Correct (" + tipAns(res.parsed) + ")" : "Not quite: you entered " + tipAns(res.parsed) + (ta.st.wrong >= 3 && ta.st.graded === "m" ? ". Recorded as missed." : "")}</div> : null}
           </div>
         ) : null}
         {q.hints && q.hints.length ? (
@@ -339,7 +339,9 @@ var TIP_LEARN = (function () {
   function practiceIds(ids, progress, n) {
     const att = progress.att || {};
     const rank = id => { const a = att[id]; return !a ? 1 : a.g === "m" ? 0 : a.g === "h" ? 2 : 3; };
-    return [...ids].sort((a, b) => rank(a) - rank(b) || Math.random() - 0.5).slice(0, n || 10);
+    const rnd = {};
+    ids.forEach(id => rnd[id] = Math.random());
+    return [...ids].sort((a, b) => rank(a) - rank(b) || rnd[a] - rnd[b]).slice(0, n || 10);
   }
 
   function DashPanels({ go }) {

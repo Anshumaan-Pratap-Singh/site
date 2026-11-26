@@ -45,32 +45,54 @@
         eqs.push({ L, R, v });
       }
       if (eqs.length < 2) continue;
-      if (s.mode === "heavier" || (s.mode === "mix" && r() < 0.4)) {
-        const L = [r.int(0, 3), r.int(0, 3), r.int(0, 2)], R = [r.int(0, 3), r.int(0, 3), r.int(0, 2)];
-        if (!L.some(Boolean) || !R.some(Boolean) || L.reduce((x, y) => x + y, 0) > 6 || R.reduce((x, y) => x + y, 0) > 6) continue;
-        const d = sum(L, w) - sum(R, w), ans = d > 0 ? "left" : d < 0 ? "right" : "even";
-        return build(eqs, { L, R }, ans, [{ value: "left", label: "Left is heavier" }, { value: "right", label: "Right is heavier" }, { value: "even", label: "They balance" }],
-          `Weights in proportion ${w.join(" : ")} (${SH.slice(0, 3).map(x => x.k).join(", ")}). Left ${sum(L, w)}, right ${sum(R, w)}.`, "heavier");
+      /* mirror some given scales and shuffle their order, so the layout is not a giveaway */
+      eqs.forEach(e => { if (r() < 0.5) { const t = e.L; e.L = e.R; e.R = t; e.v = e.v.map(x => -x); } });
+      if (r() < 0.5) eqs.reverse();
+      const mode = s.mode === "all" ? r.pick(["count", "heavier", "total", "diff", "rank", "addbal"]) : s.mode === "mix" ? (r() < 0.4 ? "heavier" : "count") : s.mode;
+      const nm = i => SH[i].k, pans = () => { const L = [r.int(0, 3), r.int(0, 3), r.int(0, 2)], R = [r.int(0, 3), r.int(0, 3), r.int(0, 2)]; const n = x => x.reduce((a, b) => a + b, 0); return n(L) && n(R) && n(L) <= 6 && n(R) <= 6 ? { L, R } : null; };
+      const near = a => r.shuffle([...new Set([a, a + 1, Math.max(1, a - 1), a + 2, a * 2].filter(v => v > 0))].slice(0, 4));
+      const ratio = `Weights in proportion ${w.join(" : ")} (circle : square : triangle).`;
+      if (mode === "heavier") {
+        const P = pans(); if (!P) continue;
+        const d = sum(P.L, w) - sum(P.R, w), ans = d > 0 ? "left" : d < 0 ? "right" : "even";
+        return build(eqs, { ...P, two: true }, ans, [{ value: "left", label: "Left is heavier" }, { value: "right", label: "Right is heavier" }, { value: "even", label: "They balance" }],
+          `${ratio} Left ${sum(P.L, w)}, right ${sum(P.R, w)}.`, "heavier", "Which pan is heavier?", "Which side of this scale is heavier?");
       }
-      const tgt = r.int(0, 2), Q = [r.int(0, 3), r.int(0, 3), r.int(0, 3)]; Q[tgt] = 0;
-      if (!Q.some(Boolean)) continue;
+      if (mode === "diff" || mode === "addbal") {
+        const P = pans(); if (!P) continue;
+        let d = sum(P.L, w) - sum(P.R, w); if (!d) continue;
+        if (mode === "diff" && d < 0) { [P.L, P.R] = [P.R, P.L]; d = -d; }
+        const tgt = r.int(0, 2); if (Math.abs(d) % w[tgt]) continue;
+        const ans = Math.abs(d) / w[tgt]; if (ans > 12) continue;
+        const txt = mode === "diff" ? `The left pan is heavier by how many ${nm(tgt)}s?` : `How many ${nm(tgt)}s must go on the lighter pan to balance?`;
+        return build(eqs, { ...P, two: true }, ans, near(ans).map(v => ({ value: v, label: v + " × " + nm(tgt) })),
+          `${ratio} Left ${sum(P.L, w)}, right ${sum(P.R, w)}: a gap of ${Math.abs(d)}, which is ${ans} × ${w[tgt]}.`, mode, txt, txt);
+      }
+      if (mode === "rank") {
+        const hi = r() < 0.5, idx = w.indexOf(hi ? Math.max(...w) : Math.min(...w));
+        return build(eqs, { none: true }, idx, [0, 1, 2].map(k => ({ value: k, label: nm(k)[0].toUpperCase() + nm(k).slice(1) })),
+          `${ratio} The ${nm(idx)} is the ${hi ? "heaviest" : "lightest"}.`, "rank", `Which shape is the ${hi ? "heaviest" : "lightest"}?`, `Which shape is the ${hi ? "heaviest" : "lightest"}?`);
+      }
+      const tgt = r.int(0, 2), Q = [r.int(0, 3), r.int(0, 3), r.int(0, 3)];
+      if (mode === "count") Q[tgt] = 0;
+      if (!Q.some((c, k) => c && k !== tgt) || Q.reduce((a, b) => a + b, 0) > 6) continue;
       const tot = sum(Q, w); if (tot % w[tgt]) continue;
       const ans = tot / w[tgt]; if (ans < 1 || ans > 12) continue;
-      const opts = r.shuffle([...new Set([ans, ans + 1, Math.max(1, ans - 1), ans + 2, ans * 2].filter(v => v > 0))].slice(0, 4));
-      return build(eqs, { L: Q, R: [0, 0, 0], tgt }, ans, opts.map(v => ({ value: v, label: v + " × " + SH[tgt].k })),
-        `With weights in proportion ${w.join(" : ")} (circle : square : triangle), the left pan weighs ${tot}, which is ${ans} × ${w[tgt]}.`, "count");
+      const txt = mode === "count" ? `How many ${nm(tgt)}s go on the right to balance?` : `What does this pan weigh, counted in ${nm(tgt)}s?`;
+      return build(eqs, { L: Q, R: [0, 0, 0], tgt, q: mode === "count" }, ans, near(ans).map(v => ({ value: v, label: v + " × " + nm(tgt) })),
+        `${ratio} The pan weighs ${tot}, which is ${ans} × ${w[tgt]}.`, mode, mode === "count" ? `How many ${nm(tgt)}s balance the pan?` : txt, txt);
     }
     return gen(r, { ...s, mode: "count" });
   }
-  function build(eqs, q, ans, choices, explain, kind) {
+  function build(eqs, q, ans, choices, explain, kind, text, label) {
     return {
-      kind, text: kind === "heavier" ? "Which pan is heavier?" : `How many ${SH[q.tgt].k}s balance the pan?`, answer: typeof ans === "string" ? ({ left: "left", right: "right", even: "they balance" })[ans] : `${ans} ${SH[q.tgt].k}s`,
+      kind, text: text + " (" + [eqs[0], eqs[1], q].map(e => e.none ? "" : (e.L || []).join("") + ":" + (e.R || []).join("")).join(" ") + ")", answer: (choices.find(c => c.value === ans) || {}).label || String(ans),
       explain,
       prompt: <div className="sc-wrap">
         <div className="oa-lbl">These scales balance</div>
         <div className="sc-row"><div className="sc-cell"><Scale L={eqs[0].L} R={eqs[0].R} /></div><div className="sc-cell"><Scale L={eqs[1].L} R={eqs[1].R} /></div></div>
-        <div className="oa-lbl">{kind === "heavier" ? "Which side of this scale is heavier?" : `How many ${SH[q.tgt].k}s go on the right to balance?`}</div>
-        <div className="sc-row"><div className="sc-cell q"><Scale L={q.L} R={kind === "heavier" ? q.R : [0, 0, 0]} q={kind !== "heavier"} /></div></div>
+        <div className="oa-lbl">{label}</div>
+        {q.none ? null : <div className="sc-row"><div className="sc-cell q"><Scale L={q.L} R={q.two ? q.R : [0, 0, 0]} q={!q.two && q.q} /></div></div>}
       </div>,
       input: "choice", cols: choices.length, choices, check: v => v === ans,
     };
@@ -82,9 +104,9 @@
     fields: [
       { key: "count", label: "Questions", type: "num", min: 5, max: 30 },
       { key: "time", label: "Time per question", type: "num", min: 8, max: 90, unit: "s" },
-      { key: "mode", label: "Question type", type: "sel", choices: [{ value: "count", label: "How many balance?" }, { value: "heavier", label: "Which is heavier?" }, { value: "mix", label: "Both" }] },
+      { key: "mode", label: "Question type", type: "sel", choices: [{ value: "count", label: "How many balance?" }, { value: "heavier", label: "Which is heavier?" }, { value: "mix", label: "Both" }, { value: "all", label: "Every type (totals, differences, heaviest shape, adding to balance)" }] },
     ],
-    presets: { Easy: { count: 8, time: 60, mode: "count" }, Medium: { count: 12, time: 35, mode: "mix" }, Hard: { count: 16, time: 22, mode: "mix" } },
+    presets: { Easy: { count: 8, time: 60, mode: "count" }, Medium: { count: 12, time: 35, mode: "all" }, Hard: { count: 16, time: 22, mode: "all" } },
     note: "Tip: turn each balanced scale into an equation and eliminate one shape.",
-  }, { gen, count: s => s.count, perQSecs: s => s.time, always: true }));
+  }, { gen, count: s => s.count, perQSecs: s => s.time, always: true, variety: true }));
 })();
