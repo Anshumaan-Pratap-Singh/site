@@ -1,11 +1,13 @@
 # Builds the offline Android app (the whole Trading Interview Practice site packed inside, C++ and Python included) and attaches the signed APK to a GitHub Release.
-# Run it by pushing a tag like v1.0.0, or from the Actions tab (Run workflow).
+# Run it by pushing a tag like v1.0.0, publishing a GitHub Release with such a tag, or from the Actions tab (Run workflow).
 # Needs two repository secrets: KEYSTORE_B64 (the keystore, base64) and KEYSTORE_PASSWORD.
 name: Android APK
 
 on:
   push:
     tags: ["v*"]
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -15,6 +17,11 @@ on:
 
 permissions:
   contents: write
+
+# a release made through the API also creates its tag: run once per tag
+concurrency:
+  group: apk-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   apk:
