@@ -28,7 +28,7 @@ var TIP_MM = (function () {
     value: st => st.prod ? st.d.reduce((a, b) => a * b, 1) : st.d.reduce((a, b) => a + b, 0),
     info: (st, k) => <div className="mm-info">
       <div className="oa-lbl">{st.prod ? "Product" : "Sum"} of {st.d.length} dice</div>
-      <div className="mm-row">{st.d.map((v, i) => <K.Die key={i + (i < k ? "s" : "h")} n={v} hidden={i >= k} roll={i === k - 1} size={52} />)}</div>
+      {(() => { /* 3D dice (dice3d.js); the 2D row is the fallback without WebGL */ const flat = <div className="mm-row">{st.d.map((v, i) => <K.Die key={i + (i < k ? "s" : "h")} n={v} hidden={i >= k} roll={i === k - 1} size={52} />)}</div>; return window.TIP_DICE3D ? <window.TIP_DICE3D.Row values={st.d} k={k} fallback={flat} height={128} /> : flat; })()}
     </div>,
     reveal: (st, k) => `Die ${k} shows ${st.d[k - 1]}.`,
     explain: (st, k) => st.prod ? `Fair = product of shown dice × 3.5 for each hidden die.` : `Fair = shown dice + 3.5 for each hidden die = ${dice.ev(st, k)}.`,

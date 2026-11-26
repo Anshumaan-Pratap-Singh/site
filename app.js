@@ -1226,7 +1226,7 @@ var TIP_KIT = (function() {
     }));
   }
   function Stage({ title, sub, clock, clockFrac, stats, total, results, at, children, cls, tone }) {
-    return /* @__PURE__ */ TH("div", { className: cx("oa-stage", cls, tone && "tone-" + tone) }, /* @__PURE__ */ TH("div", { className: "oa-hud" }, /* @__PURE__ */ TH("div", { className: "oa-hud-l" }, title ? /* @__PURE__ */ TH("div", { className: "oa-title" }, title) : null, sub ? /* @__PURE__ */ TH("div", { className: "oa-sub" }, sub) : null), clock != null ? /* @__PURE__ */ TH(Ring, { frac: clockFrac, label: fmtClock(clock) }) : /* @__PURE__ */ TH("span", null), /* @__PURE__ */ TH("div", { className: "oa-hud-r" }, (stats || []).map((s, i) => /* @__PURE__ */ TH(Stat, { key: i, ...s })))), /* @__PURE__ */ TH(Rail, { total, results: results || [], at }), /* @__PURE__ */ TH("div", { className: "oa-body" }, children));
+    return /* @__PURE__ */ TH("div", { className: cx("oa-stage", cls, tone && "tone-" + tone) }, /* @__PURE__ */ TH("div", { className: "oa-hud" }, /* @__PURE__ */ TH("div", { className: "oa-hud-l" }, title ? /* @__PURE__ */ TH("div", { className: "oa-title" }, title) : null, sub ? /* @__PURE__ */ TH("div", { className: "oa-sub" }, sub) : null), clock != null ? /* @__PURE__ */ TH(Ring, { frac: clockFrac, label: fmtClock(clock) }) : /* @__PURE__ */ TH("div", { className: "oa-ring oa-ring-ph", style: { width: 54, height: 54, visibility: "hidden" }, "aria-hidden": "true" }), /* @__PURE__ */ TH("div", { className: "oa-hud-r" }, (stats || []).map((s, i) => /* @__PURE__ */ TH(Stat, { key: i, ...s })))), /* @__PURE__ */ TH(Rail, { total, results: results || [], at }), /* @__PURE__ */ TH("div", { className: "oa-body" }, children));
   }
   function Choices({ items, onPick, disabled, picked, correct, cols, cls }) {
     useEffect(() => {
@@ -2565,7 +2565,7 @@ var TIP_MM = (function() {
     ev: (st, k) => st.prod ? st.d.slice(0, k).reduce((a, b) => a * b, 1) * Math.pow(3.5, st.d.length - k) : st.d.slice(0, k).reduce((a, b) => a + b, 0) + 3.5 * (st.d.length - k),
     sd: (st, k) => st.prod ? Math.max(1, 0.6 * dice.ev(st, k)) : Math.sqrt((st.d.length - k) * PIPS),
     value: (st) => st.prod ? st.d.reduce((a, b) => a * b, 1) : st.d.reduce((a, b) => a + b, 0),
-    info: (st, k) => /* @__PURE__ */ TH("div", { className: "mm-info" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, st.prod ? "Product" : "Sum", " of ", st.d.length, " dice"), /* @__PURE__ */ TH("div", { className: "mm-row" }, st.d.map((v, i) => /* @__PURE__ */ TH(K.Die, { key: i + (i < k ? "s" : "h"), n: v, hidden: i >= k, roll: i === k - 1, size: 52 })))),
+    info: (st, k) => /* @__PURE__ */ TH("div", { className: "mm-info" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, st.prod ? "Product" : "Sum", " of ", st.d.length, " dice"), (() => { const flat = /* @__PURE__ */ TH("div", { className: "mm-row" }, st.d.map((v, i) => /* @__PURE__ */ TH(K.Die, { key: i + (i < k ? "s" : "h"), n: v, hidden: i >= k, roll: i === k - 1, size: 52 }))); return window.TIP_DICE3D ? TH(window.TIP_DICE3D.Row, { values: st.d, k, fallback: flat, height: 128 }) : flat; })()),
     reveal: (st, k) => `Die ${k} shows ${st.d[k - 1]}.`,
     explain: (st, k) => st.prod ? `Fair = product of shown dice × 3.5 for each hidden die.` : `Fair = shown dice + 3.5 for each hidden die = ${dice.ev(st, k)}.`
   };

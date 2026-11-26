@@ -1,0 +1,155 @@
+/* TIP_DICE3D: 3D dice for the dice games (three.js). One canvas per row of dice. A hidden die is a flat circle
+   with a question mark; when it is revealed, a real die drops into its place and tumbles onto its face. Falls back to the 2D dice if WebGL is unavailable. */
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+
+const PIPS = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
+const NORM = { 1: [0, 0, 1], 6: [0, 0, -1], 3: [1, 0, 0], 4: [-1, 0, 0], 2: [0, 1, 0], 5: [0, -1, 0] };
+const Y = new THREE.Vector3(0, 1, 0);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const qAx = (ax, a) => new THREE.Quaternion().setFromAxisAngle(ax.clone().normalize(), a);
+const finalQ = (n, yaw) => qAx(Y, yaw).multiply(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(...NORM[n]), Y));
+const still = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+
+let shared = null;
+function assets() {
+  if (shared) return shared;
+  const bodyGeo = new RoundedBoxGeometry(1, 1, 1, 6, 0.12);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: '#ece6d8', roughness: 0.38 });
+  const pipMat = new THREE.MeshStandardMaterial({ color: '#1f3a60', roughness: 0.55 });
+  const pipGeo = new THREE.CircleGeometry(0.095, 32);
+  /* an unrevealed die: a flat circle with a question mark, facing the screen (not a 3D die) */
+  const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+  g.fillStyle = 'rgba(111,134,168,0.2)'; g.beginPath(); g.arc(128, 128, 112, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#6f86a8'; g.lineWidth = 11; g.setLineDash([30, 12]); g.beginPath(); g.arc(128, 128, 112, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = '#6f86a8'; g.font = '700 132px Georgia, "Times New Roman", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 128, 138);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const backMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+  return (shared = { bodyGeo, bodyMat, pipMat, pipGeo, backMat });
+}
+function faceDie() {
+  const A = assets(), g = new THREE.Group(); const body = new THREE.Mesh(A.bodyGeo, A.bodyMat); body.castShadow = true; g.add(body);
+  for (const [n, nv] of Object.entries(NORM)) {
+    const N = new THREE.Vector3(...nv), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), N);
+    for (const [i, j] of PIPS[n]) { const p = new THREE.Mesh(A.pipGeo, A.pipMat); p.quaternion.copy(q); p.position.copy(new THREE.Vector3(i * 0.26, j * 0.26, 0).applyQuaternion(q)).addScaledVector(N, 0.503); g.add(p); }
+  }
+  return g;
+}
+function backDie() { const sp = new THREE.Sprite(assets().backMat); sp.scale.set(1.2, 1.2, 1); sp.userData.flat = true; return sp; }
+
+/* a throw: real bounce heights; spin worked out backwards from the face it lands on; sharp impacts, smooth flight */
+function plan(n) {
+  const g = 30, H = rnd(3.2, 3.8), e = 0.42, t1 = Math.sqrt(2 * H / g); let v = g * t1 * e;
+  const seg = [{ t0: 0, t1 }]; let t = t1;
+  for (let b = 0; b < 2 && v > 1.2; b++) { const dt = 2 * v / g; seg.push({ t0: t, t1: t + dt, v0: v }); t += dt; v *= e; }
+  const tipT = 0.2, settle = 0.35, T = t + tipT + settle, Qf = finalQ(n, rnd(-0.4, 0.4));
+  const tipAx = Math.random() < 0.5 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1), tipAng = rnd(0.35, 0.8) * (Math.random() < 0.5 ? -1 : 1);
+  const tipStart = qAx(tipAx, -tipAng).multiply(Qf); let q = tipStart.clone(); const rots = [];
+  const spins = [rnd(2.4, 3.4), ...seg.slice(1).map((s, i) => rnd(1.1, 1.6) / (i + 1))];
+  for (let i = seg.length - 1; i >= 0; i--) { const a = new THREE.Vector3(rnd(-1, 1), rnd(-0.25, 0.25), rnd(-1, 1)), an = spins[i] * (seg[i].t1 - seg[i].t0) * 2 * Math.PI * 0.9; const qs = qAx(a, -an).multiply(q); rots.unshift({ qs, a, an, t0: seg[i].t0, t1: seg[i].t1 }); q = qs; }
+  return { g, H, seg, rots, tip: { t0: t, t1: t + tipT, qs: tipStart, ax: tipAx, ang: tipAng }, settle: { t0: t + tipT, t1: T }, T, Qf, drift: [rnd(-0.35, 0.35), rnd(-0.4, -0.1)] };
+}
+function at(p, t) {
+  let h = 0; const s0 = p.seg[0];
+  if (t < s0.t1) h = p.H - 0.5 * p.g * t * t; else for (const s of p.seg.slice(1)) if (t >= s.t0 && t < s.t1) { const u = t - s.t0; h = s.v0 * u - 0.5 * p.g * u * u; }
+  let rot; const r = p.rots.find(r => t >= r.t0 && t < r.t1);
+  if (r) rot = qAx(r.a, r.an * (t - r.t0) / (r.t1 - r.t0)).multiply(r.qs);
+  else if (t < p.tip.t1) { const u = (t - p.tip.t0) / (p.tip.t1 - p.tip.t0); rot = qAx(p.tip.ax, p.tip.ang * u * u).multiply(p.tip.qs); }
+  else if (t < p.T) { const u = (t - p.settle.t0) / (p.settle.t1 - p.settle.t0); rot = qAx(p.tip.ax, -0.06 * Math.sign(p.tip.ang) * Math.abs(Math.sin(u * Math.PI * 3)) * Math.exp(-6 * u)).multiply(p.Qf); }
+  else rot = p.Qf;
+  const marks = [0, ...p.seg.map(s => s.t1), p.tip.t1], left = [1, 0.45, 0.17, 0.05, 0]; let rem = 0;
+  for (let i = 0; i < marks.length - 1; i++) if (t >= marks[i] && t < marks[i + 1]) { const u = (t - marks[i]) / (marks[i + 1] - marks[i]); rem = left[i] + (left[Math.min(i + 1, 4)] - left[i]) * u; }
+  let sq = 1; for (const tm of p.seg.map(s => s.t1)) { const d = t - tm; if (d >= 0 && d < 0.05) sq = Math.min(sq, 1 - (tm === p.seg[0].t1 ? 0.1 : 0.05) * (1 - d / 0.05)); }
+  return { h: Math.max(0, h), rot, dx: p.drift[0] * rem, dz: p.drift[1] * rem, sq };
+}
+
+export function supported() {
+  try { const c = document.createElement('canvas'); return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'))); } catch (e) { return false; }
+}
+
+/* the table: transparent, so the panel's own colour (light or dark theme) shows through and nothing ever flashes black */
+export function Table(canvas, onLost) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true });
+  renderer.setClearColor(0x000000, 0);
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.VSMShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); onLost && onLost(); }, { once: true });
+  const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 2, 0.1, 100);
+  scene.add(new THREE.HemisphereLight('#fffaf0', '#a89d88', 0.9));
+  const sun = new THREE.DirectionalLight('#ffffff', 1.9); sun.position.set(-2.5, 7, 3.2); sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024); sun.shadow.radius = 9; sun.shadow.blurSamples = 16; sun.shadow.bias = -0.0005;
+  Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 4, bottom: -4, near: 1, far: 20 }); scene.add(sun);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.28 }));
+  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+  let slots = [], anims = [], raf = 0, dead = false;
+  const m = new THREE.Matrix4();
+  function rest(obj, s, q, h = 0, dx = 0, dz = 0, sq = 1) {
+    obj.quaternion.copy(q); m.makeRotationFromQuaternion(q); const el = m.elements;
+    const low = 0.38 * (Math.abs(el[1]) + Math.abs(el[5]) + Math.abs(el[9])) + 0.12;
+    obj.position.set(s.x + dx, low * sq + h, s.z + dz); obj.scale.set(1 + (1 - sq) * 0.6, sq, 1 + (1 - sq) * 0.6);
+  }
+  function setAll(values, k) {
+    anims.forEach(a => a.done = true); anims = [];
+    slots.forEach(s => s.obj && scene.remove(s.obj)); slots = [];
+    const n = values.length, gap = 1.5, x0 = -(n - 1) * gap / 2;
+    values.forEach((v, i) => {
+      const s = { x: x0 + i * gap, z: i % 2 ? -0.1 : 0.1, yaw: rnd(-0.3, 0.3) };
+      s.obj = i < k ? faceDie() : backDie(); scene.add(s.obj);
+      if (s.obj.userData.flat) s.obj.position.set(s.x, 0.55, s.z); else rest(s.obj, s, finalQ(v, s.yaw)); slots.push(s);
+    });
+    frame(n); draw();
+  }
+  function frame(n) {
+    const span = Math.max(3, n * 1.5 + 0.4), ang = 58 * Math.PI / 180, aspect = cam.aspect || 2;
+    const dist = Math.max(span / aspect * 1.9 + 2.4, span * 0.9 + 2.2);
+    cam.position.set(0, Math.sin(ang) * dist, Math.cos(ang) * dist); cam.lookAt(0, 0.25, 0);
+  }
+  function reveal(i, v) {
+    const s = slots[i]; if (!s) return;
+    if (s.obj) scene.remove(s.obj);
+    s.obj = faceDie(); scene.add(s.obj);
+    if (still()) { rest(s.obj, s, finalQ(v, s.yaw)); draw(); return; }
+    const p = plan(v); anims.push({ s, p, t0: performance.now() }); kick();
+  }
+  function resize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return;
+    const pr = renderer.getPixelRatio();
+    if (canvas.width !== Math.round(w * pr) || canvas.height !== Math.round(h * pr)) { renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); frame(slots.length || 3); }
+  }
+  function draw() { if (dead) return; resize(); renderer.render(scene, cam); }
+  /* frames follow the screen's own refresh rate, and only while a die is moving */
+  function loop(now) {
+    raf = 0;
+    anims = anims.filter(a => { if (a.done) return false; const t = Math.min(a.p.T, (now - a.t0) / 1000); const st = at(a.p, t); rest(a.s.obj, a.s, st.rot, st.h, st.dx, st.dz, st.sq); return t < a.p.T; });
+    draw(); if (anims.length) raf = requestAnimationFrame(loop);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(loop); }
+  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => draw()) : null; ro && ro.observe(canvas);
+  return {
+    setAll, reveal, draw,
+    dispose() { dead = true; if (raf) cancelAnimationFrame(raf); ro && ro.disconnect(); renderer.dispose(); try { renderer.forceContextLoss(); } catch (e) { } }
+  };
+}
+
+/* React row: <TIP_DICE3D.Row values={[...]} k={revealed count} fallback={2D element} /> */
+export function Row({ values, k, fallback, height }) {
+  const T = window.TIP || (window.__TIP && window.__TIP.TIP), R = T.R, TH = T.TH;
+  const ref = R.useRef(null), tb = R.useRef(null), prev = R.useRef({ k, key: values.join(',') });
+  const [ok, setOk] = R.useState(() => supported());
+  R.useEffect(() => {
+    if (!ok || !ref.current) return;
+    try { tb.current = Table(ref.current, () => setOk(false)); tb.current.setAll(values, k); } catch (e) { setOk(false); }
+    return () => { tb.current && tb.current.dispose(); tb.current = null; };
+  }, [ok]);
+  R.useEffect(() => {
+    const t = tb.current; if (!t) return;
+    const key = values.join(','), p = prev.current;
+    if (key !== p.key || k < p.k) t.setAll(values, k);       /* new round: every die back to hidden */
+    else for (let i = p.k; i < k; i++) t.reveal(i, values[i]); /* newly revealed dice drop and tumble */
+    prev.current = { k, key };
+  }, [k, values.join(',')]);
+  if (!ok) return fallback;
+  return TH('canvas', { ref, className: 'd3-row', style: { width: '100%', height: (height || 128) + 'px', display: 'block', background: 'transparent' }, role: 'img', 'aria-label': values.map((v, i) => i < k ? v : '?').join(', ') });
+}
+window.TIP_DICE3D = { Row, Table, supported };

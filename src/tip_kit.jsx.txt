@@ -64,7 +64,7 @@ var TIP_KIT = (function () {
       <div className={cx("oa-stage", cls, tone && "tone-" + tone)}>
         <div className="oa-hud">
           <div className="oa-hud-l">{title ? <div className="oa-title">{title}</div> : null}{sub ? <div className="oa-sub">{sub}</div> : null}</div>
-          {clock != null ? <Ring frac={clockFrac} label={fmtClock(clock)} /> : <span></span>}
+          {clock != null ? <Ring frac={clockFrac} label={fmtClock(clock)} /> : <div className="oa-ring oa-ring-ph" style={{ width: 54, height: 54, visibility: "hidden" }} aria-hidden="true"></div>}
           <div className="oa-hud-r">{(stats || []).map((s, i) => <Stat key={i} {...s} />)}</div>
         </div>
         <Rail total={total} results={results || []} at={at} />
