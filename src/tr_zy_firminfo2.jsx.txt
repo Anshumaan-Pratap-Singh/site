@@ -155,8 +155,8 @@
       sources: [S("Akuna: careers posting", "https://akunacapital.com/careers/job/8018856/"), S("Akuna: Trading Immersion Program", "https://builtin.com/job/trading-immersion-program/8369630"),
         S("Candidate reports (Glassdoor, Akuna)", "https://www.glassdoor.co.in/Interview/AKUNA-CAPITAL-Interview-E608116-RVW93838185.htm")] },
 
-    maven: { checked: "23 Nov 2026",
-      programmes: [
+    maven: { checked: "27 Nov 2026",
+      programmes: [{ id: "wit27", name: "Women in Trading Spring Week 2027 (London)", who: "Women students; see the posting", when: "12–16 April 2027 in London", apply: "Open; no deadline posted when checked (from a student tracker site).", url: "https://www.mavensecurities.com/careers/" }, 
         { id: "ams27", name: "Amsterdam Trader Summer Internship 2027", who: "Penultimate-year undergraduate or master's students with the right to work there", when: "21 June – 20 August 2027; the first three weeks are options theory classes in London",
           apply: "Closed 20 Oct 2026. Maven takes one application per candidate per cycle; strong interns may join the next year's Graduate Trader Programme.",
           url: "https://www.kadoa.com/quant/job/mavensecurities-amsterdam-trader-summer-internship-2027-4b612016" },
@@ -236,8 +236,8 @@
       topics: [{ name: "Brainteasers and estimation", links: [BANK, G("fermi", "Fermi Estimation")] }, why("D. E. Shaw")],
       sources: [S("D. E. Shaw: campus site", "https://campus.deshaw.com/"), S("D. E. Shaw: Trader/Analyst Intern (London)", "https://www.deshaw.com/careers/trader-analyst-intern-london-summer-2027-5862")] },
 
-    squarepoint: { checked: C,
-      programmes: [
+    squarepoint: { checked: "27 Nov 2026",
+      programmes: [{ id: "swe27", name: "Intern Software Developer (London, 2027)", who: "Penultimate-year students in CS, engineering or maths", when: "At least 12 weeks; choose your start month", apply: "Apply online; no deadline listed.", url: "https://www.squarepoint-capital.com/opportunity-details?id=7231006" }, 
         { id: "qr", name: "Intern Quant Researcher (London)", who: "Usually penultimate-year students in maths, physics, statistics, ML or engineering", when: "Internships through the year",
           apply: "Apply online.", url: "https://squarepoint-capital.com/early-careers" },
       ],
