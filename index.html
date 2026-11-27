@@ -14,7 +14,8 @@
 <script>
 (function(){var t=null;try{t=localStorage.getItem('tradermath-theme');}catch(e){}
 if(t!=='light'&&t!=='dark'){t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}
-document.documentElement.setAttribute('data-theme',t);})();
+document.documentElement.setAttribute('data-theme',t);
+try{document.documentElement.setAttribute('data-size',localStorage.getItem('tip-size')==='big'?'big':'normal');}catch(e){}})();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,11 +26,13 @@ document.documentElement.setAttribute('data-theme',t);})();
 <link rel="stylesheet" href="anim.css">
 <link rel="stylesheet" href="tip.css">
 <link rel="stylesheet" href="motion.css">
+<link rel="stylesheet" href="auth.css">
 </head>
 <body>
 <div id="root"></div>
 <script src="dice3d.js"></script>
 <script src="cloud.js"></script>
+<script src="auth.js"></script>
 <script src="app.js"></script>
 <script src="anim.js"></script>
 <script src="motion.js"></script>

@@ -221,3 +221,25 @@ kbd { font: 500 11px/1 Inter, system-ui, sans-serif; padding: 3px 6px; border: 1
 .rd-daily .rd-week { height: auto !important; min-height: max-content; contain: none !important; overflow: visible; }
 .rd-daily .rd-day i { height: 38px !important; width: 100%; max-width: 38px; aspect-ratio: auto; }
 .rd-daily .rd-day.future i { opacity: .45; }
+
+/* text size (27 Nov): Normal or Big, kept on this device, beside the theme button (same as the Maths Workbook) */
+.tip-aa { font-weight: 700; font-size: 16px; line-height: 1; letter-spacing: -.02em; }
+.tip-aa small { font-size: 11px; margin-right: 1px; }
+.tip-size.on { background: var(--accent-soft); color: var(--accent); }
+html[data-size=big] body { zoom: 1.15; }
+
+/* layout audit fixes (27 Nov) */
+.hero .grid4 > .stat:nth-child(2) > .gicon.streak-ic { position: static !important; width: 44px !important; height: 44px !important; border-radius: 12px; }
+@media (max-width: 600px) {
+  .top { gap: 8px; }
+  .top .theme-btn { width: 36px; height: 36px; border-radius: 9px; }   /* title + Aa + theme fit on one line, big text too */
+  .tip-key-i { min-height: 32px; }
+  .btn.xs, .btn.sm, .hud .link { min-height: 32px; }
+  .mm-quote input { min-height: 38px; font-size: 16px; }              /* 16px also stops iOS zooming in on focus */
+}
+@media (max-width: 600px) {
+  /* P&L and streak tiles: icon above the text, like the ring and gauge in the row above */
+  .hero .grid4 > .stat:has(> .streak-ic) { flex-direction: column !important; align-items: flex-start !important; gap: 10px !important; }
+  html[data-size=big] .top .logo { font-size: 16px; }
+  html[data-size=big] .top { gap: 6px; }
+}

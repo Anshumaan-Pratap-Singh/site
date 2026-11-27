@@ -1,0 +1,69 @@
+/* sign-in screens and account menu (27 Nov), copied from the Maths Workbook (ma.css) + backdrop C */
+.au{position:fixed;inset:0;display:flex;background:radial-gradient(1200px 800px at 30% 10%,#2d5384,#1f3a5f 50%,#0f2036);color:#1a2433;font:15px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+.au *{box-sizing:border-box}
+.au-bg{position:absolute;inset:0;overflow:hidden;color:#f6f5f2;font-family:Georgia,serif;font-style:italic;pointer-events:none}
+.au-bg span{position:absolute;white-space:nowrap}.au-bg svg{position:absolute;opacity:.08}
+.au-main{position:relative;flex:1;display:flex;padding:max(24px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));overflow-y:auto}
+.au-card{margin:auto;width:440px;max-width:100%;background:#f6f5f2;border-radius:24px;padding:36px 40px;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+.au-top{display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:22px}.au-top b{font-size:19px}
+.au-logo{display:block;width:88px;height:88px;border-radius:22px;box-shadow:0 10px 26px rgba(15,32,54,.35)}
+.au-compact{padding:26px 40px}.au-compact .au-top{margin-bottom:10px;gap:8px}
+.au-compact .au-sub{margin-bottom:14px}.au-compact .au-sso{height:44px;margin-bottom:8px}.au-compact h2{font-size:24px}.au-compact .au-or{margin:12px 0}.au-compact .au-inp{height:44px}.au-compact .au-f{margin-bottom:10px}.au-compact .au-pri{margin-bottom:10px}
+.au h2{font-size:26px;font-weight:600;margin:0 0 4px;text-align:center}.au-sub{color:#5b6676;margin:0 0 22px;text-align:center;font-size:14.5px}
+.au button{font:inherit;cursor:pointer}
+.au-sso{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;height:48px;border-radius:12px;border:1px solid #d6d3cb;background:#fff;font-weight:500;margin-bottom:10px;color:#1a2433}
+.au-ms{display:grid;grid-template-columns:8px 8px;gap:2px}.au-ms i{width:8px;height:8px;display:block}
+.au-or{display:flex;align-items:center;gap:12px;color:#8a919c;font-size:13px;margin:16px 0}.au-or:before,.au-or:after{content:"";flex:1;height:1px;background:#dcd8cf}
+.au-f{display:block;margin-bottom:14px}.au-f>span:first-child{display:block;font-size:13px;font-weight:500;color:#3b4656;margin:0 0 6px}
+.au-inp{display:flex;align-items:center;height:48px;border-radius:12px;border:1px solid #d6d3cb;background:#fff;padding:0 6px 0 14px}
+.au-inp:focus-within{border:2px solid #1f3a5f;box-shadow:0 0 0 4px rgba(31,58,95,.12)}
+.au-inp input{flex:1;min-width:0;border:0;outline:0;background:none;font:inherit;font-size:16px;color:#1a2433;height:100%}
+.au-eye{border:0;background:none;color:#5b6676;font-size:13px;padding:8px}
+.au-rule{font-size:12.5px;color:#3b4656;margin-top:-6px;margin-bottom:8px}.au-rule.ok{color:#2e7d4f}
+.au-pri{width:100%;height:50px;border:0;border-radius:12px;background:#1f3a5f;color:#f6f5f2;font-weight:600;font-size:15.5px;margin:6px 0 16px}
+.au-pri:disabled,.au-sec:disabled,.au-sso:disabled{opacity:.6}
+.au-sec{width:100%;height:48px;border-radius:12px;border:1px solid #d6d3cb;color:#1f3a5f;font-weight:500;margin-bottom:12px;background:#fff}
+.au-links{display:flex;justify-content:space-between;font-size:14px}
+.au-links button,.au-center button{border:0;background:none;padding:0;color:#1f3a5f;font-weight:500;font-size:14px}
+.au-center{text-align:center;font-size:14px;color:#5b6676;margin-bottom:0}
+.au-note{background:#eef3fa;border:1px solid #d7e2f1;border-radius:12px;padding:12px 14px;font-size:13.5px;color:#28405f;margin-bottom:16px}
+.au-err{background:#fbeeee;border:1px solid #efcfcf;border-radius:12px;padding:12px 14px;font-size:13.5px;color:#8a2a2a;margin-bottom:12px}
+.au-mail{width:74px;height:74px;border-radius:20px;background:#eef3fa;color:#1f3a5f;display:grid;place-items:center;margin:0 auto 16px}
+@media(max-width:600px){.au-card,.au-compact{padding:28px 22px;border-radius:22px}.au-logo{width:76px;height:76px;border-radius:19px}}
+.au-splash{min-height:100vh;display:grid;place-items:center;background:radial-gradient(1200px 800px at 30% 10%,#2d5384,#1f3a5f 50%,#0f2036)}.au-logo-s{width:88px;height:88px;border-radius:22px}
+.au-acc{position:relative}
+.au-av{width:34px;height:34px;border-radius:50%;border:0;background:var(--accent,#1f3a5f);color:var(--surface,#fff);font-weight:600;font-size:14px;cursor:pointer}
+.au-menu{min-width:240px}
+.au-who{padding:8px 10px 10px;display:grid;border-bottom:1px solid var(--line);margin-bottom:4px}.au-who span{font-size:12.5px;opacity:.7;overflow-wrap:anywhere}
+.au-minfo{font-size:12.5px;padding:4px 10px 8px;opacity:.8}
+html:has(.au),html:has(.au) body{overflow:hidden}
+.au-main{scrollbar-width:none}.au-main::-webkit-scrollbar{display:none}
+html:has(.au){scrollbar-gutter:auto!important}
+
+/* all four sign-in screens: one card size that fits the screen (27 Nov) */
+.au-card,.au-card.au-compact{padding:26px 36px;height:min(770px,calc(100dvh - 32px));display:flex;flex-direction:column;justify-content:center;overflow-y:auto;scrollbar-width:none}
+.au-card::-webkit-scrollbar{display:none}
+.au-top{margin-bottom:10px;gap:8px}.au-logo{width:72px;height:72px;border-radius:18px}
+.au h2{font-size:24px}.au-sub{margin-bottom:14px}.au-sso{height:44px;margin-bottom:8px}.au-or{margin:12px 0}
+.au-inp{height:44px}.au-f{margin-bottom:10px}.au-pri{height:46px;margin:6px 0 12px}.au-sec{height:44px}
+@media(max-height:700px){.au-logo{width:56px;height:56px;border-radius:14px}.au-top b{font-size:16px}.au h2{font-size:21px}.au-sso,.au-inp{height:40px}.au-pri{height:42px}.au-sub{margin-bottom:8px;font-size:13.5px}.au-f{margin-bottom:6px}.au-f>span:first-child{margin-bottom:3px}.au-or{margin:8px 0}.au-sso{margin-bottom:6px}.au-top{margin-bottom:6px}.au-pri{margin:4px 0 8px}.au-card,.au-card.au-compact{padding-top:16px;padding-bottom:16px}}
+@media(max-width:600px){.au-card,.au-card.au-compact{padding:22px 20px}}
+@media(max-height:700px){.au-card,.au-card.au-compact{zoom:.88;height:calc((100dvh - 32px) / .88)}}
+
+/* audit fixes (27 Nov): drill titles in a lesson's drill list wrap instead of being cut short; the phone tab bar
+   fades at the edge that has more tabs past it */
+.tip-rel-q .grow, .tip-rel-q .grow > span { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
+.tip-rel-q { align-items: flex-start; }
+.tip-rel-q .tip-gdot, .tip-rel-q .chip { margin-top: 3px; }
+.tabs.fade-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+.tabs.fade-l { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent); }
+.tabs.fade-l.fade-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); }
+/* this app: gate, backdrop C in the KaTeX fonts */
+html.au-gate #root{display:none}
+.au-bg .tx{position:absolute;white-space:nowrap;font-family:KaTeX_Math,KaTeX_Main,serif;font-style:italic}
+.au-bg .tx i{font-family:KaTeX_Math;font-style:italic}.au-bg .tx sub,.au-bg .tx sup{font-size:.7em}
+.au-bg .tx .bb{font-family:KaTeX_AMS;font-style:normal;font-weight:400}
+.au-bg .ob{position:absolute;font:13px/19px ui-monospace,Menlo,Consolas,monospace;font-style:normal}
+.au-bg .ob .a{color:#ff8a8a}.au-bg .ob .b{color:#6fe3ae}.au-bg .ob hr{border:0;border-top:1px solid #f6f5f2;margin:3px 0}
+.au-bg svg.cd{position:absolute;opacity:1}
+@media(max-width:700px){.au-bg .ob,.au-bg svg.cd{display:none}}

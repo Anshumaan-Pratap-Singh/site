@@ -6,6 +6,8 @@ const CORE = [
 "anim.js",
 "app.css",
 "app.js",
+"auth.css",
+"auth.js",
 "cards/court/JC.svg",
 "cards/court/JD.svg",
 "cards/court/JH.svg",
@@ -188,7 +190,7 @@ const BIG = [
 "pyodide/pyodide.js",
 "pyodide/python_stdlib.wasm"
 ];
-const CORE_CACHE = 'tip-core-a9ff09fb57', BIG_CACHE = 'tip-big-f94c81c55e', FONT_CACHE = 'tip-fonts-1';
+const CORE_CACHE = 'tip-core-da6177bf7c', BIG_CACHE = 'tip-big-f94c81c55e', FONT_CACHE = 'tip-fonts-1';
 const KEEP = [CORE_CACHE, BIG_CACHE, FONT_CACHE];
 const url = p => new URL(p, self.registration.scope).href;
 const bigSet = new Set(BIG.map(url)), coreSet = new Set(CORE.map(url));

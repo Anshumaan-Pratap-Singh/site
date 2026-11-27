@@ -85,6 +85,7 @@ def run(url, viewport, full):
         ctx = b.new_context(viewport=viewport, reduced_motion='reduce')
         page = ctx.new_page()
         r = Run(page)
+        page.add_init_script('window.__tipNoGate = true')  # skip the sign-in screen (auth.js)
         page.goto(url + '#dashboard')
         page.wait_for_function('() => window.__TIP && document.querySelector(".tabs")', timeout=20000)
         page.wait_for_timeout(1500)  # question banks load
