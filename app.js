@@ -9932,7 +9932,7 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
       ]
     },
     janestreet: {
-      checked: "26 Nov 2026",
+      checked: "27 Nov 2027",
       programmes: [
         {
           id: "fttp27",
@@ -9958,6 +9958,22 @@ var TIP_FIRMINFO = /* @__PURE__ */ (function() {
           when: "5–10 April 2027 in London. Tracks include Trading and Research and Software Engineering",
           apply: "Applications are open on the Jane Street site. No deadline was shown when checked; the 2026 deadline was in mid-January.",
           url: "https://www.janestreet.com/apply-insight-ldn/"
+        },
+        {
+          id: "bridge27",
+          name: "Bridge, London",
+          who: "First- and second-year university students",
+          when: "1–3 April 2027 in London. Tracks: Strategy and Product, or Institutional Sales and Trading",
+          apply: "Applications are open on the Jane Street site. No deadline was shown when checked.",
+          url: "https://www.janestreet.com/apply-bridge-ldn/"
+        },
+        {
+          id: "see27",
+          name: "SEE, London",
+          who: "University students",
+          when: "29 March to 3 April 2027 in London. Tracks: Quantitative Trading and Research, Software Engineering",
+          apply: "Applications are open on the Jane Street site. No deadline was shown when checked.",
+          url: "https://www.janestreet.com/apply-see-ldn/"
         },
         {
           id: "qtint",
