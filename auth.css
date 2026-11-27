@@ -67,3 +67,8 @@ html.au-gate #root{display:none}
 .au-bg .ob .a{color:#ff8a8a}.au-bg .ob .b{color:#6fe3ae}.au-bg .ob hr{border:0;border-top:1px solid #f6f5f2;margin:3px 0}
 .au-bg svg.cd{position:absolute;opacity:1}
 @media(max-width:700px){.au-bg .ob,.au-bg svg.cd{display:none}}
+
+/* Android app (27 Nov): the sign-in backdrop runs behind the status and button bars; the app passes their heights as --sat / --sab */
+.au-main{padding-top:max(24px,env(safe-area-inset-top),calc(var(--sat,0px) + 16px));padding-bottom:max(24px,env(safe-area-inset-bottom),calc(var(--sab,0px) + 16px))}
+.au-card,.au-card.au-compact{height:min(770px,calc(100dvh - 32px - var(--sat,0px) - var(--sab,0px)))}
+@media(max-height:700px){.au-card,.au-card.au-compact{height:calc((100dvh - 32px - var(--sat,0px) - var(--sab,0px)) / .88)}}

@@ -41,5 +41,10 @@ try{document.documentElement.setAttribute('data-size',localStorage.getItem('tip-
 if ('serviceWorker' in navigator && /(^|\.)github\.io$|^localhost$|^127\.0\.0\.1$/.test(location.hostname))
   window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
 </script>
+<script>
+/* Android app: draw the sign-in screens edge to edge (behind the status and button bars), normal bars otherwise (27 Nov) */
+(function(){if(!(window.WBAndroid&&WBAndroid.setEdge))return;var on=null;function chk(){var v=!!document.querySelector(".au,.au-splash");if(v!==on){on=v;try{WBAndroid.setEdge(v)}catch(e){}}}
+new MutationObserver(chk).observe(document.documentElement,{childList:true,subtree:true});document.addEventListener("DOMContentLoaded",chk);})();
+</script>
 </body>
 </html>

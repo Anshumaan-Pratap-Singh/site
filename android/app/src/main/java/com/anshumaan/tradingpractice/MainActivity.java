@@ -188,6 +188,10 @@ public class MainActivity extends Activity {
 
         /* Google sign-in (27 Nov): Google blocks its sign-in page inside a WebView, so Android's own account picker
            (Credential Manager) gets a Google ID token and hands it to the page, which signs in to Firebase with it. */
+        /* sign-in screens (27 Nov): the navy backdrop runs edge to edge, behind the status and button bars */
+        @JavascriptInterface
+        public void setEdge(boolean on) { runOnUiThread(() -> edge(on)); }
+
         @JavascriptInterface
         public void googleSignIn() {
             runOnUiThread(() -> {
@@ -218,6 +222,30 @@ public class MainActivity extends Activity {
     }
 
     /* Serves the packed site from assets/site with the right content types (.wasm for the C++ compiler and Python). */
+    private int origStatus, origNav, origVis; private boolean edgeOn = false;
+    private void edge(boolean on) {
+        android.view.Window w = getWindow(); View d = w.getDecorView();
+        if (on) {
+            if (!edgeOn) { origStatus = w.getStatusBarColor(); origNav = w.getNavigationBarColor(); origVis = d.getSystemUiVisibility(); }
+            w.setStatusBarColor(android.graphics.Color.TRANSPARENT); w.setNavigationBarColor(android.graphics.Color.TRANSPARENT);
+            if (android.os.Build.VERSION.SDK_INT >= 29) { w.setStatusBarContrastEnforced(false); w.setNavigationBarContrastEnforced(false); }
+            /* light icons on navy: no LIGHT_STATUS_BAR / LIGHT_NAVIGATION_BAR flags */
+            d.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+            edgeOn = true;
+            web.postDelayed(this::sendInsets, 60); web.postDelayed(this::sendInsets, 400);
+        } else if (edgeOn) {
+            w.setStatusBarColor(origStatus); w.setNavigationBarColor(origNav); d.setSystemUiVisibility(origVis); edgeOn = false;
+            web.evaluateJavascript("document.documentElement.style.removeProperty('--sat');document.documentElement.style.removeProperty('--sab')", null);
+        }
+    }
+    /* the bars' heights, in CSS pixels, so the card stays clear of them */
+    private void sendInsets() {
+        android.view.WindowInsets in = getWindow().getDecorView().getRootWindowInsets(); if (in == null || !edgeOn) return;
+        float dp = getResources().getDisplayMetrics().density;
+        web.evaluateJavascript("document.documentElement.style.setProperty('--sat','" + Math.round(in.getSystemWindowInsetTop() / dp) + "px');"
+            + "document.documentElement.style.setProperty('--sab','" + Math.round(in.getSystemWindowInsetBottom() / dp) + "px')", null);
+    }
+
     private class AssetHandler implements WebViewAssetLoader.PathHandler {
         @Override
         public WebResourceResponse handle(String path) {
