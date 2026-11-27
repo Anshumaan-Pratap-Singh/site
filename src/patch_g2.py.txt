@@ -1,0 +1,189 @@
+"""Batch 21 (27 Nov 2026): put the new Market Games screens (src/tip_g2.jsx.txt, src/tip_g2.css.txt) into the live app.
+
+  python3 src/patch_g2.py.txt [--esbuild PATH]
+
+Edits app.js and tip.css in place (app.js holds work that is only in the bundle, see build-notes-batch20.md #9).
+Every patch must match exactly once, or the script stops and changes nothing. Running it again re-inserts the
+TIP_G2 module and the CSS block (they are replaced between their markers), so edit the two sources and re-run.
+"""
+import argparse, pathlib, re, subprocess, sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+ap = argparse.ArgumentParser()
+ap.add_argument('--esbuild', default='esbuild')
+args = ap.parse_args()
+
+app = (ROOT / 'app.js').read_text()
+css = (ROOT / 'tip.css').read_text()
+
+r = subprocess.run([args.esbuild, '--loader=jsx', '--jsx-factory=TH', '--jsx-fragment=TF', '--target=es2019'],
+                   input=(ROOT / 'src' / 'tip_g2.jsx.txt').read_text(), capture_output=True, text=True)
+if r.returncode:
+    sys.exit(r.stderr)
+G2 = '/* ---- TIP_G2 (src/tip_g2.jsx.txt) ---- */\n' + r.stdout + '/* ---- end TIP_G2 ---- */\n'
+
+
+def once(text, old, new, what):
+    base = text.find('/* ---- end TIP_G2 ---- */')
+    head, tail = (text[:base], text[base:]) if base >= 0 and old != 'var TIP_MM = (function() {' else ('', text)
+    n = tail.count(old)
+    if n != 1:
+        sys.exit(f'{what}: expected 1 match, found {n}')
+    return head + tail.replace(old, new)
+
+
+def span(text, start, end, new, what, keep_end=True):
+    """Replace text from `start` up to (not including, if keep_end) `end`; both must be unique after start."""
+    base = text.find('/* ---- end TIP_G2 ---- */') if not start.startswith('/* ---- ') else 0
+    i = text.find(start, max(0, base))
+    if i < 0 or text.find(start, i + 1) >= 0:
+        sys.exit(f'{what}: start marker not unique')
+    j = text.find(end, i)
+    if j < 0:
+        sys.exit(f'{what}: end marker not found')
+    return text[:i] + new + (text[j:] if keep_end else text[j + len(end):])
+
+
+# 0. the module, before TIP_MM (it uses TIP and TIP_KIT, defined earlier)
+if '/* ---- TIP_G2 (src/tip_g2.jsx.txt) ---- */' in app:
+    app = span(app, '/* ---- TIP_G2 (src/tip_g2.jsx.txt) ---- */', '/* ---- end TIP_G2 ---- */\n', G2, 'G2 module', keep_end=False)
+    first = False
+else:
+    app = once(app, 'var TIP_MM = (function() {', G2 + 'var TIP_MM = (function() {', 'G2 module')
+    first = True
+
+if first:
+    # 1. TIP_MM.Game: Trading Game, Market Making Dice and Event Contracts use the new views
+    app = once(app, '''    const pnlNow = cash + pos * ev + (I.spot ? hedge * I.spot(st, k) : 0);
+    const quoting = phase === "quote";
+''', '''    const pnlNow = cash + pos * ev + (I.spot ? hedge * I.spot(st, k) : 0);
+    if (I === cards && take || (I === dice || I === binary) && !take) return TH(TIP_G2.MM, { I, take, s, title, st, k, steps, phase, ri, ev, pos, cash, tot, tape, rows, quotes, bid, ask, setBid, setAsk, setErr, err, maxW, ask2, left, submitQuote, takeTrade, afterFill, nextRound, val, roundPnl, pnlNow, bidRef, took, fx, rnd, size: sizeOf() });
+    const quoting = phase === "quote";
+''', 'MM view')
+    # no keyboard popping up on phones at every new quote (the drag line is there instead)
+    app = once(app, '''      if (phase === "quote" && bidRef.current) bidRef.current.focus();''',
+               '''      if (phase === "quote" && bidRef.current && !K.isTouch()) bidRef.current.focus();''', 'MM focus')
+
+    # 2. ETF Arbitrage: price history for the sparklines and the flash on a change
+    app = once(app, '''    const nav = px.reduce((a, p, i) => a + W[i] * p, 0);
+    const now = K.useTick(!done, 200);''', '''    const nav = px.reduce((a, p, i) => a + W[i] * p, 0);
+    const histR = useRef(null), prevR = useRef([null, null, null]), lastR = useRef(px);
+    if (!histR.current) histR.current = px.map((v) => [v]);
+    if (lastR.current !== px) {
+      prevR.current = lastR.current;
+      lastR.current = px;
+      histR.current = histR.current.map((h, j) => [...h, px[j]].slice(-40));
+    }
+    const now = K.useTick(!done, 200);''', 'ETF history')
+    app = span(app, '''    const gapNow = q ? (q.bid + q.ask) / 2 - nav : 0;''', '''  function Desks({''',
+               '''    return TH(TIP_G2.Etf, { s, W, px, hist: histR.current, prev: prevR.current, nav, q, pnl, stats, log, left, trade });
+  }
+''', 'ETF view')
+
+    # 3. Card Game: fair value counts the card just turned (k + 1 cards are face up); a timeout no longer throws
+    app = once(app, '''      const f = fair(kk), sd = Math.sqrt((s.n - kk) * 14) + 0.5;''',
+               '''      const f = fair(kk + 1), sd = Math.sqrt((s.n - kk - 1) * 14) + 0.5;''', 'Desks fair')
+    app = once(app, '''      if (v !== "none") {
+        const [i, side] = v.split(":"), d = q.desks[+i];''', '''      if (v !== "none" && v !== "timeout") {
+        const [i, side] = v.split(":"), d = q.desks[+i];''', 'Desks timeout')
+    app = span(app, '''    if (!q) return null;
+    const ch = [...q.desks''', '''  function Board({ settings: s''', '''    if (!q) return null;
+    return TH(TIP_G2.Desks, { s, deck, k, q, fb, left, pick, score, hist });
+  }
+''', 'Desks view')
+
+    # 4. Betting Board: an arbitrage call scores your own stakes when you typed any (capped at the budget)
+    app = once(app, '''    function answer(isArb) {
+      if (fb || done) return;
+      let gain = 0;
+      if (isArb) {
+        const pay = s.budget / m.imp;
+        gain = Math.round((pay - s.budget) * 100) / 100;
+      }''', '''    function answer(isArb, stakes, timeout) {
+      if (fb || done) return;
+      let gain = 0;
+      if (isArb && stakes) {
+        const spent0 = stakes.reduce((a, b) => a + b, 0), sc = spent0 > s.budget ? s.budget / spent0 : 1;
+        const st2 = stakes.map((v) => v * sc), pays = m.odds.map((d, j) => st2[j] * d);
+        gain = Math.round((Math.min(...pays) - spent0 * sc) * 100) / 100;
+      } else if (isArb) {
+        const pay = s.budget / m.imp;
+        gain = Math.round((pay - s.budget) * 100) / 100;
+      }''', 'Board stakes')
+    app = once(app, '''      setFb({ ok, gain, isArb });''', '''      setFb({ ok, gain, isArb, timeout: !!timeout });''', 'Board fb')
+    app = once(app, '''      if (!fb && !done && left <= 0) answer(false);''', '''      if (!fb && !done && left <= 0) answer(false, null, true);''', 'Board timeout')
+    app = span(app, '''    const pays = m.odds.map((d) => s.budget / m.imp / d);''', '''  const fmtN = (v) => {''',
+               '''    return TH(TIP_G2.Board, { s, m, fb, left, i, pnl, hist, answer, next });
+  }
+''', 'Board view')
+
+    # 5. Fermi Estimation
+    app = span(app, '''    const box = (v, set, ph) => /* @__PURE__ */ TH("div", { className: "oa-num-box" }''', '''  function HiLo({''',
+               '''    return TH(TIP_G2.Fermi, { s, q, i, n: list.length, fb, lo, hi, pt, setLo, setHi, setPt, fmtN, parseN, left, submit, next, hist, score: hist.reduce((a, h) => a + h.pts, 0) });
+  }
+''', 'Fermi view')
+
+    # 6. Higher or Lower: each call keeps what the run strip and the review table show
+    app = once(app, '''      setHist((h) => [...h, { ok: rightSide && Math.abs(amt / bank - kb) <= 0.05 + kb * 0.25, text:''',
+               '''      setHist((h) => [...h, { cur, side, p, frac: bank ? amt / bank : 0, kb, best: pHi >= pLo ? "hi" : "lo", win: win && !tie, tie, d, ok: rightSide && Math.abs(amt / bank - kb) <= 0.05 + kb * 0.25, text:''', 'HiLo hist')
+    app = once(app, '''      setFb({ win: win && !tie, d, nxt, kf, frac: amt / bank });''',
+               '''      setFb({ win: win && !tie, tie, d, nxt, kf, kb, frac: bank ? amt / bank : 0 });''', 'HiLo fb')
+    app = span(app, '''    const quick = [0, kelly(Math.max(pHi, pLo)) / 2, kelly(Math.max(pHi, pLo))].map((f) => Math.floor(f * bank));''', '''  const mmStats = {''',
+               '''    const bankHist = hist.reduce((a, h) => [...a, Math.round((a[a.length - 1] + h.d) * 100) / 100], [s.bankroll]);
+    const last = i + 2 >= Math.min(deck.length, s.cards + 1) || bank <= 0;
+    return TH(TIP_G2.HiLo, { s, cur, fb, hist, bank, stake, setStake, pHi, pLo, hiN, loN, n, kelly, bet, next, i, bankHist, last });
+  }
+''', 'HiLo view')
+
+    # 7. Market of Cards
+    app = span(app, '''    return /* @__PURE__ */ TH(
+      K.Stage,
+      {
+        title: "Market of Cards",''', '''  const EVENTS = [''', '''    return TH(TIP_G2.Moc, { s, deal, ri, rounds, phase, quotes, bid, ask, setBid, setAsk, err, setErr, pos, cash, tape, left, submitQuote, take, next, implied, myFair, names: BOTS });
+  }
+''', 'Market of Cards view')
+
+    # 8. Odds Betting: quick fire (new rules: four sizes, 10 seconds a bet)
+    app = span(app, '''  function OddsBet({ settings: s, onFinish, onRestart }) {''', '''  const STAGES = [''',
+               '''  const OddsBet = TIP_G2.makeOdds(EVENTS, jt, Jt);
+''', 'Odds Betting')
+
+    # 9. Superday: journey gate, and the track above each round
+    i = app.find('  function Superday({ onFinish, onRestart, diff }) {')
+    j = app.find('  const base = { tip: true, version: V, playFilter: PF };', i)
+    sd = app[i:j]
+    sd0 = sd
+    sd = re.sub(r'    if \(!ready\) return /\* @__PURE__ \*/ TH\("div", \{ className: "card sd-gate" \}.*\n',
+                '    if (!ready) return TH(TIP_G2.SdGate, { stages: STAGES, out, si, onStart: () => setReady(true) });\n'
+                '    const wrap = (el) => TH(TF, null, TH(TIP_G2.Track, { stages: STAGES, out, si, compact: true }), el);\n', sd)
+    if sd == sd0:
+        sys.exit('Superday gate: no match')
+    n0 = sd.count('return TH(')
+    sd = sd.replace('return TH(TIP_DRILL.Drill, {', 'return wrap(TH(TIP_DRILL.Drill, {').replace('return TH(TIP_MM.Game, {', 'return wrap(TH(TIP_MM.Game, {')
+    sd = sd.replace(' onFinish: finishStage, onRestart });', ' onFinish: finishStage, onRestart }));')
+    sd = re.sub(r'(showFair: lvl === "Easy", size: 1 \}\n    \}\);)', lambda m: m.group(1)[:-1] + ');', sd)
+    if sd.count('wrap(TH(') != 4 or sd.count('}));') != 4:
+        sys.exit(f'Superday wrap: {sd.count("wrap(TH(")} wraps, {sd.count("}));")} closes')
+    app = app[:i] + sd + app[j:]
+
+    # 10. Buy is green and Sell is red (.bid = the Sell button at the bid, .ask = the Buy button at the ask)
+    css = once(css, '''.mm-px.bid { border-color: color-mix(in srgb, var(--k3) 45%, var(--line)); } .mm-px.bid b { color: var(--k3); }
+.mm-px.ask { border-color: color-mix(in srgb, var(--k4) 45%, var(--line)); } .mm-px.ask b { color: var(--k4); }''',
+               '''.mm-px.bid { border-color: color-mix(in srgb, var(--k4) 45%, var(--line)); } .mm-px.bid b { color: var(--k4); }
+.mm-px.ask { border-color: color-mix(in srgb, var(--k3) 45%, var(--line)); } .mm-px.ask b { color: var(--k3); }''', 'Buy/Sell colours')
+
+# Card Game: a negative score shows a true minus sign (also safe to run again)
+old = 'headline: res.score + " points",\n        sub: `${res.correct} of ${res.total} calls right`'
+if old in app:
+    app = once(app, old, 'headline: String(res.score).replace("-", "\u2212") + " points",\n        sub: `${res.correct} of ${res.total} calls right`', 'Desks minus')
+
+# CSS block
+block = '/* ---- G2 (src/tip_g2.css.txt) ---- */' + (ROOT / 'src' / 'tip_g2.css.txt').read_text() + '/* ---- end G2 ---- */\n'
+if '/* ---- G2 (src/tip_g2.css.txt) ---- */' in css:
+    css = span(css, '/* ---- G2 (src/tip_g2.css.txt) ---- */', '/* ---- end G2 ---- */\n', block, 'G2 css', keep_end=False)
+else:
+    css = css.rstrip('\n') + '\n' + block
+
+(ROOT / 'app.js').write_text(app)
+(ROOT / 'tip.css').write_text(css)
+print('patched app.js and tip.css' + (' (first run)' if first else ' (module and CSS refreshed)'))

@@ -1,0 +1,664 @@
+/* TIP_G2: the new Market Games screens (27 Nov 2026), from the picked UI mockups.
+   Each game keeps its own state and rules in its component; these are the views it renders.
+   Picks: Trading Game C (card timeline), Market Making Dice D (focus), Event Contracts A (newswire),
+   Market of Cards F (focus), ETF Arbitrage A (spread meter), Card Game A (three desks),
+   Betting Board B (scratchpad + stake table), Fermi A (log slider), Higher or Lower C (run strip),
+   Odds Betting F (quick fire, in its own component), Superday A (journey).
+   Rules: Buy is green, Sell is red; every timer is the HUD ring; cards and dice are the app's own. */
+var TIP_G2 = (function() {
+  const { TH, TF, R } = TIP;
+  const K = TIP_KIT;
+  const { useState, useEffect, useRef, useMemo } = R;
+  const cx = (...a) => a.filter(Boolean).join(" ");
+  const tone = (v) => v > 0 ? "up" : v < 0 ? "dn" : "";
+  const sgn = (v, d) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d == null ? 2 : d);
+  const posTxt = (p) => (p > 0 ? "+" : "") + p;
+  const typing = (e) => TIP.typing ? TIP.typing(e) : /INPUT|TEXTAREA|SELECT/.test((e.target || {}).tagName || "");
+  /* choose about 8-11 tick marks across [lo, hi] */
+  const tickStep = (lo, hi, base) => {
+    const raw = (hi - lo) / 10, steps = [base || 1, 2, 3, 5, 10, 20, 25, 50, 100];
+    return steps.find((s) => s >= raw) || raw;
+  };
+  const ticksOf = (lo, hi, base) => {
+    const st = tickStep(lo, hi, base), out = [];
+    for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9; v += st) out.push(+v.toFixed(6));
+    return out;
+  };
+
+  /* ---------- small pieces ---------- */
+  function Dots({ n, at, done, titles }) {
+    return <div className="g2-dots">{Array.from({ length: n }, (_, i) => <i key={i} title={titles ? titles(i) : void 0} className={done || i < at ? "done" : i === at ? "now" : ""} />)}</div>;
+  }
+  function Spark({ data, h, cls }) {
+    const W = 600, H = h || 36;
+    if (!data || data.length < 2) return <svg className={cx("g2-spark", cls)} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" />;
+    const lo = Math.min(...data), hi = Math.max(...data), sp = hi - lo || 1;
+    const pts = data.map((v, i) => [i / (data.length - 1) * W, H - 3 - (v - lo) / sp * (H - 6)]);
+    const d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join("");
+    return <svg className={cx("g2-spark", cls)} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true"><path className="a" d={`${d}L${W},${H}L0,${H}Z`} /><path className="l" d={d} /></svg>;
+  }
+  function Tape({ tape, max, empty }) {
+    return <div className="mm-tape" style={{ maxHeight: max || 160 }}>{tape.length ? tape.map((t, i) => <div key={tape.length - i} className={"mm-tick " + (t.tone || "")}>{t.txt}</div>) : <div className="small muted">{empty || "Nothing yet."}</div>}</div>;
+  }
+  function FairChip({ show, text }) {
+    return show ? <span className="g2-chip k2">{text}</span> : null;
+  }
+
+  /* drag-to-quote line: tap places a quote, the handles move the bid and the ask (never wider than maxW),
+     dragging the bar moves the whole quote (skew) */
+  function QLine({ lo, hi, step, maxW, minW, start, bid, ask, onSet, fmt, ticks, h, disabled, under }) {
+    step = step || 0.5;
+    fmt = fmt || ((v) => String(v));
+    const ref = useRef(null), drag = useRef(null), cur = useRef([NaN, NaN]);
+    const b = parseFloat(bid), a = parseFloat(ask), ok = isFinite(b) && isFinite(a) && a > b;
+    cur.current = [b, a];
+    const x = (v) => (v - lo) / (hi - lo) * 100;
+    const snap = (v) => Math.round(v / step) * step;
+    const mw = minW || step;
+    const set = (nb, na) => {
+      nb = Math.max(lo, Math.min(hi - mw, nb));
+      na = Math.max(nb + mw, Math.min(hi, na));
+      nb = +nb.toFixed(6);
+      na = +na.toFixed(6);
+      cur.current = [nb, na];
+      onSet(nb, na);
+    };
+    const valAt = (e) => {
+      const r = ref.current.getBoundingClientRect();
+      return lo + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (hi - lo);
+    };
+    const down = (e) => {
+      if (disabled) return;
+      const v = valAt(e), [b0, a0] = cur.current, hd = e.target.closest(".ql-hd");
+      if (hd) drag.current = { kind: hd.dataset.h };
+      else if (e.target.closest(".ql-br") && isFinite(b0) && isFinite(a0) && a0 > b0) drag.current = { kind: "bar", off: v - b0, w: a0 - b0 };
+      else {
+        const w = Math.min(start || 2 * step, maxW), c = snap(v), nb = c - snap(w / 2);
+        set(nb, nb + w);
+        drag.current = { kind: "bar", off: w / 2, w };
+      }
+      try { ref.current.setPointerCapture(e.pointerId); } catch (er) { }
+      e.preventDefault();
+    };
+    const move = (e) => {
+      const d = drag.current;
+      if (!d) return;
+      const v = snap(valAt(e)), [b0, a0] = cur.current;
+      if (d.kind === "bid") set(Math.max(v, a0 - maxW), a0);
+      else if (d.kind === "ask") set(b0, Math.min(v, b0 + maxW));
+      else {
+        const nb = snap(valAt(e) - d.off);
+        set(nb, nb + d.w);
+      }
+    };
+    const up = () => { drag.current = null; };
+    const L = ok ? Math.max(0, x(b)) : 0, Wd = ok ? Math.max(1, Math.min(100, x(a)) - L) : 0;
+    return <div className={cx("ql", disabled && "off")} ref={ref} style={{ "--h": (h || 96) + "px" }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+      {under}
+      {ok ? null : <div className="ql-hint">Tap the line to place a quote, then drag</div>}
+      {ok ? <div className="ql-br" style={{ left: L + "%", width: Wd + "%" }}><i className="ql-hd l" data-h="bid" aria-label="Bid handle" /><i className="ql-hd r" data-h="ask" aria-label="Ask handle" /><span className="ql-lb l">{fmt(b)}</span><span className="ql-lb r">{fmt(a)}</span></div> : null}
+      <div className="ql-ax" />
+      {(ticks || []).map((v) => <span key={v} className="ql-tk" style={{ left: x(v) + "%" }}>{Number.isInteger(v) ? fmt(v).replace(/\.0+(?=\D*$)/, "") : fmt(v)}</span>)}
+    </div>;
+  }
+  function QuoteBoxes({ bid, ask, setBid, setAsk, onEnter, unit, disabled, bidRef, big }) {
+    const kd = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onEnter();
+      }
+    };
+    return <div className={cx("mm-quote", big && "g2-bigq")}>
+      <label className="bid"><span>Bid{unit || ""}</span><input ref={bidRef} inputMode="decimal" value={bid} disabled={disabled} onChange={(e) => setBid(e.target.value)} onKeyDown={kd} /></label>
+      <label className="ask"><span>Ask{unit || ""}</span><input inputMode="decimal" value={ask} disabled={disabled} onChange={(e) => setAsk(e.target.value)} onKeyDown={kd} /></label>
+    </div>;
+  }
+  /* the quote box row: boxes then the big Quote button */
+  function QuoteRow(p) {
+    return <div className="g2-qrow"><QuoteBoxes {...p} big /><button className="start" disabled={p.disabled} onClick={() => p.onEnter()}>Quote</button></div>;
+  }
+
+  /* ---------- the three TIP_MM games ---------- */
+  function MM(p) {
+    if (p.I.id === "cards" && p.take) return <Trading {...p} />;
+    if (p.I.id === "dice") return <Dice {...p} />;
+    return <Events {...p} />;
+  }
+  const mmSub = (p) => `Round ${p.ri + 1} of ${p.s.rounds} · ${p.phase === "settle" ? "settlement" : p.k === 0 ? "opening market" : "update " + p.k + " of " + p.steps}`;
+
+  /* Trading Game C: card timeline */
+  function Trading(p) {
+    const { s, st, k, phase, quotes, fx, I } = p, set = phase === "settle", quoting = phase === "quote";
+    const live = (quotes || []).filter((q) => !q.used);
+    const bb = live.reduce((a, q) => !a || q.bid > a.bid ? q : a, null), ba = live.reduce((a, q) => !a || q.ask < a.ask ? q : a, null);
+    const n = st.c.length, shownK = set ? n : k;
+    const trades = p.rows.filter((r) => r.side).length;
+    const P = Math.max(-1, Math.min(1, p.pos / (s.limit || 10))), arc = Math.PI * 92, half = arc / 2;
+    const nextLbl = k + 1 > n ? "Settle" : p.took ? `Done, turn card ${k + 1}` : `Pass, turn card ${k + 1}`;
+    return <K.Stage title={p.title} sub={mmSub(p)} clock={quoting ? p.left : null} clockFrac={p.left / s.time} cls="mm-stage g2"
+      stats={[{ label: "Trades", value: trades, pop: true }, s.showFair ? { label: "P&L (mark)", value: K.signed(p.pnlNow, 2), tone: tone(p.pnlNow) } : { label: "Cash", value: K.signed(p.cash, 2) }, { label: "Total", value: K.signed(p.tot.pnl, 2), tone: tone(p.tot.pnl) }]}>
+      <div className="g2-col">
+        <div className="g2-panel soft tc-head">
+          <div className="g2-row sb"><span className="oa-lbl">Contract: sum of {n} cards · A=1, J=11, Q=12, K=13</span><FairChip show={s.showFair && !set} text={"Fair now " + fx(p.rnd(p.ev, I.tick / 5), 0.01)} /></div>
+          <div className="tc-steps" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>{st.c.map((c, i) => <div key={i} className={cx("tc-step", i < shownK && "done", i === k && !set && "now")}>
+            <K.Card key={i + (i < shownK ? "u" : "d")} v={c.v} s={c.s} hidden={i >= shownK} flip={i === shownK - 1} size={58} />
+            <span className="oa-lbl">{i < shownK ? "Card " + (i + 1) + " · " + c.v : i === k && !set ? "Next to turn" : "Card " + (i + 1)}</span></div>)}</div>
+        </div>
+        <div className="tc-main">
+          <div className="g2-col">
+            {set ? <div className="g2-panel g2-settle oa-in">
+              <div><div className="oa-lbl">Settlement</div><div className="g2-big tn">{p.val}</div></div>
+              <div className="g2-col" style={{ gap: 4 }}><span>Position <b>{posTxt(p.pos)}</b> · round P&amp;L <b className={tone(p.roundPnl)}>{K.signed(p.roundPnl, 2)}</b></span><span className="small muted">{I.explain(st, p.steps)}</span></div>
+            </div> : <div className="g2-panel tc-book">
+              <div className="tc-row tc-th"><span>Trader</span><span>Bid</span><span>Ask</span><span>Width</span><span>Sell at bid</span><span>Buy at ask</span></div>
+              {(quotes || []).map((q, i) => <div key={i + "-" + k} className={cx("tc-row", q.used && "used")} style={{ animationDelay: i * 0.04 + "s" }}>
+                <span className="nm">{q.n}</span>
+                <span className="dn"><b>{fx(q.bid, I.tick)}</b>{q === bb ? <span className="g2-chip k4">best</span> : null}</span>
+                <span className="up"><b>{fx(q.ask, I.tick)}</b>{q === ba ? <span className="g2-chip k3">best</span> : null}</span>
+                <span className="muted w">{fx(q.ask - q.bid, I.tick)}</span>
+                <button className="mm-px bid" disabled={!quoting || !!q.used} onClick={() => p.takeTrade(i, "sell")}>Sell {p.size} <b>{fx(q.bid, I.tick)}</b></button>
+                <button className="mm-px ask" disabled={!quoting || !!q.used} onClick={() => p.takeTrade(i, "buy")}>Buy {p.size} <b>{fx(q.ask, I.tick)}</b></button>
+              </div>)}
+            </div>}
+            <div className="g2-panel g2-col"><div className="oa-lbl">Tape</div><Tape tape={p.tape} max={150} empty="Trades and cards appear here." /></div>
+          </div>
+          <div className="g2-panel g2-col tc-side">
+            <div className="tc-dial"><svg viewBox="0 0 220 124" aria-hidden="true">
+              <path className="bg" d="M18,112 A92,92 0 0 1 202,112" />
+              {P ? <path className="fg" d="M18,112 A92,92 0 0 1 202,112" stroke={P >= 0 ? "var(--k3)" : "var(--k4)"} strokeDasharray={`${Math.abs(P) * half} ${arc}`} strokeDashoffset={P >= 0 ? -half : -half + Math.abs(P) * half} /> : null}
+              <circle cx="110" cy="112" r="6" fill="var(--text)" /><line className="nd" x1="110" y1="112" x2="110" y2="40" style={{ transform: `rotate(${P * 90}deg)` }} /></svg>
+              <b className={tone(p.pos)}>{posTxt(p.pos)}</b><span className="small muted">position · limit ±{s.limit}</span></div>
+            <div className="tc-tiles"><div><span className="oa-lbl">Cash</span><b>{K.signed(p.cash, 2)}</b></div><div><span className="oa-lbl">Lot size</span><b>{p.size}</b></div></div>
+            {p.err ? <div className="mm-err">{p.err}</div> : null}
+          </div>
+        </div>
+        <div className="g2-foot"><span className="small muted">{set ? "Round over: everything settles at the final sum." : `Trade as many traders as you like, then turn the next card. ${Math.max(0, n - k)} card${n - k === 1 ? "" : "s"} still face down.`}</span>
+          {set ? <button className="start" onClick={p.nextRound} autoFocus>{p.ri + 1 >= s.rounds ? "See results" : "Next round"}</button> : <button className="start" disabled={!quoting} onClick={() => p.afterFill()}>{nextLbl}</button>}</div>
+      </div>
+    </K.Stage>;
+  }
+
+  /* the round's settlement box shared by Dice and Events */
+  function Settle({ p, unit, valTxt }) {
+    return <div className={"oa-banner g2-ban oa-in " + (p.roundPnl >= 0 ? "ok" : "bad")}>
+      <span>{valTxt} · position <b>{posTxt(p.pos)}</b> · round P&amp;L <b className={tone(p.roundPnl)}>{K.signed(p.roundPnl, unit ? 0 : 2)}{unit || ""}</b><br /><span className="small muted">{p.I.explain(p.st, p.steps)}</span></span>
+      <button className="start" onClick={p.nextRound} autoFocus>{p.ri + 1 >= p.s.rounds ? "See results" : "Next round"}</button>
+    </div>;
+  }
+  const lastLine = (p, unit) => {
+    const r = p.rows.length ? p.rows[p.rows.length - 1] : null;
+    if (!r) return null;
+    const f = (v) => p.fx(v, p.I.tick) + (unit || "");
+    if (r.miss) return <span className="dn">No quote in time</span>;
+    if (r.fill) return <span className={r.fill === "buy" ? "dn" : "up"}>Interviewer {r.fill === "buy" ? "bought from you at " + f(r.px) : "sold to you at " + f(r.px)}{r.informed ? " · looked sharp" : ""}</span>;
+    return <span>No trade at {f(r.mid - r.w / 2)}–{f(r.mid + r.w / 2)}</span>;
+  };
+
+  /* Market Making Dice D: focus */
+  function Dice(p) {
+    const { s, st, k, phase, I } = p, set = phase === "settle", quoting = phase === "quote";
+    const n = st.d.length, shown = st.d.slice(0, set ? n : k).reduce((a, b) => st.prod ? a * b : a + b, st.prod ? 1 : 0);
+    const kk = set ? n : k, lo = st.prod ? 1 : n, hi = st.prod ? Math.pow(6, n) : 6 * n;
+    const flat = <div className="mm-row g2-dice2d">{st.d.map((v, i) => <K.Die key={i + (i < kk ? "s" : "h")} n={v} hidden={i >= kk} roll={i === kk - 1} size={56} />)}</div>;
+    const dice = window.TIP_DICE3D ? TH(window.TIP_DICE3D.Row, { values: st.d, k: kk, fallback: flat, height: 150 }) : flat;
+    const set2 = (b, a) => { p.setBid(p.fx(b, I.tick)); p.setAsk(p.fx(a, I.tick)); p.setErr(""); };
+    return <K.Stage title={p.title} sub={set ? `Round ${p.ri + 1} of ${s.rounds} · settlement` : `Round ${p.ri + 1} of ${s.rounds} · quote ${k + 1} of ${p.steps + 1} · max width ${p.fx(p.maxW, I.tick)}`}
+      clock={quoting ? p.left : null} clockFrac={p.left / s.time} cls="mm-stage g2"
+      stats={[{ label: "Position", value: posTxt(p.pos), pop: true }, { label: "Total", value: K.signed(p.tot.pnl, 2), tone: tone(p.tot.pnl) }]}>
+      <div className="g2-focus">
+        <Dots n={p.steps + 1} at={k} done={set} titles={(i) => "Quote " + (i + 1)} />
+        <div className="g2-dicehost">{dice}</div>
+        <div className="g2-row c"><span className="small muted">{st.prod ? "Product" : "Sum"} of {n} dice · shown so far {kk ? shown : "none"} · {n - kk} hidden</span><FairChip show={s.showFair && !set} text={"Fair now " + p.fx(p.rnd(p.ev, I.tick / 5), 0.01)} /></div>
+        <div className="g2-last">{lastLine(p)}</div>
+        {set ? <Settle p={p} valTxt={<span>All dice shown: the {st.prod ? "product" : "sum"} is <b>{p.fx(p.val, 1)}</b></span>} /> : <TF>
+          <div className="g2-q">{k === 0 ? "Make your market" : "Where are you now?"}<small>{st.prod ? "Product" : "Sum"} of {n} dice · max width {p.fx(p.maxW, I.tick)}{st.prod ? " · type your market" : " · drag on the line or type"}</small></div>
+          {p.ask2 ? <div className="g2-ask2">Interviewer: {p.ask2}</div> : null}
+          {st.prod ? null : <div className="g2-panel"><QLine lo={lo} hi={hi} step={I.tick} maxW={p.maxW} bid={p.bid} ask={p.ask} onSet={set2} fmt={(v) => p.fx(v, I.tick)} ticks={ticksOf(lo, hi)} h={100} disabled={!quoting} /></div>}
+          <QuoteRow bid={p.bid} ask={p.ask} setBid={(v) => { p.setBid(v); p.setErr(""); }} setAsk={(v) => { p.setAsk(v); p.setErr(""); }} onEnter={() => p.submitQuote()} disabled={!quoting} bidRef={p.bidRef} />
+          {p.err ? <div className="mm-err g2-c">{p.err}</div> : null}
+        </TF>}
+      </div>
+    </K.Stage>;
+  }
+
+  /* Event Contracts A: newswire */
+  function Events(p) {
+    const { s, st, k, phase, I } = p, set = phase === "settle", quoting = phase === "quote", kk = set ? st.ev.length : k;
+    const set2 = (b, a) => { p.setBid(String(Math.round(b))); p.setAsk(String(Math.round(a))); p.setErr(""); };
+    const heads = st.ev.slice(0, kk).map((e, i) => <div key={i} className={cx("ev-head", e.good ? "up" : "dn", i === kk - 1 && "new")}><span className="ar">{e.good ? "▲" : "▼"}</span><div><b>{e.head}</b><br /><em>{e.strong ? "strong" : "weak"} signal · headline {i + 1}</em></div><span className="lr">×{e.L.toFixed(2)}</span></div>).reverse();
+    const title = st.story === "election" ? "Candidate A wins the election" : "The central bank cuts rates";
+    return <K.Stage title={p.title} sub={set ? `Round ${p.ri + 1} of ${s.rounds} · resolved` : `Round ${p.ri + 1} of ${s.rounds} · quote ${k + 1} of ${p.steps + 1} · max width ${p.fx(p.maxW, I.tick)}¢`}
+      clock={quoting ? p.left : null} clockFrac={p.left / s.time} cls="mm-stage g2"
+      stats={[{ label: "Position", value: posTxt(p.pos), pop: true }, { label: "Cash", value: K.signed(p.cash, 0) + "¢" }, { label: "Total", value: K.signed(p.tot.pnl, 0) + "¢", tone: tone(p.tot.pnl) }]}>
+      <div className="ev-grid">
+        <div className="g2-panel soft g2-col"><div className="oa-lbl">Newswire · newest first</div><div className="ev-feed">
+          {set || kk >= st.ev.length ? null : <div className="ev-wait">Next headline arrives after your quote…</div>}
+          {heads}
+          <div className="ev-head prior"><span className="ar">◆</span><div><b>Desk prior</b><br /><em>before any news</em></div><span className="lr">{Math.round(st.p0 * 100)}%</span></div>
+        </div></div>
+        <div className="g2-col">
+          <div className="g2-panel g2-col"><span className="oa-lbl">Contract · pays 100¢ if YES</span><div className="ev-q">{title}?</div><div className="small muted">Multiply the odds by each headline's likelihood ratio. Quote in cents.</div></div>
+          <div className="g2-panel g2-col">
+            <div className="g2-row sb"><span className="oa-lbl">{set ? "Resolved" : "Your market · drag on the line or type"}</span><FairChip show={s.showFair && !set} text={"Fair " + Math.round(p.ev) + "¢"} /></div>
+            {set ? <Settle p={p} unit="¢" valTxt={<span>Resolved <b>{st.y ? "YES (100¢)" : "NO (0¢)"}</b></span>} /> : <TF>
+              {p.ask2 ? <div className="g2-ask2 l">Interviewer: {p.ask2}</div> : null}
+              <div className="g2-last l">{lastLine(p, "¢")}</div>
+              <QLine lo={0} hi={100} step={1} maxW={p.maxW} start={Math.min(p.maxW, 6)} bid={p.bid} ask={p.ask} onSet={set2} fmt={(v) => Math.round(v) + "¢"} ticks={[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]} h={96} disabled={!quoting} />
+              <QuoteRow bid={p.bid} ask={p.ask} unit=" ¢" setBid={(v) => { p.setBid(v); p.setErr(""); }} setAsk={(v) => { p.setAsk(v); p.setErr(""); }} onEnter={() => p.submitQuote()} disabled={!quoting} bidRef={p.bidRef} />
+              {p.err ? <div className="mm-err">{p.err}</div> : null}
+            </TF>}
+          </div>
+          <div className="g2-panel g2-col"><div className="oa-lbl">Tape</div><Tape tape={p.tape} max={150} /></div>
+        </div>
+      </div>
+    </K.Stage>;
+  }
+
+  /* ---------- Market of Cards F: focus ---------- */
+  function Moc(p) {
+    const { s, deal, ri, rounds, phase, quotes } = p, take = phase === "take", quoting = phase === "quote";
+    const f1 = (v) => (Math.round(v * 2) / 2).toFixed(1);
+    const R0 = useMemo(() => {
+      const sh = (Math.random() * 4 - 2), f = p.myFair, vals = [f - 8 + sh, f + 8 + sh];
+      return vals;
+    }, [ri]);
+    const vals = R0.slice();
+    if (take && quotes) quotes.forEach((q) => vals.push(q.bid - 3, q.ask + 3));
+    const lo = Math.floor(Math.min(...vals) / 3) * 3, hi = Math.max(lo + 18, Math.ceil(Math.max(...vals) / 3) * 3);
+    const at = ri * 2 + (take ? 1 : 0);
+    const set2 = (b, a) => { p.setBid(f1(b)); p.setAsk(f1(a)); p.setErr(""); };
+    return <K.Stage title="Market of Cards" sub={`Round ${ri + 1} of ${rounds} · ${quoting ? "make your market" : "trade on theirs"}`} clock={p.left} clockFrac={p.left / s.time} cls="mm-stage g2"
+      stats={[{ label: "Position", value: posTxt(p.pos), pop: true }, { label: "Cash", value: K.signed(p.cash, 1) }]}>
+      <div className="g2-focus">
+        <Dots n={rounds * 2} at={at} titles={(i) => "Round " + (Math.floor(i / 2) + 1) + (i % 2 ? " trade" : " make")} />
+        <div className="mf-cards">
+          <div className="g"><span className="oa-lbl">You</span><div><K.Card v={deal.you.v} s={deal.you.s} size={62} /></div></div>
+          {deal.bots.map((c, j) => <div key={j} className="g"><span className="oa-lbl">{p.names[j]}</span><div><K.Card hidden size={50} /></div></div>)}
+          <div className="g ctr"><span className="oa-lbl">Centre</span><div>{deal.mid.map((c, j) => <K.Card key={j + (j < ri ? "s" : "h")} v={c.v} s={c.s} hidden={j >= ri} flip={j === ri - 1} size={50} />)}</div></div>
+        </div>
+        <div className="g2-row c"><span className="small muted">Sum of all {4 + s.center} cards · A=1, J=11, Q=12, K=13</span><FairChip show={s.showFair} text={"Your fair " + p.myFair.toFixed(1)} /></div>
+        {take ? <TF>
+          <div className="g2-q">Trade on their markets?<small>Each trader quotes around their own hidden card. Size 1 each, or skip.</small></div>
+          <div className="mf-tr">{(quotes || []).map((q, i) => <div key={i + "-" + ri} className={cx("mf-tc", q.used && "used")} style={{ animationDelay: i * 0.06 + "s" }}>
+            <div className="g2-row c"><span className="g2-av">{q.n[0]}</span><b>{q.n}</b></div>
+            <div className="px"><span className="dn">{f1(q.bid)}</span> <span className="muted" style={{ fontWeight: 400 }}>–</span> <span className="up">{f1(q.ask)}</span></div>
+            <div className="mm-quote"><button className="mm-px bid" disabled={q.used} onClick={() => p.take(i, -1)}>Sell <b>{f1(q.bid)}</b></button><button className="mm-px ask" disabled={q.used} onClick={() => p.take(i, 1)}>Buy <b>{f1(q.ask)}</b></button></div>
+            {s.showFair ? <span className="small muted">card ≈ {Math.max(1, Math.min(13, Math.round(p.implied(q))))}</span> : null}
+          </div>)}</div>
+          {p.err ? <div className="mm-err g2-c">{p.err}</div> : null}
+          <div className="g2-row c"><button className="start" onClick={p.next}>{ri + 1 >= rounds ? "Settle" : `Reveal centre card ${ri + 1}`}</button></div>
+        </TF> : <TF>
+          <div className="g2-q">Make your market<small>Max width {s.width} · drag on the line or type</small></div>
+          <div className="g2-panel"><QLine lo={lo} hi={hi} step={0.5} maxW={s.width} bid={p.bid} ask={p.ask} onSet={set2} fmt={f1} ticks={ticksOf(lo, hi, 3)} h={100} /></div>
+          <QuoteRow bid={p.bid} ask={p.ask} setBid={(v) => { p.setBid(v); p.setErr(""); }} setAsk={(v) => { p.setAsk(v); p.setErr(""); }} onEnter={() => p.submitQuote()} />
+          {p.err ? <div className="mm-err g2-c">{p.err}</div> : null}
+        </TF>}
+        <details className="g2-tape"><summary>Tape</summary><Tape tape={p.tape} max={170} /></details>
+      </div>
+    </K.Stage>;
+  }
+
+  /* ---------- ETF Arbitrage A: spread meter ---------- */
+  function Etf(p) {
+    const { s, W, px, hist, prev, nav, q } = p, R = (s.maxGap || 1) + 0.25;
+    const x = (v) => Math.max(0, Math.min(100, 50 + (v - nav) / R * 50));
+    const f2 = (v) => v.toFixed(2);
+    const feeL = x(nav - s.fee), feeR = x(nav + s.fee);
+    const btns = q ? <TF><button className="mm-px bid" disabled={!!q.taken} onClick={() => p.trade("sell")}>Sell <b>{f2(q.bid)}</b><kbd>S</kbd></button><button className="mm-px ask" disabled={!!q.taken} onClick={() => p.trade("buy")}>Buy <b>{f2(q.ask)}</b><kbd>B</kbd></button></TF> : <div className="small muted">Waiting for the first quote…</div>;
+    return <K.Stage title="ETF Arbitrage" sub="Trade the ETF when it is away from NAV" clock={p.left} clockFrac={p.left / s.duration} cls="g2"
+      stats={[{ label: "Trades", value: p.stats.hit + p.stats.bad }, { label: "P&L", value: K.signed(p.pnl, 2), tone: tone(p.pnl), pop: true }]}>
+      <div className="ea-grid">
+        <div className="g2-panel soft g2-col"><div className="oa-lbl">Basket QNT = {W.map((w, i) => `${w}·${"ABC"[i]}`).join(" + ")}</div>
+          {px.map((v, i) => <div key={i} className="ea-comp"><span className="g2-tk">{"ABC"[i]}</span><div><b key={v} className={prev[i] != null && prev[i] !== v ? (v > prev[i] ? "flash-up" : "flash-dn") : ""}>{f2(v)}</b></div><em>weight {W[i]}</em><Spark data={hist[i]} h={26} /></div>)}
+          <div className="ea-nav"><span className="oa-lbl">NAV</span><b>{s.showNav ? f2(nav) : "work it out"}</b></div>
+        </div>
+        <div className="g2-col">
+          <div className="g2-panel g2-col"><div className="g2-row sb"><span className="oa-lbl">Market maker's ETF quote against NAV · {s.units} units · fee {f2(s.fee)}/unit</span>{q && q.taken ? <span className={"g2-chip " + (q.taken === "buy" ? "k3" : "k4")}>{q.taken === "buy" ? "Bought" : "Sold"}: wait for the requote</span> : null}</div>
+            {!s.showNav ? <div className="g2-panel soft g2-c" style={{ padding: "34px 16px" }}><span className="muted">NAV is hidden: work it out from the basket.</span><br /><b className="tn" style={{ fontSize: 22 }}>{q ? `ETF ${f2(q.bid)}–${f2(q.ask)}` : ""}</b></div> : <TF>
+              <div className="ea-meter">
+                <div className="ea-strip" style={{ "--fl": feeL + "%", "--fr": feeR + "%" }}><i /></div>
+                <span className="ea-zl buy">Ask here: buy</span><span className="ea-zl sell">Bid here: sell</span>
+                <div className="ea-axis" />
+                <div className="ea-navmark" style={{ left: "50%" }} />
+                {q ? <div className="ea-pin bid" style={{ left: x(q.bid) + "%" }}><b>{f2(q.bid)}</b><i /></div> : null}
+                {q ? <div className="ea-pin ask" style={{ left: x(q.ask) + "%" }}><b>{f2(q.ask)}</b><i /></div> : null}
+              </div>
+              <div className="g2-row c small muted ea-key"><span><i className="k-nav" /> NAV {f2(nav)} (centre)</span><span><i className="k-fee" /> fee band ±{f2(s.fee)}</span><span>scale ±{f2(R)} around NAV</span></div>
+            </TF>}
+          </div>
+          <div className="ea-act">{btns}</div>
+          <div className="g2-panel g2-col"><div className="oa-lbl">Fills</div><Tape tape={p.log} max={170} empty="No trades yet. Press B to buy or S to sell." /></div>
+        </div>
+      </div>
+    </K.Stage>;
+  }
+
+  /* ---------- Card Game A: three desks ---------- */
+  function Desks(p) {
+    const { s, deck, k, q, fb, left } = p;
+    const fx = (v) => v.toFixed(1);
+    const right = (v) => fb && v === q.ans ? " right" : fb && v === fb.v ? " wrong" : "";
+    const lbl = (v) => v === "none" ? "no trade" : v === "timeout" ? "out of time" : q.desks[+v.split(":")[0]].n + " " + v.split(":")[1];
+    useEffect(() => {
+      if (fb) return;
+      const h = (e) => {
+        if (typing(e) || e.metaKey || e.ctrlKey) return;
+        const n = parseInt(e.key, 10);
+        if (n >= 1 && n <= 6) { e.preventDefault(); p.pick(Math.floor((n - 1) / 2) + ((n - 1) % 2 ? ":buy" : ":sell")); }
+        else if (e.key === "0" || e.key === "p" || e.key === "P") { e.preventDefault(); p.pick("none"); }
+      };
+      window.addEventListener("keydown", h);
+      return () => window.removeEventListener("keydown", h);
+    });
+    return <K.Stage title="Card Game" sub={`Card ${k + 1} of ${s.n} turned`} clock={fb ? null : left} clockFrac={left / s.time} cls="g2"
+      stats={[{ label: "Points", value: p.score, pop: true }]} total={s.n} results={p.hist.map((h) => h.ok)} at={k}>
+      <div className="g2-col">
+        <div className="g2-panel soft g2-col g2-ac"><div className="oa-lbl">Contract: sum of {s.n} cards dealt from one deck · A=1 … K=13</div>
+          <div className="g2-hand">{deck.map((c, i) => <K.Card key={i + (i <= k ? "u" : "d")} v={c.v} s={c.s} hidden={i > k} flip={i === k} size={64} />)}</div></div>
+        <div className="ca-desks">{q.desks.map((d, i) => <div key={i + "-" + k} className={cx("ca-desk", fb && q.ans.startsWith(i + ":") && "right")} style={{ animationDelay: i * 0.05 + "s" }}>
+          <div className="nm"><b>{d.n} desk</b><span className="g2-chip">width {fx(d.ask - d.bid)}</span></div>
+          <div className="px"><span className="dn">{fx(d.bid)}</span> <span className="muted" style={{ fontWeight: 400 }}>–</span> <span className="up">{fx(d.ask)}</span></div>
+          <div className="mm-quote"><button className={"mm-px bid" + right(i + ":sell")} disabled={!!fb} onClick={() => p.pick(i + ":sell")}>Sell <b>{fx(d.bid)}</b><kbd>{2 * i + 1}</kbd></button><button className={"mm-px ask" + right(i + ":buy")} disabled={!!fb} onClick={() => p.pick(i + ":buy")}>Buy <b>{fx(d.ask)}</b><kbd>{2 * i + 2}</kbd></button></div>
+        </div>)}</div>
+        <button className={"ca-pass" + (fb && q.ans === "none" ? " right" : "")} disabled={!!fb} onClick={() => p.pick("none")}>No trade: every desk is fair <kbd>0</kbd></button>
+        {fb ? <div className={"oa-banner " + (fb.ok ? "ok" : "bad")}><b>{fb.pts > 0 ? "+" : ""}{String(fb.pts).replace("-", "−")}</b><span>{fb.ok ? "Right." : "Wrong: the answer was " + lbl(q.ans) + "."} Fair after this card: <b>{q.f.toFixed(2)}</b>.</span></div> : null}
+      </div>
+    </K.Stage>;
+  }
+
+  /* ---------- Betting Board B: scratchpad with the stake table ---------- */
+  function Board(p) {
+    const { s, m, fb, left, i } = p;
+    const pct = (v) => (v * 100).toFixed(1) + "%";
+    const money = (v) => K.money(v, 2);
+    const [picked, setPicked] = useState({});
+    const [stakes, setStakes] = useState([]);
+    useEffect(() => { setPicked({}); setStakes([]); }, [i]);
+    const sel = m.odds.map((d, j) => picked[j] ? 1 / d : 0), sum = sel.reduce((a, b) => a + b, 0), all = m.odds.every((_, j) => picked[j]) || !!fb;
+    const st = m.odds.map((_, j) => +stakes[j] || 0), spent = st.reduce((a, b) => a + b, 0), pays = m.odds.map((d, j) => st[j] * d), mn = Math.min(...pays);
+    const own = st.some((v) => v > 0);
+    const callArb = () => p.answer(true, own ? st : null);
+    useEffect(() => {
+      const h = (e) => {
+        if (typing(e) || e.metaKey || e.ctrlKey) return;
+        if (!fb && (e.key === "a" || e.key === "A")) { e.preventDefault(); callArb(); }
+        else if (!fb && (e.key === "p" || e.key === "P")) { e.preventDefault(); p.answer(false); }
+      };
+      window.addEventListener("keydown", h);
+      return () => window.removeEventListener("keydown", h);
+    });
+    const shown = fb ? m.imp : sum;
+    return <K.Stage title="Betting Board" sub={`Market ${i + 1} of ${s.markets} · budget ${K.money(s.budget)}`} clock={fb ? null : left} clockFrac={left / s.time} cls="g2"
+      stats={[{ label: "P&L", value: K.signed(p.pnl, 2), tone: tone(p.pnl), pop: true }]} total={s.markets} results={p.hist.map((h) => h.ok)} at={i}>
+      <div className="bb-grid">
+        <div className="g2-col">
+          <div className="g2-row sb"><span className="oa-lbl">Best decimal odds across books</span><span className="small muted">Tap a price to add its 1/odds to the pad</span></div>
+          <div className="bb-tiles" style={{ gridTemplateColumns: `repeat(${m.names.length}, minmax(0, 1fr))` }}>{m.names.map((n, j) => <button key={j + "-" + i} className={cx("bb-tile", picked[j] && "on")} onClick={() => setPicked((x) => ({ ...x, [j]: !x[j] }))}>
+            <span className="oa-lbl">{n}</span><span className="o">{m.odds[j].toFixed(2)}</span><em>best at {m.books[j]}</em>{picked[j] || fb ? <span className="g2-chip k1">1/odds = {pct(1 / m.odds[j])}</span> : null}</button>)}</div>
+          <div className="g2-panel g2-col"><div className="g2-row sb"><span className="oa-lbl">Your stakes · scored if you call an arbitrage</span>{fb ? null : <button className="btn sm" onClick={() => setStakes(m.odds.map((d) => +(s.budget / m.imp / d).toFixed(2)))}>Split by 1/odds</button>}</div>
+            <div className="bb-tbw"><table className="g2-tb bb-tb"><thead><tr><th>Outcome</th><th>Odds</th><th>Your stake</th><th>Pays</th><th>Net</th></tr></thead><tbody>
+              {m.names.map((n, j) => <tr key={j}><td><b>{n}</b><br /><span className="small muted">{m.books[j]}</span></td><td className="bb-odds">{m.odds[j].toFixed(2)}</td>
+                <td>{fb ? money(st[j]) : <input inputMode="decimal" value={stakes[j] != null ? stakes[j] : ""} placeholder="0" onChange={(e) => { const v = e.target.value; setStakes((x) => { const y = x.slice(); y[j] = v; return y; }); }} />}</td>
+                <td>{money(pays[j])}</td><td className={tone(pays[j] - spent)}>{sgn(pays[j] - spent, 2)}</td></tr>)}
+            </tbody></table></div>
+            <div className="bb-min"><span>Spent {money(spent)} of {K.money(s.budget)} · <b>worst case</b></span><b className={tone(mn - spent)}>{spent ? sgn(mn - spent, 2) : "—"}</b></div>
+            {fb ? null : <span className="small muted">{own ? "Calling an arbitrage scores these stakes." : "Leave the stakes empty and an arbitrage call uses the ideal split."}</span>}
+          </div>
+          {fb ? <K.Banner ok={fb.ok} onNext={p.next} title={fb.timeout ? "Out of time." : fb.ok ? "Right." : "Wrong."}>The prices imply <b>{pct(m.imp)}</b>{m.arb ? `, so staking in proportion to 1/odds pays ${money(s.budget / m.imp)} whatever happens.` : ": covering every outcome loses money."}{fb.isArb ? <span> Your result: <b className={tone(fb.gain)}>{sgn(fb.gain, 2)}</b>.</span> : null}</K.Banner>
+            : <div className="bb-call"><button className="arb" onClick={callArb}>Arbitrage: stake to lock it in <kbd>A</kbd></button><button onClick={() => p.answer(false)}>No arbitrage: pass <kbd>P</kbd></button></div>}
+        </div>
+        <div className="g2-panel g2-col"><div className="oa-lbl">Scratchpad</div>
+          <div className="bb-pad">{m.names.map((n, j) => <div key={j} className="ln"><span className="muted">1 / {m.odds[j].toFixed(2)} ({n})</span><b>{picked[j] || fb ? pct(1 / m.odds[j]) : "·"}</b></div>)}
+            <div className="tot"><span>Total</span><span className={all ? (shown < 1 ? "up" : "dn") : ""}>{all ? pct(shown) : pct(sum) + " so far"}</span></div></div>
+          <div className="bb-gauge"><i style={{ width: Math.min(100, shown / 1.1 * 100) + "%", background: shown < 1 && all ? "var(--k3)" : "var(--k1)" }} /><u style={{ left: 100 / 1.1 + "%" }} /></div>
+          <div className="g2-row sb small muted"><span>0%</span><span style={{ color: "var(--k2)" }}>100%: under it is an arbitrage</span></div>
+        </div>
+      </div>
+    </K.Stage>;
+  }
+
+  /* ---------- Fermi A: log slider ---------- */
+  function Fermi(p) {
+    const { s, q, i, fb, lo, hi, pt, setLo, setHi, setPt, fmtN, parseN, left } = p;
+    const v = q[2];
+    const rng = useMemo(() => {
+      const e = Math.floor(Math.log10(v)), r = 1 + Math.floor(Math.random() * 4), span = 6;
+      const lo0 = v >= 1 ? Math.max(0, e - r) : e - r;
+      return [lo0, lo0 + span];
+    }, [i]);
+    let [L, U] = rng;
+    const a0 = parseN(lo), b0 = parseN(hi), p0 = parseN(pt);
+    [a0, b0, p0].forEach((x) => { if (x > 0) { L = Math.min(L, Math.floor(Math.log10(x))); U = Math.max(U, Math.ceil(Math.log10(x))); } });
+    if (fb) { L = Math.min(L, Math.floor(Math.log10(v))); U = Math.max(U, Math.ceil(Math.log10(v))); }
+    const toX = (x) => (Math.log10(x) - L) / (U - L) * 100, toV = (pc) => +(10 ** (L + pc / 100 * (U - L))).toPrecision(2);
+    const cl = (x) => Math.max(0, Math.min(100, x));
+    const fm = (x) => fmtN(x).replace(/,/g, "");
+    const T = useRef(null), drag = useRef(null);
+    const pos = (e) => { const r = T.current.getBoundingClientRect(); return cl((e.clientX - r.left) / r.width * 100); };
+    const down = (e) => {
+      if (fb) return;
+      const h = e.target.closest(".fa-h");
+      if (h) drag.current = { k: h.dataset.h };
+      else if (e.target.closest(".fa-band") && a0 > 0 && b0 > a0) drag.current = { k: "band", off: pos(e) - toX(a0), span: toX(b0) - toX(a0) };
+      else if (a0 > 0 && b0 > a0) {
+        const x0 = pos(e), k2 = Math.abs(x0 - toX(a0)) <= Math.abs(x0 - toX(b0)) ? "lo" : "hi";
+        (k2 === "lo" ? setLo : setHi)(fm(toV(x0)));
+        drag.current = { k: k2 };
+      } else {
+        const x0 = pos(e), sp = 100 / (U - L), l = Math.max(0, Math.min(100 - sp, x0 - sp / 2));
+        setLo(fm(toV(l)));
+        setHi(fm(toV(l + sp)));
+        drag.current = { k: "band", off: x0 - l, span: sp };
+      }
+      try { T.current.setPointerCapture(e.pointerId); } catch (er) { }
+      e.preventDefault();
+    };
+    const move = (e) => {
+      const d = drag.current;
+      if (!d) return;
+      if (d.k === "band") {
+        const l = Math.max(0, Math.min(100 - d.span, pos(e) - d.off));
+        setLo(fm(toV(l)));
+        setHi(fm(toV(l + d.span)));
+        return;
+      }
+      const x = fm(toV(pos(e)));
+      (d.k === "lo" ? setLo : d.k === "hi" ? setHi : setPt)(x);
+    };
+    const up = () => { drag.current = null; };
+    const decs = [];
+    for (let d = Math.ceil(L); d <= U; d++) decs.push(<span key={d} className="fa-dec" style={{ left: toX(10 ** d) + "%" }}>{fmtN(10 ** d)}</span>);
+    const band = a0 > 0 && b0 > a0;
+    const unit = q[3] ? " in " + q[3] : "";
+    const kd = (e) => { if (e.key === "Enter") { e.preventDefault(); fb ? p.next() : p.submit(); } };
+    const box = (val, set, ph, lab) => <label><span>{lab}</span><div className="oa-num-box"><input inputMode="decimal" value={val} placeholder={ph} disabled={!!fb} onChange={(e) => set(e.target.value)} onKeyDown={kd} /></div></label>;
+    return <K.Stage title="Fermi Estimation" sub={`Question ${i + 1} of ${p.n}`} clock={fb ? null : left} clockFrac={left / s.time} cls="g2"
+      stats={[{ label: "Score", value: p.score, pop: true }, { label: "Hit rate", value: p.hist.length ? K.pct(p.hist.filter((h) => h.inside).length / p.hist.length) : "—" }]} total={p.n} results={p.hist.map((h) => h.inside)} at={i}>
+      <div className="fa-wrap" key={i}>
+        <div className="g2-col g2-ac" style={{ gap: 6 }}><div className="oa-lbl">Give a 90% confidence interval{unit}</div><div className="fa-q">{q[1]}</div></div>
+        <div className="g2-panel g2-col"><div className="g2-row sb"><span className="oa-lbl">Drag the handles, or the band to move the whole interval · log scale</span>
+          <span className="small muted">{band ? `Width ×${fmtN(+(b0 / a0).toPrecision(2))} (${Math.log10(b0 / a0).toFixed(2)} orders of magnitude) · costs ${Math.round(22 * Math.log10(b0 / a0))} points if it holds the answer` : ""}</span></div>
+          <div className="fa-track" ref={T} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onDoubleClick={(e) => { if (!fb) setPt(fm(toV(pos(e)))); }}>
+            <div className="fa-axis" />
+            {a0 > 0 || b0 > 0 ? null : <div className="fa-hint">Tap the scale to place an interval, then drag</div>}
+            {band ? <div className="fa-band" style={{ left: cl(toX(a0)) + "%", width: cl(toX(b0)) - cl(toX(a0)) + "%" }} /> : null}
+            {decs}
+            {a0 > 0 ? <div className="fa-h" data-h="lo" style={{ left: cl(toX(a0)) + "%" }}><span>{fmtN(a0)}</span></div> : null}
+            {b0 > 0 ? <div className="fa-h" data-h="hi" style={{ left: cl(toX(b0)) + "%" }}><span>{fmtN(b0)}</span></div> : null}
+            {p0 > 0 ? <div className="fa-h pt" data-h="pt" style={{ left: cl(toX(p0)) + "%" }}><span>{fmtN(p0)}</span></div> : null}
+            {fb ? <div className={cx("fa-ans", !fb.inside && "miss")} style={{ left: cl(toX(v)) + "%" }}><span>answer {fmtN(v)}</span></div> : null}
+          </div>
+        </div>
+        <div className="fa-boxes">
+          {box(lo, setLo, "e.g. 120k", "Low")}
+          {box(pt, setPt, "optional", "Best guess (optional)")}
+          {box(hi, setHi, "e.g. 3.5m", "High")}
+          {fb ? <button className="start" onClick={p.next} autoFocus>{i + 1 >= p.n ? "See results" : "Next question"}</button> : <button className="start" onClick={() => p.submit()}>Submit</button>}
+        </div>
+        {fb ? <div className={"oa-banner " + (fb.inside ? "ok" : "bad")}><span>Answer: <b>{fmtN(v)}{q[3] ? " " + q[3] : ""}</b> · {fb.timeout ? "no answer in time" : fb.inside ? "inside your interval" : "outside your interval"} · <b>{fb.pts} points</b></span></div>
+          : <div className="small muted g2-c">Type 3.5m, 120k or 2bn, or tap and drag on the scale. Double-click the scale to place a best guess.</div>}
+      </div>
+    </K.Stage>;
+  }
+
+  /* ---------- Higher or Lower C: run strip ---------- */
+  function HiLo(p) {
+    const { s, cur, fb, hist, bank, stake, setStake, pHi, pLo, hiN, loN, n } = p;
+    const kb = p.kelly(Math.max(pHi, pLo));
+    const quick = s.counter ? [[0, "$0"], [kb / 2, "½ Kelly"], [kb, "Kelly"]] : [[0, "$0"], [0.1, "10%"], [0.25, "25%"]];
+    const strip = useRef(null);
+    useEffect(() => { if (strip.current) strip.current.scrollLeft = strip.current.scrollWidth; }, [hist.length, fb]);
+    useEffect(() => {
+      const h = (e) => {
+        if (e.metaKey || e.ctrlKey) return;
+        const inStake = e.target && e.target.dataset && e.target.dataset.f === "stake";
+        if (typing(e) && !inStake) return;
+        if (!fb && e.key === "ArrowUp") { e.preventDefault(); p.bet("hi"); }
+        else if (!fb && e.key === "ArrowDown") { e.preventDefault(); p.bet("lo"); }
+      };
+      window.addEventListener("keydown", h);
+      return () => window.removeEventListener("keydown", h);
+    });
+    const res = (h) => h.frac === 0 ? "no stake" : (h.win ? "+" : "−") + Math.abs(Math.round(h.d));
+    const same = n - hiN - loN;
+    return <K.Stage title="Higher or Lower" sub={`Card ${p.i + 1} of ${s.cards} · pays ${s.odds}:1 · ties lose · aces high`} cls="g2"
+      stats={[{ label: "Bankroll", value: K.money(bank, 0), pop: true, tone: bank >= s.bankroll ? "up" : "dn" }, { label: "Near Kelly", value: hist.filter((h) => h.ok).length + " of " + hist.length }]} total={s.cards} results={hist.map((h) => h.ok)} at={p.i}>
+      <div className="g2-col">
+        <div className="g2-panel g2-col" style={{ gap: 6 }}>
+          <div className="g2-row sb"><span className="oa-lbl">This run · {hist.length} call{hist.length === 1 ? "" : "s"}</span><span className="small muted">bankroll {K.money(s.bankroll, 0)} → <b className={bank >= s.bankroll ? "up" : "dn"}>{K.money(bank, 0)}</b></span></div>
+          <div className="hc-strip" ref={strip}>
+            {hist.length ? hist.map((h, k) => <div key={k} className="hc-it"><K.Card v={h.cur.v} s={h.cur.s} size={34} /><em className={h.frac === 0 ? "n" : h.win ? "w" : "l"}>{h.side === "hi" ? "▲" : "▼"} {res(h)}</em></div>) : <span className="small muted" style={{ alignSelf: "center" }}>Your calls line up here.</span>}
+            {fb ? null : <div className="hc-it"><K.Card v={cur.v} s={cur.s} size={34} /><em className="n">now</em></div>}
+          </div>
+          {new Set(p.bankHist).size > 1 ? <div style={{ height: 34 }}><Spark data={p.bankHist} h={34} /></div> : null}
+        </div>
+        <div className="hc-main">
+          <div className="g2-panel g2-col">
+            <div className="hl-cards"><K.Card v={cur.v} s={cur.s} size={86} /><span className="hl-vs">THEN</span>{fb ? <K.Card key={"n" + p.i} v={fb.nxt.v} s={fb.nxt.s} size={86} flip /> : <K.Card hidden size={86} />}</div>
+            {s.counter ? <div className="g2-row c small" style={{ gap: 14 }}><span>Higher <b className="up">{hiN}</b></span><span>Same <b>{same}</b></span><span>Lower <b className="dn">{loN}</b></span><span className="muted">of {n} left</span></div> : null}
+            {fb ? <div className={"oa-banner " + (fb.win ? "ok" : fb.d < 0 ? "bad" : "")} style={{ justifyContent: "space-between", gap: 14 }}><span><b>{fb.win ? "Won " + K.money(fb.d, 0) : fb.d < 0 ? "Lost " + K.money(-fb.d, 0) : fb.tie ? "Tie" : "No stake"}.</b> You staked {(fb.frac * 100).toFixed(0)}% of bankroll; Kelly on the better side was {(fb.kb * 100).toFixed(0)}%.</span><button className="start" onClick={p.next} autoFocus>{p.last ? "See results" : "Next card"} <kbd>Enter</kbd></button></div>
+              : <TF>
+                <div className="g2-row hc-stake"><div className="oa-num-box" style={{ flex: 1 }}><span>$</span><input data-f="stake" inputMode="decimal" placeholder="Stake" value={stake} onChange={(e) => setStake(e.target.value)} /></div>{quick.map(([f, l]) => <button key={l} className="btn sm" onClick={() => setStake(String(Math.floor(f * bank)))}>{l}</button>)}</div>
+                <div className="hl-call"><button className="hi" onClick={() => p.bet("hi")}>▲ Higher</button><button className="lo" onClick={() => p.bet("lo")}>▼ Lower</button></div>
+                <span className="small muted g2-keys">Keys: ↑ higher, ↓ lower (also from the stake box), Enter next.</span>
+              </TF>}
+          </div>
+          <div className="g2-panel g2-col"><div className="oa-lbl">Stake review</div>
+            <div className="hc-rev"><table className="g2-tb"><thead><tr><th>Call</th><th>Staked</th><th>Kelly</th><th></th></tr></thead><tbody>
+              {hist.length ? hist.slice().reverse().map((h, k) => <tr key={k}><td style={{ whiteSpace: "nowrap" }}>{h.side === "hi" ? "▲" : "▼"} <span className="small muted">p {(h.p * 100).toFixed(0)}%</span></td><td>{(h.frac * 100).toFixed(0)}%</td>
+                <td style={{ whiteSpace: "nowrap" }}>{(h.kb * 100).toFixed(0)}%{h.kb > 0 && h.best !== h.side ? <span className="small dn"> on {h.best === "hi" ? "▲" : "▼"}</span> : h.kb === 0 ? <span className="small muted"> pass</span> : null}</td>
+                <td>{h.ok ? <span className="g2-chip k3">near</span> : <span className="g2-chip k4">off</span>}</td></tr>) : <tr><td colSpan="4" className="muted">Each call is compared with Kelly here.</td></tr>}
+            </tbody></table></div></div>
+        </div>
+      </div>
+    </K.Stage>;
+  }
+
+  /* ---------- Odds Betting F: quick fire (state and rules here; the bets come from the game's EVENTS) ---------- */
+  const QF = [[0, "Pass"], [0.02, "Small"], [0.1, "Medium"], [0.3, "Big"]];
+  const bucket = (k) => QF.reduce((a, q) => Math.abs(q[0] - k) < Math.abs(a[0] - k) ? q : a, QF[0])[0];
+  const QF_SECS = 10;
+  function makeOdds(EVENTS, jt, Jt) {
+    return function OddsBet({ settings: s, onFinish, onRestart }) {
+      const [rng] = useState(() => jt());
+      const mk = () => {
+        const e = rng.pick(EVENTS)(rng);
+        const edge = (rng() - 0.45) * 0.6;
+        const b = Math.max(0.1, Math.round(((1 + edge) / e.p - 1) * 10) / 10);
+        const kelly = Math.max(0, (b * e.p - (1 - e.p)) / b);
+        return { ...e, b, kelly, ev: e.p * (b + 1) - 1 };
+      };
+      const [bet, setBet] = useState(mk), [i, setI] = useState(0), [bank, setBank] = useState(s.bankroll), [kBank, setKBank] = useState(s.bankroll), [fb, setFb] = useState(null), [log, setLog] = useState([]), [done, setDone] = useState(false), [streak, setStreak] = useState(0);
+      const left = K.useCountdown(QF_SECS, !fb && !done, i);
+      const place = (f, timeout) => {
+        if (fb || done) return;
+        const win = rng() < bet.p, stake = bank * f, d = win ? stake * bet.b : -stake, kd = win ? kBank * bet.kelly * bet.b : -kBank * bet.kelly;
+        const ok = !timeout && f === bucket(bet.kelly);
+        setBank((x) => Math.round((x + d) * 100) / 100);
+        setKBank((x) => Math.round((x + kd) * 100) / 100);
+        setLog((l) => [...l, { f, k: bet.kelly, win, d, ev: bet.ev, ok, timeout: !!timeout }]);
+        setStreak((x) => ok ? x + 1 : 0);
+        setFb({ win, d, f, ok, timeout: !!timeout, right: bucket(bet.kelly), ...bet });
+      };
+      const next = () => {
+        if (i + 1 >= s.bets) { setDone(true); return; }
+        setI(i + 1);
+        setBet(mk());
+        setFb(null);
+      };
+      useEffect(() => {
+        if (!fb && !done && left <= 0) place(0, true);
+      }, [left <= 0]);
+      useEffect(() => {
+        const h = (e) => {
+          if (typing(e) || e.metaKey || e.ctrlKey) return;
+          if (!fb && e.key.length === 1 && "1234".includes(e.key)) { e.preventDefault(); place(QF[+e.key - 1][0]); }
+          else if (!fb && (e.key === "p" || e.key === "P")) { e.preventDefault(); place(0); }
+          else if (fb && e.key === "Enter") { e.preventDefault(); next(); }
+        };
+        window.addEventListener("keydown", h);
+        return () => window.removeEventListener("keydown", h);
+      });
+      const res = useMemo(() => {
+        if (!done) return null;
+        const gap = log.reduce((a, x) => a + Math.abs(x.f - x.k), 0) / log.length;
+        const goodPass = log.filter((x) => x.k === 0 && x.f === 0).length, bad = log.filter((x) => x.k === 0).length;
+        const hits = log.filter((x) => x.ok).length;
+        return { pnl: Math.round((bank - s.bankroll) * 100) / 100, score: Math.round((bank - s.bankroll) * 100) / 100, kellyPnl: Math.round((kBank - s.bankroll) * 100) / 100, gap: Math.round(gap * 1e3) / 10, passes: goodPass + " of " + bad, hits, total: log.length };
+      }, [done]);
+      Jt(done, res, onFinish);
+      if (done && res) return <K.Result headline={K.money(res.pnl, 2) + " P&L"} sub={`Bankroll ${K.money(bank, 2)} from ${K.money(s.bankroll, 0)} · ${res.hits} of ${res.total} sizes right`} onRestart={onRestart} ring={res.total ? res.hits / res.total : 0}
+        metrics={[
+          { label: "Your P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" },
+          { label: "Kelly on the same bets", value: K.money(res.kellyPnl, 2), tone: res.kellyPnl >= 0 ? "up" : "dn" },
+          { label: "Right sizes", value: `${res.hits} of ${res.total}`, sub: "nearest size to Kelly" },
+          { label: "Bad bets passed", value: res.passes, sub: "negative-EV offers you turned down" }
+        ]}
+        review={log.map((x, k) => ({ ok: x.ok, text: `Bet ${k + 1}: ${x.timeout ? "out of time" : "you staked " + Math.round(x.f * 100) + "%"}, Kelly ${Math.round(x.k * 100)}% (nearest size ${QF.find((q) => q[0] === bucket(x.k))[1]})`, shown: K.signed(x.d, 2) }))}
+        notes="Kelly stakes f* = (b·p − q) / b of the bankroll, where b is the payout per $1, p the chance of winning and q = 1 − p. The right size is the one of Pass (0%), Small (2%), Medium (10%) and Big (30%) nearest to Kelly. Bet nothing when the edge is negative." />;
+      const hits = log.filter((x) => x.ok).length;
+      return <K.Stage title="Odds Betting" sub={`Bet ${i + 1} of ${s.bets}`} clock={fb ? null : left} clockFrac={left / QF_SECS} cls="g2"
+        stats={[{ label: "Bankroll", value: K.money(bank, 0), tone: bank >= s.bankroll ? "up" : "dn", pop: true }, { label: "Streak", value: streak, tone: streak >= 3 ? "hot" : "" }]} total={s.bets} results={log.map((x) => x.ok)} at={i}>
+        <div className="g2-col">
+          <div className="of-top">
+            <div className="of-card" key={i}><span className="oa-lbl">Bet {i + 1} of {s.bets} · {QF_SECS} seconds</span><div className="of-q"><K.T>{bet.t}</K.T></div><span className="of-odds">{bet.b.toFixed(1)}<span>to 1</span></span>{s.showP ? <span className="small muted">win chance {(bet.p * 100).toFixed(1)}%</span> : null}</div>
+            <div className="g2-col g2-ac of-sc"><span className="oa-lbl">Right sizes</span><div className="of-score">{hits}</div><span className="small muted">of {log.length}</span></div>
+          </div>
+          <div className="of-opts">{QF.map(([f, nm], k) => <button key={nm} disabled={!!fb} onClick={() => place(f)} className={fb ? (f === fb.right ? "right" : f === fb.f && !fb.timeout ? "wrong" : "") : ""}><kbd>{k + 1}</kbd>{nm}<span>{f ? Math.round(f * 100) + "% of bankroll" : "no bet"}</span></button>)}</div>
+          {fb ? <div className={"oa-banner " + (fb.ok ? "ok" : "bad")} style={{ justifyContent: "space-between", gap: 10 }}><span><b>{fb.timeout ? "Out of time: passed." : fb.f === 0 ? "You passed." : fb.win ? "Won " + K.money(fb.d, 2) + "." : "Lost " + K.money(-fb.d, 2) + "."}</b> Win chance {(fb.p * 100).toFixed(1)}% ({fb.why}) at {fb.b.toFixed(1)} to 1 gives an edge of {(fb.ev * 100).toFixed(1)}% per $1. <b>Kelly: {Math.round(fb.kelly * 100)}%</b>{fb.kelly === 0 ? " (pass)" : ""}, so the right size was <b>{QF.find((q) => q[0] === fb.right)[1]}</b>.</span><button className="start" onClick={next} autoFocus>{i + 1 >= s.bets ? "See results" : "Next bet"} <kbd>Enter</kbd></button></div>
+            : <span className="small muted g2-c">Pick a size by feel<span className="g2-keys">: keys 1–4</span>. The right size is the one nearest to Kelly.</span>}
+        </div>
+      </K.Stage>;
+    };
+  }
+
+  /* ---------- Superday A: journey ---------- */
+  const SKILL = { math: "Speed and accuracy", prob: "Probability under time", mm: "Quoting and risk", news: "Bayesian updating" };
+  const detail = (x) => {
+    const r = x.r || {};
+    if (x.id === "math") return `${r.total || 0} answered, ${Math.round((r.acc || 0) * 100)}% right`;
+    if (x.id === "prob") return `${Math.round((r.acc || 0) * (r.total || 0))} of ${r.total || 0} right`;
+    const qe = r.quoteErr == null ? "—" : r.quoteErr.toFixed(x.id === "news" ? 0 : 2) + (x.id === "news" ? "¢" : "");
+    return `quote error ${qe}, P&L ${K.signed(r.pnl || 0, x.id === "news" ? 0 : 1)}${x.id === "news" ? "¢" : ""}`;
+  };
+  function Track({ stages, out, si, compact }) {
+    return <div className={cx("sd-track", compact && "compact")}>{stages.map((x, k) => {
+      const o = out[k];
+      return <div key={x.id} className={cx("sd-st", o && "done", !o && k === si && "now")}>
+        {o ? <K.Ring frac={o.s / 100} label={String(o.s)} size={compact ? 40 : 56} /> : <div className="sd-dot">{k + 1}</div>}
+        <b>{x.name}</b>{compact ? null : <span>{o ? detail(o) : "about " + x.mins + " min"}</span>}</div>;
+    })}</div>;
+  }
+  function SdGate({ stages, out, si, onStart }) {
+    const st = stages[si];
+    const so = out.length ? Math.round(out.reduce((a, x) => a + x.s, 0) / out.length) : null;
+    return <K.Stage title="Superday Simulation" sub={`Round ${si + 1} of ${stages.length}`} cls="g2" stats={[{ label: "So far", value: so == null ? "—" : so }]}>
+      <div className="g2-col">
+        <Track stages={stages} out={out} si={si} />
+        <div className="sd-card oa-in" key={si}><span className="oa-lbl">Round {si + 1} of {stages.length} · about {st.mins} min</span><h3>{st.name}</h3><span className="muted">{st.sub}</span><span className="g2-chip k1">Tests: {SKILL[st.id]}</span><button className="start" onClick={onStart} autoFocus>Start round {si + 1}</button></div>
+      </div>
+    </K.Stage>;
+  }
+
+  return { MM, Moc, Etf, Desks, Board, Fermi, HiLo, makeOdds, SdGate, Track, QLine, Dots };
+})();

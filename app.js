@@ -2562,6 +2562,599 @@ var TIP_DRILL = (function() {
   return { Drill, trainer, course, PART, num, gcd, frac, near, ncdf, bs, fresh, options };
 })();
 
+/* ---- TIP_G2 (src/tip_g2.jsx.txt) ---- */
+var TIP_G2 = function() {
+  const { TH, TF, R } = TIP;
+  const K = TIP_KIT;
+  const { useState, useEffect, useRef, useMemo } = R;
+  const cx = (...a) => a.filter(Boolean).join(" ");
+  const tone = (v) => v > 0 ? "up" : v < 0 ? "dn" : "";
+  const sgn = (v, d) => (v > 0 ? "+" : v < 0 ? "\u2212" : "") + Math.abs(v).toFixed(d == null ? 2 : d);
+  const posTxt = (p) => (p > 0 ? "+" : "") + p;
+  const typing = (e) => TIP.typing ? TIP.typing(e) : /INPUT|TEXTAREA|SELECT/.test((e.target || {}).tagName || "");
+  const tickStep = (lo, hi, base) => {
+    const raw = (hi - lo) / 10, steps = [base || 1, 2, 3, 5, 10, 20, 25, 50, 100];
+    return steps.find((s) => s >= raw) || raw;
+  };
+  const ticksOf = (lo, hi, base) => {
+    const st = tickStep(lo, hi, base), out = [];
+    for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9; v += st) out.push(+v.toFixed(6));
+    return out;
+  };
+  function Dots({ n, at, done, titles }) {
+    return /* @__PURE__ */ TH("div", { className: "g2-dots" }, Array.from({ length: n }, (_, i) => /* @__PURE__ */ TH("i", { key: i, title: titles ? titles(i) : void 0, className: done || i < at ? "done" : i === at ? "now" : "" })));
+  }
+  function Spark({ data, h, cls }) {
+    const W = 600, H = h || 36;
+    if (!data || data.length < 2) return /* @__PURE__ */ TH("svg", { className: cx("g2-spark", cls), viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none" });
+    const lo = Math.min(...data), hi = Math.max(...data), sp = hi - lo || 1;
+    const pts = data.map((v, i) => [i / (data.length - 1) * W, H - 3 - (v - lo) / sp * (H - 6)]);
+    const d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join("");
+    return /* @__PURE__ */ TH("svg", { className: cx("g2-spark", cls), viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", "aria-hidden": "true" }, /* @__PURE__ */ TH("path", { className: "a", d: `${d}L${W},${H}L0,${H}Z` }), /* @__PURE__ */ TH("path", { className: "l", d }));
+  }
+  function Tape({ tape, max, empty }) {
+    return /* @__PURE__ */ TH("div", { className: "mm-tape", style: { maxHeight: max || 160 } }, tape.length ? tape.map((t, i) => /* @__PURE__ */ TH("div", { key: tape.length - i, className: "mm-tick " + (t.tone || "") }, t.txt)) : /* @__PURE__ */ TH("div", { className: "small muted" }, empty || "Nothing yet."));
+  }
+  function FairChip({ show, text }) {
+    return show ? /* @__PURE__ */ TH("span", { className: "g2-chip k2" }, text) : null;
+  }
+  function QLine({ lo, hi, step, maxW, minW, start, bid, ask, onSet, fmt, ticks, h, disabled, under }) {
+    step = step || 0.5;
+    fmt = fmt || ((v) => String(v));
+    const ref = useRef(null), drag = useRef(null), cur = useRef([NaN, NaN]);
+    const b = parseFloat(bid), a = parseFloat(ask), ok = isFinite(b) && isFinite(a) && a > b;
+    cur.current = [b, a];
+    const x = (v) => (v - lo) / (hi - lo) * 100;
+    const snap = (v) => Math.round(v / step) * step;
+    const mw = minW || step;
+    const set = (nb, na) => {
+      nb = Math.max(lo, Math.min(hi - mw, nb));
+      na = Math.max(nb + mw, Math.min(hi, na));
+      nb = +nb.toFixed(6);
+      na = +na.toFixed(6);
+      cur.current = [nb, na];
+      onSet(nb, na);
+    };
+    const valAt = (e) => {
+      const r = ref.current.getBoundingClientRect();
+      return lo + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (hi - lo);
+    };
+    const down = (e) => {
+      if (disabled) return;
+      const v = valAt(e), [b0, a0] = cur.current, hd = e.target.closest(".ql-hd");
+      if (hd) drag.current = { kind: hd.dataset.h };
+      else if (e.target.closest(".ql-br") && isFinite(b0) && isFinite(a0) && a0 > b0) drag.current = { kind: "bar", off: v - b0, w: a0 - b0 };
+      else {
+        const w = Math.min(start || 2 * step, maxW), c = snap(v), nb = c - snap(w / 2);
+        set(nb, nb + w);
+        drag.current = { kind: "bar", off: w / 2, w };
+      }
+      try {
+        ref.current.setPointerCapture(e.pointerId);
+      } catch (er) {
+      }
+      e.preventDefault();
+    };
+    const move = (e) => {
+      const d = drag.current;
+      if (!d) return;
+      const v = snap(valAt(e)), [b0, a0] = cur.current;
+      if (d.kind === "bid") set(Math.max(v, a0 - maxW), a0);
+      else if (d.kind === "ask") set(b0, Math.min(v, b0 + maxW));
+      else {
+        const nb = snap(valAt(e) - d.off);
+        set(nb, nb + d.w);
+      }
+    };
+    const up = () => {
+      drag.current = null;
+    };
+    const L = ok ? Math.max(0, x(b)) : 0, Wd = ok ? Math.max(1, Math.min(100, x(a)) - L) : 0;
+    return /* @__PURE__ */ TH("div", { className: cx("ql", disabled && "off"), ref, style: { "--h": (h || 96) + "px" }, onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up }, under, ok ? null : /* @__PURE__ */ TH("div", { className: "ql-hint" }, "Tap the line to place a quote, then drag"), ok ? /* @__PURE__ */ TH("div", { className: "ql-br", style: { left: L + "%", width: Wd + "%" } }, /* @__PURE__ */ TH("i", { className: "ql-hd l", "data-h": "bid", "aria-label": "Bid handle" }), /* @__PURE__ */ TH("i", { className: "ql-hd r", "data-h": "ask", "aria-label": "Ask handle" }), /* @__PURE__ */ TH("span", { className: "ql-lb l" }, fmt(b)), /* @__PURE__ */ TH("span", { className: "ql-lb r" }, fmt(a))) : null, /* @__PURE__ */ TH("div", { className: "ql-ax" }), (ticks || []).map((v) => /* @__PURE__ */ TH("span", { key: v, className: "ql-tk", style: { left: x(v) + "%" } }, Number.isInteger(v) ? fmt(v).replace(/\.0+(?=\D*$)/, "") : fmt(v))));
+  }
+  function QuoteBoxes({ bid, ask, setBid, setAsk, onEnter, unit, disabled, bidRef, big }) {
+    const kd = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onEnter();
+      }
+    };
+    return /* @__PURE__ */ TH("div", { className: cx("mm-quote", big && "g2-bigq") }, /* @__PURE__ */ TH("label", { className: "bid" }, /* @__PURE__ */ TH("span", null, "Bid", unit || ""), /* @__PURE__ */ TH("input", { ref: bidRef, inputMode: "decimal", value: bid, disabled, onChange: (e) => setBid(e.target.value), onKeyDown: kd })), /* @__PURE__ */ TH("label", { className: "ask" }, /* @__PURE__ */ TH("span", null, "Ask", unit || ""), /* @__PURE__ */ TH("input", { inputMode: "decimal", value: ask, disabled, onChange: (e) => setAsk(e.target.value), onKeyDown: kd })));
+  }
+  function QuoteRow(p) {
+    return /* @__PURE__ */ TH("div", { className: "g2-qrow" }, /* @__PURE__ */ TH(QuoteBoxes, { ...p, big: true }), /* @__PURE__ */ TH("button", { className: "start", disabled: p.disabled, onClick: () => p.onEnter() }, "Quote"));
+  }
+  function MM(p) {
+    if (p.I.id === "cards" && p.take) return /* @__PURE__ */ TH(Trading, { ...p });
+    if (p.I.id === "dice") return /* @__PURE__ */ TH(Dice, { ...p });
+    return /* @__PURE__ */ TH(Events, { ...p });
+  }
+  const mmSub = (p) => `Round ${p.ri + 1} of ${p.s.rounds} \xB7 ${p.phase === "settle" ? "settlement" : p.k === 0 ? "opening market" : "update " + p.k + " of " + p.steps}`;
+  function Trading(p) {
+    const { s, st, k, phase, quotes, fx, I } = p, set = phase === "settle", quoting = phase === "quote";
+    const live = (quotes || []).filter((q) => !q.used);
+    const bb = live.reduce((a, q) => !a || q.bid > a.bid ? q : a, null), ba = live.reduce((a, q) => !a || q.ask < a.ask ? q : a, null);
+    const n = st.c.length, shownK = set ? n : k;
+    const trades = p.rows.filter((r) => r.side).length;
+    const P = Math.max(-1, Math.min(1, p.pos / (s.limit || 10))), arc = Math.PI * 92, half = arc / 2;
+    const nextLbl = k + 1 > n ? "Settle" : p.took ? `Done, turn card ${k + 1}` : `Pass, turn card ${k + 1}`;
+    return /* @__PURE__ */ TH(
+      K.Stage,
+      {
+        title: p.title,
+        sub: mmSub(p),
+        clock: quoting ? p.left : null,
+        clockFrac: p.left / s.time,
+        cls: "mm-stage g2",
+        stats: [{ label: "Trades", value: trades, pop: true }, s.showFair ? { label: "P&L (mark)", value: K.signed(p.pnlNow, 2), tone: tone(p.pnlNow) } : { label: "Cash", value: K.signed(p.cash, 2) }, { label: "Total", value: K.signed(p.tot.pnl, 2), tone: tone(p.tot.pnl) }]
+      },
+      /* @__PURE__ */ TH("div", { className: "g2-col" }, /* @__PURE__ */ TH("div", { className: "g2-panel soft tc-head" }, /* @__PURE__ */ TH("div", { className: "g2-row sb" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Contract: sum of ", n, " cards \xB7 A=1, J=11, Q=12, K=13"), /* @__PURE__ */ TH(FairChip, { show: s.showFair && !set, text: "Fair now " + fx(p.rnd(p.ev, I.tick / 5), 0.01) })), /* @__PURE__ */ TH("div", { className: "tc-steps", style: { gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` } }, st.c.map((c, i) => /* @__PURE__ */ TH("div", { key: i, className: cx("tc-step", i < shownK && "done", i === k && !set && "now") }, /* @__PURE__ */ TH(K.Card, { key: i + (i < shownK ? "u" : "d"), v: c.v, s: c.s, hidden: i >= shownK, flip: i === shownK - 1, size: 58 }), /* @__PURE__ */ TH("span", { className: "oa-lbl" }, i < shownK ? "Card " + (i + 1) + " \xB7 " + c.v : i === k && !set ? "Next to turn" : "Card " + (i + 1)))))), /* @__PURE__ */ TH("div", { className: "tc-main" }, /* @__PURE__ */ TH("div", { className: "g2-col" }, set ? /* @__PURE__ */ TH("div", { className: "g2-panel g2-settle oa-in" }, /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Settlement"), /* @__PURE__ */ TH("div", { className: "g2-big tn" }, p.val)), /* @__PURE__ */ TH("div", { className: "g2-col", style: { gap: 4 } }, /* @__PURE__ */ TH("span", null, "Position ", /* @__PURE__ */ TH("b", null, posTxt(p.pos)), " \xB7 round P&L ", /* @__PURE__ */ TH("b", { className: tone(p.roundPnl) }, K.signed(p.roundPnl, 2))), /* @__PURE__ */ TH("span", { className: "small muted" }, I.explain(st, p.steps)))) : /* @__PURE__ */ TH("div", { className: "g2-panel tc-book" }, /* @__PURE__ */ TH("div", { className: "tc-row tc-th" }, /* @__PURE__ */ TH("span", null, "Trader"), /* @__PURE__ */ TH("span", null, "Bid"), /* @__PURE__ */ TH("span", null, "Ask"), /* @__PURE__ */ TH("span", null, "Width"), /* @__PURE__ */ TH("span", null, "Sell at bid"), /* @__PURE__ */ TH("span", null, "Buy at ask")), (quotes || []).map((q, i) => /* @__PURE__ */ TH("div", { key: i + "-" + k, className: cx("tc-row", q.used && "used"), style: { animationDelay: i * 0.04 + "s" } }, /* @__PURE__ */ TH("span", { className: "nm" }, q.n), /* @__PURE__ */ TH("span", { className: "dn" }, /* @__PURE__ */ TH("b", null, fx(q.bid, I.tick)), q === bb ? /* @__PURE__ */ TH("span", { className: "g2-chip k4" }, "best") : null), /* @__PURE__ */ TH("span", { className: "up" }, /* @__PURE__ */ TH("b", null, fx(q.ask, I.tick)), q === ba ? /* @__PURE__ */ TH("span", { className: "g2-chip k3" }, "best") : null), /* @__PURE__ */ TH("span", { className: "muted w" }, fx(q.ask - q.bid, I.tick)), /* @__PURE__ */ TH("button", { className: "mm-px bid", disabled: !quoting || !!q.used, onClick: () => p.takeTrade(i, "sell") }, "Sell ", p.size, " ", /* @__PURE__ */ TH("b", null, fx(q.bid, I.tick))), /* @__PURE__ */ TH("button", { className: "mm-px ask", disabled: !quoting || !!q.used, onClick: () => p.takeTrade(i, "buy") }, "Buy ", p.size, " ", /* @__PURE__ */ TH("b", null, fx(q.ask, I.tick)))))), /* @__PURE__ */ TH("div", { className: "g2-panel g2-col" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Tape"), /* @__PURE__ */ TH(Tape, { tape: p.tape, max: 150, empty: "Trades and cards appear here." }))), /* @__PURE__ */ TH("div", { className: "g2-panel g2-col tc-side" }, /* @__PURE__ */ TH("div", { className: "tc-dial" }, /* @__PURE__ */ TH("svg", { viewBox: "0 0 220 124", "aria-hidden": "true" }, /* @__PURE__ */ TH("path", { className: "bg", d: "M18,112 A92,92 0 0 1 202,112" }), P ? /* @__PURE__ */ TH("path", { className: "fg", d: "M18,112 A92,92 0 0 1 202,112", stroke: P >= 0 ? "var(--k3)" : "var(--k4)", strokeDasharray: `${Math.abs(P) * half} ${arc}`, strokeDashoffset: P >= 0 ? -half : -half + Math.abs(P) * half }) : null, /* @__PURE__ */ TH("circle", { cx: "110", cy: "112", r: "6", fill: "var(--text)" }), /* @__PURE__ */ TH("line", { className: "nd", x1: "110", y1: "112", x2: "110", y2: "40", style: { transform: `rotate(${P * 90}deg)` } })), /* @__PURE__ */ TH("b", { className: tone(p.pos) }, posTxt(p.pos)), /* @__PURE__ */ TH("span", { className: "small muted" }, "position \xB7 limit \xB1", s.limit)), /* @__PURE__ */ TH("div", { className: "tc-tiles" }, /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Cash"), /* @__PURE__ */ TH("b", null, K.signed(p.cash, 2))), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Lot size"), /* @__PURE__ */ TH("b", null, p.size))), p.err ? /* @__PURE__ */ TH("div", { className: "mm-err" }, p.err) : null)), /* @__PURE__ */ TH("div", { className: "g2-foot" }, /* @__PURE__ */ TH("span", { className: "small muted" }, set ? "Round over: everything settles at the final sum." : `Trade as many traders as you like, then turn the next card. ${Math.max(0, n - k)} card${n - k === 1 ? "" : "s"} still face down.`), set ? /* @__PURE__ */ TH("button", { className: "start", onClick: p.nextRound, autoFocus: true }, p.ri + 1 >= s.rounds ? "See results" : "Next round") : /* @__PURE__ */ TH("button", { className: "start", disabled: !quoting, onClick: () => p.afterFill() }, nextLbl)))
+    );
+  }
+  function Settle({ p, unit, valTxt }) {
+    return /* @__PURE__ */ TH("div", { className: "oa-banner g2-ban oa-in " + (p.roundPnl >= 0 ? "ok" : "bad") }, /* @__PURE__ */ TH("span", null, valTxt, " \xB7 position ", /* @__PURE__ */ TH("b", null, posTxt(p.pos)), " \xB7 round P&L ", /* @__PURE__ */ TH("b", { className: tone(p.roundPnl) }, K.signed(p.roundPnl, unit ? 0 : 2), unit || ""), /* @__PURE__ */ TH("br", null), /* @__PURE__ */ TH("span", { className: "small muted" }, p.I.explain(p.st, p.steps))), /* @__PURE__ */ TH("button", { className: "start", onClick: p.nextRound, autoFocus: true }, p.ri + 1 >= p.s.rounds ? "See results" : "Next round"));
+  }
+  const lastLine = (p, unit) => {
+    const r = p.rows.length ? p.rows[p.rows.length - 1] : null;
+    if (!r) return null;
+    const f = (v) => p.fx(v, p.I.tick) + (unit || "");
+    if (r.miss) return /* @__PURE__ */ TH("span", { className: "dn" }, "No quote in time");
+    if (r.fill) return /* @__PURE__ */ TH("span", { className: r.fill === "buy" ? "dn" : "up" }, "Interviewer ", r.fill === "buy" ? "bought from you at " + f(r.px) : "sold to you at " + f(r.px), r.informed ? " \xB7 looked sharp" : "");
+    return /* @__PURE__ */ TH("span", null, "No trade at ", f(r.mid - r.w / 2), "\u2013", f(r.mid + r.w / 2));
+  };
+  function Dice(p) {
+    const { s, st, k, phase, I } = p, set = phase === "settle", quoting = phase === "quote";
+    const n = st.d.length, shown = st.d.slice(0, set ? n : k).reduce((a, b) => st.prod ? a * b : a + b, st.prod ? 1 : 0);
+    const kk = set ? n : k, lo = st.prod ? 1 : n, hi = st.prod ? Math.pow(6, n) : 6 * n;
+    const flat = /* @__PURE__ */ TH("div", { className: "mm-row g2-dice2d" }, st.d.map((v, i) => /* @__PURE__ */ TH(K.Die, { key: i + (i < kk ? "s" : "h"), n: v, hidden: i >= kk, roll: i === kk - 1, size: 56 })));
+    const dice = window.TIP_DICE3D ? TH(window.TIP_DICE3D.Row, { values: st.d, k: kk, fallback: flat, height: 150 }) : flat;
+    const set2 = (b, a) => {
+      p.setBid(p.fx(b, I.tick));
+      p.setAsk(p.fx(a, I.tick));
+      p.setErr("");
+    };
+    return /* @__PURE__ */ TH(
+      K.Stage,
+      {
+        title: p.title,
+        sub: set ? `Round ${p.ri + 1} of ${s.rounds} \xB7 settlement` : `Round ${p.ri + 1} of ${s.rounds} \xB7 quote ${k + 1} of ${p.steps + 1} \xB7 max width ${p.fx(p.maxW, I.tick)}`,
+        clock: quoting ? p.left : null,
+        clockFrac: p.left / s.time,
+        cls: "mm-stage g2",
+        stats: [{ label: "Position", value: posTxt(p.pos), pop: true }, { label: "Total", value: K.signed(p.tot.pnl, 2), tone: tone(p.tot.pnl) }]
+      },
+      /* @__PURE__ */ TH("div", { className: "g2-focus" }, /* @__PURE__ */ TH(Dots, { n: p.steps + 1, at: k, done: set, titles: (i) => "Quote " + (i + 1) }), /* @__PURE__ */ TH("div", { className: "g2-dicehost" }, dice), /* @__PURE__ */ TH("div", { className: "g2-row c" }, /* @__PURE__ */ TH("span", { className: "small muted" }, st.prod ? "Product" : "Sum", " of ", n, " dice \xB7 shown so far ", kk ? shown : "none", " \xB7 ", n - kk, " hidden"), /* @__PURE__ */ TH(FairChip, { show: s.showFair && !set, text: "Fair now " + p.fx(p.rnd(p.ev, I.tick / 5), 0.01) })), /* @__PURE__ */ TH("div", { className: "g2-last" }, lastLine(p)), set ? /* @__PURE__ */ TH(Settle, { p, valTxt: /* @__PURE__ */ TH("span", null, "All dice shown: the ", st.prod ? "product" : "sum", " is ", /* @__PURE__ */ TH("b", null, p.fx(p.val, 1))) }) : /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "g2-q" }, k === 0 ? "Make your market" : "Where are you now?", /* @__PURE__ */ TH("small", null, st.prod ? "Product" : "Sum", " of ", n, " dice \xB7 max width ", p.fx(p.maxW, I.tick), st.prod ? " \xB7 type your market" : " \xB7 drag on the line or type")), p.ask2 ? /* @__PURE__ */ TH("div", { className: "g2-ask2" }, "Interviewer: ", p.ask2) : null, st.prod ? null : /* @__PURE__ */ TH("div", { className: "g2-panel" }, /* @__PURE__ */ TH(QLine, { lo, hi, step: I.tick, maxW: p.maxW, bid: p.bid, ask: p.ask, onSet: set2, fmt: (v) => p.fx(v, I.tick), ticks: ticksOf(lo, hi), h: 100, disabled: !quoting })), /* @__PURE__ */ TH(QuoteRow, { bid: p.bid, ask: p.ask, setBid: (v) => {
+        p.setBid(v);
+        p.setErr("");
+      }, setAsk: (v) => {
+        p.setAsk(v);
+        p.setErr("");
+      }, onEnter: () => p.submitQuote(), disabled: !quoting, bidRef: p.bidRef }), p.err ? /* @__PURE__ */ TH("div", { className: "mm-err g2-c" }, p.err) : null))
+    );
+  }
+  function Events(p) {
+    const { s, st, k, phase, I } = p, set = phase === "settle", quoting = phase === "quote", kk = set ? st.ev.length : k;
+    const set2 = (b, a) => {
+      p.setBid(String(Math.round(b)));
+      p.setAsk(String(Math.round(a)));
+      p.setErr("");
+    };
+    const heads = st.ev.slice(0, kk).map((e, i) => /* @__PURE__ */ TH("div", { key: i, className: cx("ev-head", e.good ? "up" : "dn", i === kk - 1 && "new") }, /* @__PURE__ */ TH("span", { className: "ar" }, e.good ? "\u25B2" : "\u25BC"), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("b", null, e.head), /* @__PURE__ */ TH("br", null), /* @__PURE__ */ TH("em", null, e.strong ? "strong" : "weak", " signal \xB7 headline ", i + 1)), /* @__PURE__ */ TH("span", { className: "lr" }, "\xD7", e.L.toFixed(2)))).reverse();
+    const title = st.story === "election" ? "Candidate A wins the election" : "The central bank cuts rates";
+    return /* @__PURE__ */ TH(
+      K.Stage,
+      {
+        title: p.title,
+        sub: set ? `Round ${p.ri + 1} of ${s.rounds} \xB7 resolved` : `Round ${p.ri + 1} of ${s.rounds} \xB7 quote ${k + 1} of ${p.steps + 1} \xB7 max width ${p.fx(p.maxW, I.tick)}\xA2`,
+        clock: quoting ? p.left : null,
+        clockFrac: p.left / s.time,
+        cls: "mm-stage g2",
+        stats: [{ label: "Position", value: posTxt(p.pos), pop: true }, { label: "Cash", value: K.signed(p.cash, 0) + "\xA2" }, { label: "Total", value: K.signed(p.tot.pnl, 0) + "\xA2", tone: tone(p.tot.pnl) }]
+      },
+      /* @__PURE__ */ TH("div", { className: "ev-grid" }, /* @__PURE__ */ TH("div", { className: "g2-panel soft g2-col" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Newswire \xB7 newest first"), /* @__PURE__ */ TH("div", { className: "ev-feed" }, set || kk >= st.ev.length ? null : /* @__PURE__ */ TH("div", { className: "ev-wait" }, "Next headline arrives after your quote\u2026"), heads, /* @__PURE__ */ TH("div", { className: "ev-head prior" }, /* @__PURE__ */ TH("span", { className: "ar" }, "\u25C6"), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("b", null, "Desk prior"), /* @__PURE__ */ TH("br", null), /* @__PURE__ */ TH("em", null, "before any news")), /* @__PURE__ */ TH("span", { className: "lr" }, Math.round(st.p0 * 100), "%")))), /* @__PURE__ */ TH("div", { className: "g2-col" }, /* @__PURE__ */ TH("div", { className: "g2-panel g2-col" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Contract \xB7 pays 100\xA2 if YES"), /* @__PURE__ */ TH("div", { className: "ev-q" }, title, "?"), /* @__PURE__ */ TH("div", { className: "small muted" }, "Multiply the odds by each headline's likelihood ratio. Quote in cents.")), /* @__PURE__ */ TH("div", { className: "g2-panel g2-col" }, /* @__PURE__ */ TH("div", { className: "g2-row sb" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, set ? "Resolved" : "Your market \xB7 drag on the line or type"), /* @__PURE__ */ TH(FairChip, { show: s.showFair && !set, text: "Fair " + Math.round(p.ev) + "\xA2" })), set ? /* @__PURE__ */ TH(Settle, { p, unit: "\xA2", valTxt: /* @__PURE__ */ TH("span", null, "Resolved ", /* @__PURE__ */ TH("b", null, st.y ? "YES (100\xA2)" : "NO (0\xA2)")) }) : /* @__PURE__ */ TH(TF, null, p.ask2 ? /* @__PURE__ */ TH("div", { className: "g2-ask2 l" }, "Interviewer: ", p.ask2) : null, /* @__PURE__ */ TH("div", { className: "g2-last l" }, lastLine(p, "\xA2")), /* @__PURE__ */ TH(QLine, { lo: 0, hi: 100, step: 1, maxW: p.maxW, start: Math.min(p.maxW, 6), bid: p.bid, ask: p.ask, onSet: set2, fmt: (v) => Math.round(v) + "\xA2", ticks: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], h: 96, disabled: !quoting }), /* @__PURE__ */ TH(QuoteRow, { bid: p.bid, ask: p.ask, unit: " \xA2", setBid: (v) => {
+        p.setBid(v);
+        p.setErr("");
+      }, setAsk: (v) => {
+        p.setAsk(v);
+        p.setErr("");
+      }, onEnter: () => p.submitQuote(), disabled: !quoting, bidRef: p.bidRef }), p.err ? /* @__PURE__ */ TH("div", { className: "mm-err" }, p.err) : null)), /* @__PURE__ */ TH("div", { className: "g2-panel g2-col" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Tape"), /* @__PURE__ */ TH(Tape, { tape: p.tape, max: 150 }))))
+    );
+  }
+  function Moc(p) {
+    const { s, deal, ri, rounds, phase, quotes } = p, take = phase === "take", quoting = phase === "quote";
+    const f1 = (v) => (Math.round(v * 2) / 2).toFixed(1);
+    const R0 = useMemo(() => {
+      const sh = Math.random() * 4 - 2, f = p.myFair, vals2 = [f - 8 + sh, f + 8 + sh];
+      return vals2;
+    }, [ri]);
+    const vals = R0.slice();
+    if (take && quotes) quotes.forEach((q) => vals.push(q.bid - 3, q.ask + 3));
+    const lo = Math.floor(Math.min(...vals) / 3) * 3, hi = Math.max(lo + 18, Math.ceil(Math.max(...vals) / 3) * 3);
+    const at = ri * 2 + (take ? 1 : 0);
+    const set2 = (b, a) => {
+      p.setBid(f1(b));
+      p.setAsk(f1(a));
+      p.setErr("");
+    };
+    return /* @__PURE__ */ TH(
+      K.Stage,
+      {
+        title: "Market of Cards",
+        sub: `Round ${ri + 1} of ${rounds} \xB7 ${quoting ? "make your market" : "trade on theirs"}`,
+        clock: p.left,
+        clockFrac: p.left / s.time,
+        cls: "mm-stage g2",
+        stats: [{ label: "Position", value: posTxt(p.pos), pop: true }, { label: "Cash", value: K.signed(p.cash, 1) }]
+      },
+      /* @__PURE__ */ TH("div", { className: "g2-focus" }, /* @__PURE__ */ TH(Dots, { n: rounds * 2, at, titles: (i) => "Round " + (Math.floor(i / 2) + 1) + (i % 2 ? " trade" : " make") }), /* @__PURE__ */ TH("div", { className: "mf-cards" }, /* @__PURE__ */ TH("div", { className: "g" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "You"), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH(K.Card, { v: deal.you.v, s: deal.you.s, size: 62 }))), deal.bots.map((c, j) => /* @__PURE__ */ TH("div", { key: j, className: "g" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, p.names[j]), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH(K.Card, { hidden: true, size: 50 })))), /* @__PURE__ */ TH("div", { className: "g ctr" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Centre"), /* @__PURE__ */ TH("div", null, deal.mid.map((c, j) => /* @__PURE__ */ TH(K.Card, { key: j + (j < ri ? "s" : "h"), v: c.v, s: c.s, hidden: j >= ri, flip: j === ri - 1, size: 50 }))))), /* @__PURE__ */ TH("div", { className: "g2-row c" }, /* @__PURE__ */ TH("span", { className: "small muted" }, "Sum of all ", 4 + s.center, " cards \xB7 A=1, J=11, Q=12, K=13"), /* @__PURE__ */ TH(FairChip, { show: s.showFair, text: "Your fair " + p.myFair.toFixed(1) })), take ? /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "g2-q" }, "Trade on their markets?", /* @__PURE__ */ TH("small", null, "Each trader quotes around their own hidden card. Size 1 each, or skip.")), /* @__PURE__ */ TH("div", { className: "mf-tr" }, (quotes || []).map((q, i) => /* @__PURE__ */ TH("div", { key: i + "-" + ri, className: cx("mf-tc", q.used && "used"), style: { animationDelay: i * 0.06 + "s" } }, /* @__PURE__ */ TH("div", { className: "g2-row c" }, /* @__PURE__ */ TH("span", { className: "g2-av" }, q.n[0]), /* @__PURE__ */ TH("b", null, q.n)), /* @__PURE__ */ TH("div", { className: "px" }, /* @__PURE__ */ TH("span", { className: "dn" }, f1(q.bid)), " ", /* @__PURE__ */ TH("span", { className: "muted", style: { fontWeight: 400 } }, "\u2013"), " ", /* @__PURE__ */ TH("span", { className: "up" }, f1(q.ask))), /* @__PURE__ */ TH("div", { className: "mm-quote" }, /* @__PURE__ */ TH("button", { className: "mm-px bid", disabled: q.used, onClick: () => p.take(i, -1) }, "Sell ", /* @__PURE__ */ TH("b", null, f1(q.bid))), /* @__PURE__ */ TH("button", { className: "mm-px ask", disabled: q.used, onClick: () => p.take(i, 1) }, "Buy ", /* @__PURE__ */ TH("b", null, f1(q.ask)))), s.showFair ? /* @__PURE__ */ TH("span", { className: "small muted" }, "card \u2248 ", Math.max(1, Math.min(13, Math.round(p.implied(q))))) : null))), p.err ? /* @__PURE__ */ TH("div", { className: "mm-err g2-c" }, p.err) : null, /* @__PURE__ */ TH("div", { className: "g2-row c" }, /* @__PURE__ */ TH("button", { className: "start", onClick: p.next }, ri + 1 >= rounds ? "Settle" : `Reveal centre card ${ri + 1}`))) : /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "g2-q" }, "Make your market", /* @__PURE__ */ TH("small", null, "Max width ", s.width, " \xB7 drag on the line or type")), /* @__PURE__ */ TH("div", { className: "g2-panel" }, /* @__PURE__ */ TH(QLine, { lo, hi, step: 0.5, maxW: s.width, bid: p.bid, ask: p.ask, onSet: set2, fmt: f1, ticks: ticksOf(lo, hi, 3), h: 100 })), /* @__PURE__ */ TH(QuoteRow, { bid: p.bid, ask: p.ask, setBid: (v) => {
+        p.setBid(v);
+        p.setErr("");
+      }, setAsk: (v) => {
+        p.setAsk(v);
+        p.setErr("");
+      }, onEnter: () => p.submitQuote() }), p.err ? /* @__PURE__ */ TH("div", { className: "mm-err g2-c" }, p.err) : null), /* @__PURE__ */ TH("details", { className: "g2-tape" }, /* @__PURE__ */ TH("summary", null, "Tape"), /* @__PURE__ */ TH(Tape, { tape: p.tape, max: 170 })))
+    );
+  }
+  function Etf(p) {
+    const { s, W, px, hist, prev, nav, q } = p, R2 = (s.maxGap || 1) + 0.25;
+    const x = (v) => Math.max(0, Math.min(100, 50 + (v - nav) / R2 * 50));
+    const f2 = (v) => v.toFixed(2);
+    const feeL = x(nav - s.fee), feeR = x(nav + s.fee);
+    const btns = q ? /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("button", { className: "mm-px bid", disabled: !!q.taken, onClick: () => p.trade("sell") }, "Sell ", /* @__PURE__ */ TH("b", null, f2(q.bid)), /* @__PURE__ */ TH("kbd", null, "S")), /* @__PURE__ */ TH("button", { className: "mm-px ask", disabled: !!q.taken, onClick: () => p.trade("buy") }, "Buy ", /* @__PURE__ */ TH("b", null, f2(q.ask)), /* @__PURE__ */ TH("kbd", null, "B"))) : /* @__PURE__ */ TH("div", { className: "small muted" }, "Waiting for the first quote\u2026");
+    return /* @__PURE__ */ TH(
+      K.Stage,
+      {
+        title: "ETF Arbitrage",
+        sub: "Trade the ETF when it is away from NAV",
+        clock: p.left,
+        clockFrac: p.left / s.duration,
+        cls: "g2",
+        stats: [{ label: "Trades", value: p.stats.hit + p.stats.bad }, { label: "P&L", value: K.signed(p.pnl, 2), tone: tone(p.pnl), pop: true }]
+      },
+      /* @__PURE__ */ TH("div", { className: "ea-grid" }, /* @__PURE__ */ TH("div", { className: "g2-panel soft g2-col" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Basket QNT = ", W.map((w, i) => `${w}\xB7${"ABC"[i]}`).join(" + ")), px.map((v, i) => /* @__PURE__ */ TH("div", { key: i, className: "ea-comp" }, /* @__PURE__ */ TH("span", { className: "g2-tk" }, "ABC"[i]), /* @__PURE__ */ TH("div", null, /* @__PURE__ */ TH("b", { key: v, className: prev[i] != null && prev[i] !== v ? v > prev[i] ? "flash-up" : "flash-dn" : "" }, f2(v))), /* @__PURE__ */ TH("em", null, "weight ", W[i]), /* @__PURE__ */ TH(Spark, { data: hist[i], h: 26 }))), /* @__PURE__ */ TH("div", { className: "ea-nav" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "NAV"), /* @__PURE__ */ TH("b", null, s.showNav ? f2(nav) : "work it out"))), /* @__PURE__ */ TH("div", { className: "g2-col" }, /* @__PURE__ */ TH("div", { className: "g2-panel g2-col" }, /* @__PURE__ */ TH("div", { className: "g2-row sb" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Market maker's ETF quote against NAV \xB7 ", s.units, " units \xB7 fee ", f2(s.fee), "/unit"), q && q.taken ? /* @__PURE__ */ TH("span", { className: "g2-chip " + (q.taken === "buy" ? "k3" : "k4") }, q.taken === "buy" ? "Bought" : "Sold", ": wait for the requote") : null), !s.showNav ? /* @__PURE__ */ TH("div", { className: "g2-panel soft g2-c", style: { padding: "34px 16px" } }, /* @__PURE__ */ TH("span", { className: "muted" }, "NAV is hidden: work it out from the basket."), /* @__PURE__ */ TH("br", null), /* @__PURE__ */ TH("b", { className: "tn", style: { fontSize: 22 } }, q ? `ETF ${f2(q.bid)}\u2013${f2(q.ask)}` : "")) : /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "ea-meter" }, /* @__PURE__ */ TH("div", { className: "ea-strip", style: { "--fl": feeL + "%", "--fr": feeR + "%" } }, /* @__PURE__ */ TH("i", null)), /* @__PURE__ */ TH("span", { className: "ea-zl buy" }, "Ask here: buy"), /* @__PURE__ */ TH("span", { className: "ea-zl sell" }, "Bid here: sell"), /* @__PURE__ */ TH("div", { className: "ea-axis" }), /* @__PURE__ */ TH("div", { className: "ea-navmark", style: { left: "50%" } }), q ? /* @__PURE__ */ TH("div", { className: "ea-pin bid", style: { left: x(q.bid) + "%" } }, /* @__PURE__ */ TH("b", null, f2(q.bid)), /* @__PURE__ */ TH("i", null)) : null, q ? /* @__PURE__ */ TH("div", { className: "ea-pin ask", style: { left: x(q.ask) + "%" } }, /* @__PURE__ */ TH("b", null, f2(q.ask)), /* @__PURE__ */ TH("i", null)) : null), /* @__PURE__ */ TH("div", { className: "g2-row c small muted ea-key" }, /* @__PURE__ */ TH("span", null, /* @__PURE__ */ TH("i", { className: "k-nav" }), " NAV ", f2(nav), " (centre)"), /* @__PURE__ */ TH("span", null, /* @__PURE__ */ TH("i", { className: "k-fee" }), " fee band \xB1", f2(s.fee)), /* @__PURE__ */ TH("span", null, "scale \xB1", f2(R2), " around NAV")))), /* @__PURE__ */ TH("div", { className: "ea-act" }, btns), /* @__PURE__ */ TH("div", { className: "g2-panel g2-col" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Fills"), /* @__PURE__ */ TH(Tape, { tape: p.log, max: 170, empty: "No trades yet. Press B to buy or S to sell." }))))
+    );
+  }
+  function Desks(p) {
+    const { s, deck, k, q, fb, left } = p;
+    const fx = (v) => v.toFixed(1);
+    const right = (v) => fb && v === q.ans ? " right" : fb && v === fb.v ? " wrong" : "";
+    const lbl = (v) => v === "none" ? "no trade" : v === "timeout" ? "out of time" : q.desks[+v.split(":")[0]].n + " " + v.split(":")[1];
+    useEffect(() => {
+      if (fb) return;
+      const h = (e) => {
+        if (typing(e) || e.metaKey || e.ctrlKey) return;
+        const n = parseInt(e.key, 10);
+        if (n >= 1 && n <= 6) {
+          e.preventDefault();
+          p.pick(Math.floor((n - 1) / 2) + ((n - 1) % 2 ? ":buy" : ":sell"));
+        } else if (e.key === "0" || e.key === "p" || e.key === "P") {
+          e.preventDefault();
+          p.pick("none");
+        }
+      };
+      window.addEventListener("keydown", h);
+      return () => window.removeEventListener("keydown", h);
+    });
+    return /* @__PURE__ */ TH(
+      K.Stage,
+      {
+        title: "Card Game",
+        sub: `Card ${k + 1} of ${s.n} turned`,
+        clock: fb ? null : left,
+        clockFrac: left / s.time,
+        cls: "g2",
+        stats: [{ label: "Points", value: p.score, pop: true }],
+        total: s.n,
+        results: p.hist.map((h) => h.ok),
+        at: k
+      },
+      /* @__PURE__ */ TH("div", { className: "g2-col" }, /* @__PURE__ */ TH("div", { className: "g2-panel soft g2-col g2-ac" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Contract: sum of ", s.n, " cards dealt from one deck \xB7 A=1 \u2026 K=13"), /* @__PURE__ */ TH("div", { className: "g2-hand" }, deck.map((c, i) => /* @__PURE__ */ TH(K.Card, { key: i + (i <= k ? "u" : "d"), v: c.v, s: c.s, hidden: i > k, flip: i === k, size: 64 })))), /* @__PURE__ */ TH("div", { className: "ca-desks" }, q.desks.map((d, i) => /* @__PURE__ */ TH("div", { key: i + "-" + k, className: cx("ca-desk", fb && q.ans.startsWith(i + ":") && "right"), style: { animationDelay: i * 0.05 + "s" } }, /* @__PURE__ */ TH("div", { className: "nm" }, /* @__PURE__ */ TH("b", null, d.n, " desk"), /* @__PURE__ */ TH("span", { className: "g2-chip" }, "width ", fx(d.ask - d.bid))), /* @__PURE__ */ TH("div", { className: "px" }, /* @__PURE__ */ TH("span", { className: "dn" }, fx(d.bid)), " ", /* @__PURE__ */ TH("span", { className: "muted", style: { fontWeight: 400 } }, "\u2013"), " ", /* @__PURE__ */ TH("span", { className: "up" }, fx(d.ask))), /* @__PURE__ */ TH("div", { className: "mm-quote" }, /* @__PURE__ */ TH("button", { className: "mm-px bid" + right(i + ":sell"), disabled: !!fb, onClick: () => p.pick(i + ":sell") }, "Sell ", /* @__PURE__ */ TH("b", null, fx(d.bid)), /* @__PURE__ */ TH("kbd", null, 2 * i + 1)), /* @__PURE__ */ TH("button", { className: "mm-px ask" + right(i + ":buy"), disabled: !!fb, onClick: () => p.pick(i + ":buy") }, "Buy ", /* @__PURE__ */ TH("b", null, fx(d.ask)), /* @__PURE__ */ TH("kbd", null, 2 * i + 2)))))), /* @__PURE__ */ TH("button", { className: "ca-pass" + (fb && q.ans === "none" ? " right" : ""), disabled: !!fb, onClick: () => p.pick("none") }, "No trade: every desk is fair ", /* @__PURE__ */ TH("kbd", null, "0")), fb ? /* @__PURE__ */ TH("div", { className: "oa-banner " + (fb.ok ? "ok" : "bad") }, /* @__PURE__ */ TH("b", null, fb.pts > 0 ? "+" : "", String(fb.pts).replace("-", "\u2212")), /* @__PURE__ */ TH("span", null, fb.ok ? "Right." : "Wrong: the answer was " + lbl(q.ans) + ".", " Fair after this card: ", /* @__PURE__ */ TH("b", null, q.f.toFixed(2)), ".")) : null)
+    );
+  }
+  function Board(p) {
+    const { s, m, fb, left, i } = p;
+    const pct = (v) => (v * 100).toFixed(1) + "%";
+    const money = (v) => K.money(v, 2);
+    const [picked, setPicked] = useState({});
+    const [stakes, setStakes] = useState([]);
+    useEffect(() => {
+      setPicked({});
+      setStakes([]);
+    }, [i]);
+    const sel = m.odds.map((d, j) => picked[j] ? 1 / d : 0), sum = sel.reduce((a, b) => a + b, 0), all = m.odds.every((_, j) => picked[j]) || !!fb;
+    const st = m.odds.map((_, j) => +stakes[j] || 0), spent = st.reduce((a, b) => a + b, 0), pays = m.odds.map((d, j) => st[j] * d), mn = Math.min(...pays);
+    const own = st.some((v) => v > 0);
+    const callArb = () => p.answer(true, own ? st : null);
+    useEffect(() => {
+      const h = (e) => {
+        if (typing(e) || e.metaKey || e.ctrlKey) return;
+        if (!fb && (e.key === "a" || e.key === "A")) {
+          e.preventDefault();
+          callArb();
+        } else if (!fb && (e.key === "p" || e.key === "P")) {
+          e.preventDefault();
+          p.answer(false);
+        }
+      };
+      window.addEventListener("keydown", h);
+      return () => window.removeEventListener("keydown", h);
+    });
+    const shown = fb ? m.imp : sum;
+    return /* @__PURE__ */ TH(
+      K.Stage,
+      {
+        title: "Betting Board",
+        sub: `Market ${i + 1} of ${s.markets} \xB7 budget ${K.money(s.budget)}`,
+        clock: fb ? null : left,
+        clockFrac: left / s.time,
+        cls: "g2",
+        stats: [{ label: "P&L", value: K.signed(p.pnl, 2), tone: tone(p.pnl), pop: true }],
+        total: s.markets,
+        results: p.hist.map((h) => h.ok),
+        at: i
+      },
+      /* @__PURE__ */ TH("div", { className: "bb-grid" }, /* @__PURE__ */ TH("div", { className: "g2-col" }, /* @__PURE__ */ TH("div", { className: "g2-row sb" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Best decimal odds across books"), /* @__PURE__ */ TH("span", { className: "small muted" }, "Tap a price to add its 1/odds to the pad")), /* @__PURE__ */ TH("div", { className: "bb-tiles", style: { gridTemplateColumns: `repeat(${m.names.length}, minmax(0, 1fr))` } }, m.names.map((n, j) => /* @__PURE__ */ TH("button", { key: j + "-" + i, className: cx("bb-tile", picked[j] && "on"), onClick: () => setPicked((x) => ({ ...x, [j]: !x[j] })) }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, n), /* @__PURE__ */ TH("span", { className: "o" }, m.odds[j].toFixed(2)), /* @__PURE__ */ TH("em", null, "best at ", m.books[j]), picked[j] || fb ? /* @__PURE__ */ TH("span", { className: "g2-chip k1" }, "1/odds = ", pct(1 / m.odds[j])) : null))), /* @__PURE__ */ TH("div", { className: "g2-panel g2-col" }, /* @__PURE__ */ TH("div", { className: "g2-row sb" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Your stakes \xB7 scored if you call an arbitrage"), fb ? null : /* @__PURE__ */ TH("button", { className: "btn sm", onClick: () => setStakes(m.odds.map((d) => +(s.budget / m.imp / d).toFixed(2))) }, "Split by 1/odds")), /* @__PURE__ */ TH("div", { className: "bb-tbw" }, /* @__PURE__ */ TH("table", { className: "g2-tb bb-tb" }, /* @__PURE__ */ TH("thead", null, /* @__PURE__ */ TH("tr", null, /* @__PURE__ */ TH("th", null, "Outcome"), /* @__PURE__ */ TH("th", null, "Odds"), /* @__PURE__ */ TH("th", null, "Your stake"), /* @__PURE__ */ TH("th", null, "Pays"), /* @__PURE__ */ TH("th", null, "Net"))), /* @__PURE__ */ TH("tbody", null, m.names.map((n, j) => /* @__PURE__ */ TH("tr", { key: j }, /* @__PURE__ */ TH("td", null, /* @__PURE__ */ TH("b", null, n), /* @__PURE__ */ TH("br", null), /* @__PURE__ */ TH("span", { className: "small muted" }, m.books[j])), /* @__PURE__ */ TH("td", { className: "bb-odds" }, m.odds[j].toFixed(2)), /* @__PURE__ */ TH("td", null, fb ? money(st[j]) : /* @__PURE__ */ TH("input", { inputMode: "decimal", value: stakes[j] != null ? stakes[j] : "", placeholder: "0", onChange: (e) => {
+        const v = e.target.value;
+        setStakes((x) => {
+          const y = x.slice();
+          y[j] = v;
+          return y;
+        });
+      } })), /* @__PURE__ */ TH("td", null, money(pays[j])), /* @__PURE__ */ TH("td", { className: tone(pays[j] - spent) }, sgn(pays[j] - spent, 2))))))), /* @__PURE__ */ TH("div", { className: "bb-min" }, /* @__PURE__ */ TH("span", null, "Spent ", money(spent), " of ", K.money(s.budget), " \xB7 ", /* @__PURE__ */ TH("b", null, "worst case")), /* @__PURE__ */ TH("b", { className: tone(mn - spent) }, spent ? sgn(mn - spent, 2) : "\u2014")), fb ? null : /* @__PURE__ */ TH("span", { className: "small muted" }, own ? "Calling an arbitrage scores these stakes." : "Leave the stakes empty and an arbitrage call uses the ideal split.")), fb ? /* @__PURE__ */ TH(K.Banner, { ok: fb.ok, onNext: p.next, title: fb.timeout ? "Out of time." : fb.ok ? "Right." : "Wrong." }, "The prices imply ", /* @__PURE__ */ TH("b", null, pct(m.imp)), m.arb ? `, so staking in proportion to 1/odds pays ${money(s.budget / m.imp)} whatever happens.` : ": covering every outcome loses money.", fb.isArb ? /* @__PURE__ */ TH("span", null, " Your result: ", /* @__PURE__ */ TH("b", { className: tone(fb.gain) }, sgn(fb.gain, 2)), ".") : null) : /* @__PURE__ */ TH("div", { className: "bb-call" }, /* @__PURE__ */ TH("button", { className: "arb", onClick: callArb }, "Arbitrage: stake to lock it in ", /* @__PURE__ */ TH("kbd", null, "A")), /* @__PURE__ */ TH("button", { onClick: () => p.answer(false) }, "No arbitrage: pass ", /* @__PURE__ */ TH("kbd", null, "P")))), /* @__PURE__ */ TH("div", { className: "g2-panel g2-col" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Scratchpad"), /* @__PURE__ */ TH("div", { className: "bb-pad" }, m.names.map((n, j) => /* @__PURE__ */ TH("div", { key: j, className: "ln" }, /* @__PURE__ */ TH("span", { className: "muted" }, "1 / ", m.odds[j].toFixed(2), " (", n, ")"), /* @__PURE__ */ TH("b", null, picked[j] || fb ? pct(1 / m.odds[j]) : "\xB7"))), /* @__PURE__ */ TH("div", { className: "tot" }, /* @__PURE__ */ TH("span", null, "Total"), /* @__PURE__ */ TH("span", { className: all ? shown < 1 ? "up" : "dn" : "" }, all ? pct(shown) : pct(sum) + " so far"))), /* @__PURE__ */ TH("div", { className: "bb-gauge" }, /* @__PURE__ */ TH("i", { style: { width: Math.min(100, shown / 1.1 * 100) + "%", background: shown < 1 && all ? "var(--k3)" : "var(--k1)" } }), /* @__PURE__ */ TH("u", { style: { left: 100 / 1.1 + "%" } })), /* @__PURE__ */ TH("div", { className: "g2-row sb small muted" }, /* @__PURE__ */ TH("span", null, "0%"), /* @__PURE__ */ TH("span", { style: { color: "var(--k2)" } }, "100%: under it is an arbitrage"))))
+    );
+  }
+  function Fermi(p) {
+    const { s, q, i, fb, lo, hi, pt, setLo, setHi, setPt, fmtN, parseN, left } = p;
+    const v = q[2];
+    const rng = useMemo(() => {
+      const e = Math.floor(Math.log10(v)), r = 1 + Math.floor(Math.random() * 4), span = 6;
+      const lo0 = v >= 1 ? Math.max(0, e - r) : e - r;
+      return [lo0, lo0 + span];
+    }, [i]);
+    let [L, U] = rng;
+    const a0 = parseN(lo), b0 = parseN(hi), p0 = parseN(pt);
+    [a0, b0, p0].forEach((x) => {
+      if (x > 0) {
+        L = Math.min(L, Math.floor(Math.log10(x)));
+        U = Math.max(U, Math.ceil(Math.log10(x)));
+      }
+    });
+    if (fb) {
+      L = Math.min(L, Math.floor(Math.log10(v)));
+      U = Math.max(U, Math.ceil(Math.log10(v)));
+    }
+    const toX = (x) => (Math.log10(x) - L) / (U - L) * 100, toV = (pc) => +(10 ** (L + pc / 100 * (U - L))).toPrecision(2);
+    const cl = (x) => Math.max(0, Math.min(100, x));
+    const fm = (x) => fmtN(x).replace(/,/g, "");
+    const T = useRef(null), drag = useRef(null);
+    const pos = (e) => {
+      const r = T.current.getBoundingClientRect();
+      return cl((e.clientX - r.left) / r.width * 100);
+    };
+    const down = (e) => {
+      if (fb) return;
+      const h = e.target.closest(".fa-h");
+      if (h) drag.current = { k: h.dataset.h };
+      else if (e.target.closest(".fa-band") && a0 > 0 && b0 > a0) drag.current = { k: "band", off: pos(e) - toX(a0), span: toX(b0) - toX(a0) };
+      else if (a0 > 0 && b0 > a0) {
+        const x0 = pos(e), k2 = Math.abs(x0 - toX(a0)) <= Math.abs(x0 - toX(b0)) ? "lo" : "hi";
+        (k2 === "lo" ? setLo : setHi)(fm(toV(x0)));
+        drag.current = { k: k2 };
+      } else {
+        const x0 = pos(e), sp = 100 / (U - L), l = Math.max(0, Math.min(100 - sp, x0 - sp / 2));
+        setLo(fm(toV(l)));
+        setHi(fm(toV(l + sp)));
+        drag.current = { k: "band", off: x0 - l, span: sp };
+      }
+      try {
+        T.current.setPointerCapture(e.pointerId);
+      } catch (er) {
+      }
+      e.preventDefault();
+    };
+    const move = (e) => {
+      const d = drag.current;
+      if (!d) return;
+      if (d.k === "band") {
+        const l = Math.max(0, Math.min(100 - d.span, pos(e) - d.off));
+        setLo(fm(toV(l)));
+        setHi(fm(toV(l + d.span)));
+        return;
+      }
+      const x = fm(toV(pos(e)));
+      (d.k === "lo" ? setLo : d.k === "hi" ? setHi : setPt)(x);
+    };
+    const up = () => {
+      drag.current = null;
+    };
+    const decs = [];
+    for (let d = Math.ceil(L); d <= U; d++) decs.push(/* @__PURE__ */ TH("span", { key: d, className: "fa-dec", style: { left: toX(10 ** d) + "%" } }, fmtN(10 ** d)));
+    const band = a0 > 0 && b0 > a0;
+    const unit = q[3] ? " in " + q[3] : "";
+    const kd = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        fb ? p.next() : p.submit();
+      }
+    };
+    const box = (val, set, ph, lab) => /* @__PURE__ */ TH("label", null, /* @__PURE__ */ TH("span", null, lab), /* @__PURE__ */ TH("div", { className: "oa-num-box" }, /* @__PURE__ */ TH("input", { inputMode: "decimal", value: val, placeholder: ph, disabled: !!fb, onChange: (e) => set(e.target.value), onKeyDown: kd })));
+    return /* @__PURE__ */ TH(
+      K.Stage,
+      {
+        title: "Fermi Estimation",
+        sub: `Question ${i + 1} of ${p.n}`,
+        clock: fb ? null : left,
+        clockFrac: left / s.time,
+        cls: "g2",
+        stats: [{ label: "Score", value: p.score, pop: true }, { label: "Hit rate", value: p.hist.length ? K.pct(p.hist.filter((h) => h.inside).length / p.hist.length) : "\u2014" }],
+        total: p.n,
+        results: p.hist.map((h) => h.inside),
+        at: i
+      },
+      /* @__PURE__ */ TH("div", { className: "fa-wrap", key: i }, /* @__PURE__ */ TH("div", { className: "g2-col g2-ac", style: { gap: 6 } }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Give a 90% confidence interval", unit), /* @__PURE__ */ TH("div", { className: "fa-q" }, q[1])), /* @__PURE__ */ TH("div", { className: "g2-panel g2-col" }, /* @__PURE__ */ TH("div", { className: "g2-row sb" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Drag the handles, or the band to move the whole interval \xB7 log scale"), /* @__PURE__ */ TH("span", { className: "small muted" }, band ? `Width \xD7${fmtN(+(b0 / a0).toPrecision(2))} (${Math.log10(b0 / a0).toFixed(2)} orders of magnitude) \xB7 costs ${Math.round(22 * Math.log10(b0 / a0))} points if it holds the answer` : "")), /* @__PURE__ */ TH("div", { className: "fa-track", ref: T, onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up, onDoubleClick: (e) => {
+        if (!fb) setPt(fm(toV(pos(e))));
+      } }, /* @__PURE__ */ TH("div", { className: "fa-axis" }), a0 > 0 || b0 > 0 ? null : /* @__PURE__ */ TH("div", { className: "fa-hint" }, "Tap the scale to place an interval, then drag"), band ? /* @__PURE__ */ TH("div", { className: "fa-band", style: { left: cl(toX(a0)) + "%", width: cl(toX(b0)) - cl(toX(a0)) + "%" } }) : null, decs, a0 > 0 ? /* @__PURE__ */ TH("div", { className: "fa-h", "data-h": "lo", style: { left: cl(toX(a0)) + "%" } }, /* @__PURE__ */ TH("span", null, fmtN(a0))) : null, b0 > 0 ? /* @__PURE__ */ TH("div", { className: "fa-h", "data-h": "hi", style: { left: cl(toX(b0)) + "%" } }, /* @__PURE__ */ TH("span", null, fmtN(b0))) : null, p0 > 0 ? /* @__PURE__ */ TH("div", { className: "fa-h pt", "data-h": "pt", style: { left: cl(toX(p0)) + "%" } }, /* @__PURE__ */ TH("span", null, fmtN(p0))) : null, fb ? /* @__PURE__ */ TH("div", { className: cx("fa-ans", !fb.inside && "miss"), style: { left: cl(toX(v)) + "%" } }, /* @__PURE__ */ TH("span", null, "answer ", fmtN(v))) : null)), /* @__PURE__ */ TH("div", { className: "fa-boxes" }, box(lo, setLo, "e.g. 120k", "Low"), box(pt, setPt, "optional", "Best guess (optional)"), box(hi, setHi, "e.g. 3.5m", "High"), fb ? /* @__PURE__ */ TH("button", { className: "start", onClick: p.next, autoFocus: true }, i + 1 >= p.n ? "See results" : "Next question") : /* @__PURE__ */ TH("button", { className: "start", onClick: () => p.submit() }, "Submit")), fb ? /* @__PURE__ */ TH("div", { className: "oa-banner " + (fb.inside ? "ok" : "bad") }, /* @__PURE__ */ TH("span", null, "Answer: ", /* @__PURE__ */ TH("b", null, fmtN(v), q[3] ? " " + q[3] : ""), " \xB7 ", fb.timeout ? "no answer in time" : fb.inside ? "inside your interval" : "outside your interval", " \xB7 ", /* @__PURE__ */ TH("b", null, fb.pts, " points"))) : /* @__PURE__ */ TH("div", { className: "small muted g2-c" }, "Type 3.5m, 120k or 2bn, or tap and drag on the scale. Double-click the scale to place a best guess."))
+    );
+  }
+  function HiLo(p) {
+    const { s, cur, fb, hist, bank, stake, setStake, pHi, pLo, hiN, loN, n } = p;
+    const kb = p.kelly(Math.max(pHi, pLo));
+    const quick = s.counter ? [[0, "$0"], [kb / 2, "\xBD Kelly"], [kb, "Kelly"]] : [[0, "$0"], [0.1, "10%"], [0.25, "25%"]];
+    const strip = useRef(null);
+    useEffect(() => {
+      if (strip.current) strip.current.scrollLeft = strip.current.scrollWidth;
+    }, [hist.length, fb]);
+    useEffect(() => {
+      const h = (e) => {
+        if (e.metaKey || e.ctrlKey) return;
+        const inStake = e.target && e.target.dataset && e.target.dataset.f === "stake";
+        if (typing(e) && !inStake) return;
+        if (!fb && e.key === "ArrowUp") {
+          e.preventDefault();
+          p.bet("hi");
+        } else if (!fb && e.key === "ArrowDown") {
+          e.preventDefault();
+          p.bet("lo");
+        }
+      };
+      window.addEventListener("keydown", h);
+      return () => window.removeEventListener("keydown", h);
+    });
+    const res = (h) => h.frac === 0 ? "no stake" : (h.win ? "+" : "\u2212") + Math.abs(Math.round(h.d));
+    const same = n - hiN - loN;
+    return /* @__PURE__ */ TH(
+      K.Stage,
+      {
+        title: "Higher or Lower",
+        sub: `Card ${p.i + 1} of ${s.cards} \xB7 pays ${s.odds}:1 \xB7 ties lose \xB7 aces high`,
+        cls: "g2",
+        stats: [{ label: "Bankroll", value: K.money(bank, 0), pop: true, tone: bank >= s.bankroll ? "up" : "dn" }, { label: "Near Kelly", value: hist.filter((h) => h.ok).length + " of " + hist.length }],
+        total: s.cards,
+        results: hist.map((h) => h.ok),
+        at: p.i
+      },
+      /* @__PURE__ */ TH("div", { className: "g2-col" }, /* @__PURE__ */ TH("div", { className: "g2-panel g2-col", style: { gap: 6 } }, /* @__PURE__ */ TH("div", { className: "g2-row sb" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "This run \xB7 ", hist.length, " call", hist.length === 1 ? "" : "s"), /* @__PURE__ */ TH("span", { className: "small muted" }, "bankroll ", K.money(s.bankroll, 0), " \u2192 ", /* @__PURE__ */ TH("b", { className: bank >= s.bankroll ? "up" : "dn" }, K.money(bank, 0)))), /* @__PURE__ */ TH("div", { className: "hc-strip", ref: strip }, hist.length ? hist.map((h, k) => /* @__PURE__ */ TH("div", { key: k, className: "hc-it" }, /* @__PURE__ */ TH(K.Card, { v: h.cur.v, s: h.cur.s, size: 34 }), /* @__PURE__ */ TH("em", { className: h.frac === 0 ? "n" : h.win ? "w" : "l" }, h.side === "hi" ? "\u25B2" : "\u25BC", " ", res(h)))) : /* @__PURE__ */ TH("span", { className: "small muted", style: { alignSelf: "center" } }, "Your calls line up here."), fb ? null : /* @__PURE__ */ TH("div", { className: "hc-it" }, /* @__PURE__ */ TH(K.Card, { v: cur.v, s: cur.s, size: 34 }), /* @__PURE__ */ TH("em", { className: "n" }, "now"))), new Set(p.bankHist).size > 1 ? /* @__PURE__ */ TH("div", { style: { height: 34 } }, /* @__PURE__ */ TH(Spark, { data: p.bankHist, h: 34 })) : null), /* @__PURE__ */ TH("div", { className: "hc-main" }, /* @__PURE__ */ TH("div", { className: "g2-panel g2-col" }, /* @__PURE__ */ TH("div", { className: "hl-cards" }, /* @__PURE__ */ TH(K.Card, { v: cur.v, s: cur.s, size: 86 }), /* @__PURE__ */ TH("span", { className: "hl-vs" }, "THEN"), fb ? /* @__PURE__ */ TH(K.Card, { key: "n" + p.i, v: fb.nxt.v, s: fb.nxt.s, size: 86, flip: true }) : /* @__PURE__ */ TH(K.Card, { hidden: true, size: 86 })), s.counter ? /* @__PURE__ */ TH("div", { className: "g2-row c small", style: { gap: 14 } }, /* @__PURE__ */ TH("span", null, "Higher ", /* @__PURE__ */ TH("b", { className: "up" }, hiN)), /* @__PURE__ */ TH("span", null, "Same ", /* @__PURE__ */ TH("b", null, same)), /* @__PURE__ */ TH("span", null, "Lower ", /* @__PURE__ */ TH("b", { className: "dn" }, loN)), /* @__PURE__ */ TH("span", { className: "muted" }, "of ", n, " left")) : null, fb ? /* @__PURE__ */ TH("div", { className: "oa-banner " + (fb.win ? "ok" : fb.d < 0 ? "bad" : ""), style: { justifyContent: "space-between", gap: 14 } }, /* @__PURE__ */ TH("span", null, /* @__PURE__ */ TH("b", null, fb.win ? "Won " + K.money(fb.d, 0) : fb.d < 0 ? "Lost " + K.money(-fb.d, 0) : fb.tie ? "Tie" : "No stake", "."), " You staked ", (fb.frac * 100).toFixed(0), "% of bankroll; Kelly on the better side was ", (fb.kb * 100).toFixed(0), "%."), /* @__PURE__ */ TH("button", { className: "start", onClick: p.next, autoFocus: true }, p.last ? "See results" : "Next card", " ", /* @__PURE__ */ TH("kbd", null, "Enter"))) : /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "g2-row hc-stake" }, /* @__PURE__ */ TH("div", { className: "oa-num-box", style: { flex: 1 } }, /* @__PURE__ */ TH("span", null, "$"), /* @__PURE__ */ TH("input", { "data-f": "stake", inputMode: "decimal", placeholder: "Stake", value: stake, onChange: (e) => setStake(e.target.value) })), quick.map(([f, l]) => /* @__PURE__ */ TH("button", { key: l, className: "btn sm", onClick: () => setStake(String(Math.floor(f * bank))) }, l))), /* @__PURE__ */ TH("div", { className: "hl-call" }, /* @__PURE__ */ TH("button", { className: "hi", onClick: () => p.bet("hi") }, "\u25B2 Higher"), /* @__PURE__ */ TH("button", { className: "lo", onClick: () => p.bet("lo") }, "\u25BC Lower")), /* @__PURE__ */ TH("span", { className: "small muted g2-keys" }, "Keys: \u2191 higher, \u2193 lower (also from the stake box), Enter next."))), /* @__PURE__ */ TH("div", { className: "g2-panel g2-col" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Stake review"), /* @__PURE__ */ TH("div", { className: "hc-rev" }, /* @__PURE__ */ TH("table", { className: "g2-tb" }, /* @__PURE__ */ TH("thead", null, /* @__PURE__ */ TH("tr", null, /* @__PURE__ */ TH("th", null, "Call"), /* @__PURE__ */ TH("th", null, "Staked"), /* @__PURE__ */ TH("th", null, "Kelly"), /* @__PURE__ */ TH("th", null))), /* @__PURE__ */ TH("tbody", null, hist.length ? hist.slice().reverse().map((h, k) => /* @__PURE__ */ TH("tr", { key: k }, /* @__PURE__ */ TH("td", { style: { whiteSpace: "nowrap" } }, h.side === "hi" ? "\u25B2" : "\u25BC", " ", /* @__PURE__ */ TH("span", { className: "small muted" }, "p ", (h.p * 100).toFixed(0), "%")), /* @__PURE__ */ TH("td", null, (h.frac * 100).toFixed(0), "%"), /* @__PURE__ */ TH("td", { style: { whiteSpace: "nowrap" } }, (h.kb * 100).toFixed(0), "%", h.kb > 0 && h.best !== h.side ? /* @__PURE__ */ TH("span", { className: "small dn" }, " on ", h.best === "hi" ? "\u25B2" : "\u25BC") : h.kb === 0 ? /* @__PURE__ */ TH("span", { className: "small muted" }, " pass") : null), /* @__PURE__ */ TH("td", null, h.ok ? /* @__PURE__ */ TH("span", { className: "g2-chip k3" }, "near") : /* @__PURE__ */ TH("span", { className: "g2-chip k4" }, "off")))) : /* @__PURE__ */ TH("tr", null, /* @__PURE__ */ TH("td", { colSpan: "4", className: "muted" }, "Each call is compared with Kelly here."))))))))
+    );
+  }
+  const QF = [[0, "Pass"], [0.02, "Small"], [0.1, "Medium"], [0.3, "Big"]];
+  const bucket = (k) => QF.reduce((a, q) => Math.abs(q[0] - k) < Math.abs(a[0] - k) ? q : a, QF[0])[0];
+  const QF_SECS = 10;
+  function makeOdds(EVENTS, jt, Jt) {
+    return function OddsBet({ settings: s, onFinish, onRestart }) {
+      const [rng] = useState(() => jt());
+      const mk = () => {
+        const e = rng.pick(EVENTS)(rng);
+        const edge = (rng() - 0.45) * 0.6;
+        const b = Math.max(0.1, Math.round(((1 + edge) / e.p - 1) * 10) / 10);
+        const kelly = Math.max(0, (b * e.p - (1 - e.p)) / b);
+        return { ...e, b, kelly, ev: e.p * (b + 1) - 1 };
+      };
+      const [bet, setBet] = useState(mk), [i, setI] = useState(0), [bank, setBank] = useState(s.bankroll), [kBank, setKBank] = useState(s.bankroll), [fb, setFb] = useState(null), [log, setLog] = useState([]), [done, setDone] = useState(false), [streak, setStreak] = useState(0);
+      const left = K.useCountdown(QF_SECS, !fb && !done, i);
+      const place = (f, timeout) => {
+        if (fb || done) return;
+        const win = rng() < bet.p, stake = bank * f, d = win ? stake * bet.b : -stake, kd = win ? kBank * bet.kelly * bet.b : -kBank * bet.kelly;
+        const ok = !timeout && f === bucket(bet.kelly);
+        setBank((x) => Math.round((x + d) * 100) / 100);
+        setKBank((x) => Math.round((x + kd) * 100) / 100);
+        setLog((l) => [...l, { f, k: bet.kelly, win, d, ev: bet.ev, ok, timeout: !!timeout }]);
+        setStreak((x) => ok ? x + 1 : 0);
+        setFb({ win, d, f, ok, timeout: !!timeout, right: bucket(bet.kelly), ...bet });
+      };
+      const next = () => {
+        if (i + 1 >= s.bets) {
+          setDone(true);
+          return;
+        }
+        setI(i + 1);
+        setBet(mk());
+        setFb(null);
+      };
+      useEffect(() => {
+        if (!fb && !done && left <= 0) place(0, true);
+      }, [left <= 0]);
+      useEffect(() => {
+        const h = (e) => {
+          if (typing(e) || e.metaKey || e.ctrlKey) return;
+          if (!fb && e.key.length === 1 && "1234".includes(e.key)) {
+            e.preventDefault();
+            place(QF[+e.key - 1][0]);
+          } else if (!fb && (e.key === "p" || e.key === "P")) {
+            e.preventDefault();
+            place(0);
+          } else if (fb && e.key === "Enter") {
+            e.preventDefault();
+            next();
+          }
+        };
+        window.addEventListener("keydown", h);
+        return () => window.removeEventListener("keydown", h);
+      });
+      const res = useMemo(() => {
+        if (!done) return null;
+        const gap = log.reduce((a, x) => a + Math.abs(x.f - x.k), 0) / log.length;
+        const goodPass = log.filter((x) => x.k === 0 && x.f === 0).length, bad = log.filter((x) => x.k === 0).length;
+        const hits2 = log.filter((x) => x.ok).length;
+        return { pnl: Math.round((bank - s.bankroll) * 100) / 100, score: Math.round((bank - s.bankroll) * 100) / 100, kellyPnl: Math.round((kBank - s.bankroll) * 100) / 100, gap: Math.round(gap * 1e3) / 10, passes: goodPass + " of " + bad, hits: hits2, total: log.length };
+      }, [done]);
+      Jt(done, res, onFinish);
+      if (done && res) return /* @__PURE__ */ TH(
+        K.Result,
+        {
+          headline: K.money(res.pnl, 2) + " P&L",
+          sub: `Bankroll ${K.money(bank, 2)} from ${K.money(s.bankroll, 0)} \xB7 ${res.hits} of ${res.total} sizes right`,
+          onRestart,
+          ring: res.total ? res.hits / res.total : 0,
+          metrics: [
+            { label: "Your P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" },
+            { label: "Kelly on the same bets", value: K.money(res.kellyPnl, 2), tone: res.kellyPnl >= 0 ? "up" : "dn" },
+            { label: "Right sizes", value: `${res.hits} of ${res.total}`, sub: "nearest size to Kelly" },
+            { label: "Bad bets passed", value: res.passes, sub: "negative-EV offers you turned down" }
+          ],
+          review: log.map((x, k) => ({ ok: x.ok, text: `Bet ${k + 1}: ${x.timeout ? "out of time" : "you staked " + Math.round(x.f * 100) + "%"}, Kelly ${Math.round(x.k * 100)}% (nearest size ${QF.find((q) => q[0] === bucket(x.k))[1]})`, shown: K.signed(x.d, 2) })),
+          notes: "Kelly stakes f* = (b\xB7p \u2212 q) / b of the bankroll, where b is the payout per $1, p the chance of winning and q = 1 \u2212 p. The right size is the one of Pass (0%), Small (2%), Medium (10%) and Big (30%) nearest to Kelly. Bet nothing when the edge is negative."
+        }
+      );
+      const hits = log.filter((x) => x.ok).length;
+      return /* @__PURE__ */ TH(
+        K.Stage,
+        {
+          title: "Odds Betting",
+          sub: `Bet ${i + 1} of ${s.bets}`,
+          clock: fb ? null : left,
+          clockFrac: left / QF_SECS,
+          cls: "g2",
+          stats: [{ label: "Bankroll", value: K.money(bank, 0), tone: bank >= s.bankroll ? "up" : "dn", pop: true }, { label: "Streak", value: streak, tone: streak >= 3 ? "hot" : "" }],
+          total: s.bets,
+          results: log.map((x) => x.ok),
+          at: i
+        },
+        /* @__PURE__ */ TH("div", { className: "g2-col" }, /* @__PURE__ */ TH("div", { className: "of-top" }, /* @__PURE__ */ TH("div", { className: "of-card", key: i }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Bet ", i + 1, " of ", s.bets, " \xB7 ", QF_SECS, " seconds"), /* @__PURE__ */ TH("div", { className: "of-q" }, /* @__PURE__ */ TH(K.T, null, bet.t)), /* @__PURE__ */ TH("span", { className: "of-odds" }, bet.b.toFixed(1), /* @__PURE__ */ TH("span", null, "to 1")), s.showP ? /* @__PURE__ */ TH("span", { className: "small muted" }, "win chance ", (bet.p * 100).toFixed(1), "%") : null), /* @__PURE__ */ TH("div", { className: "g2-col g2-ac of-sc" }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Right sizes"), /* @__PURE__ */ TH("div", { className: "of-score" }, hits), /* @__PURE__ */ TH("span", { className: "small muted" }, "of ", log.length))), /* @__PURE__ */ TH("div", { className: "of-opts" }, QF.map(([f, nm], k) => /* @__PURE__ */ TH("button", { key: nm, disabled: !!fb, onClick: () => place(f), className: fb ? f === fb.right ? "right" : f === fb.f && !fb.timeout ? "wrong" : "" : "" }, /* @__PURE__ */ TH("kbd", null, k + 1), nm, /* @__PURE__ */ TH("span", null, f ? Math.round(f * 100) + "% of bankroll" : "no bet")))), fb ? /* @__PURE__ */ TH("div", { className: "oa-banner " + (fb.ok ? "ok" : "bad"), style: { justifyContent: "space-between", gap: 10 } }, /* @__PURE__ */ TH("span", null, /* @__PURE__ */ TH("b", null, fb.timeout ? "Out of time: passed." : fb.f === 0 ? "You passed." : fb.win ? "Won " + K.money(fb.d, 2) + "." : "Lost " + K.money(-fb.d, 2) + "."), " Win chance ", (fb.p * 100).toFixed(1), "% (", fb.why, ") at ", fb.b.toFixed(1), " to 1 gives an edge of ", (fb.ev * 100).toFixed(1), "% per $1. ", /* @__PURE__ */ TH("b", null, "Kelly: ", Math.round(fb.kelly * 100), "%"), fb.kelly === 0 ? " (pass)" : "", ", so the right size was ", /* @__PURE__ */ TH("b", null, QF.find((q) => q[0] === fb.right)[1]), "."), /* @__PURE__ */ TH("button", { className: "start", onClick: next, autoFocus: true }, i + 1 >= s.bets ? "See results" : "Next bet", " ", /* @__PURE__ */ TH("kbd", null, "Enter"))) : /* @__PURE__ */ TH("span", { className: "small muted g2-c" }, "Pick a size by feel", /* @__PURE__ */ TH("span", { className: "g2-keys" }, ": keys 1\u20134"), ". The right size is the one nearest to Kelly."))
+      );
+    };
+  }
+  const SKILL = { math: "Speed and accuracy", prob: "Probability under time", mm: "Quoting and risk", news: "Bayesian updating" };
+  const detail = (x) => {
+    const r = x.r || {};
+    if (x.id === "math") return `${r.total || 0} answered, ${Math.round((r.acc || 0) * 100)}% right`;
+    if (x.id === "prob") return `${Math.round((r.acc || 0) * (r.total || 0))} of ${r.total || 0} right`;
+    const qe = r.quoteErr == null ? "\u2014" : r.quoteErr.toFixed(x.id === "news" ? 0 : 2) + (x.id === "news" ? "\xA2" : "");
+    return `quote error ${qe}, P&L ${K.signed(r.pnl || 0, x.id === "news" ? 0 : 1)}${x.id === "news" ? "\xA2" : ""}`;
+  };
+  function Track({ stages, out, si, compact }) {
+    return /* @__PURE__ */ TH("div", { className: cx("sd-track", compact && "compact") }, stages.map((x, k) => {
+      const o = out[k];
+      return /* @__PURE__ */ TH("div", { key: x.id, className: cx("sd-st", o && "done", !o && k === si && "now") }, o ? /* @__PURE__ */ TH(K.Ring, { frac: o.s / 100, label: String(o.s), size: compact ? 40 : 56 }) : /* @__PURE__ */ TH("div", { className: "sd-dot" }, k + 1), /* @__PURE__ */ TH("b", null, x.name), compact ? null : /* @__PURE__ */ TH("span", null, o ? detail(o) : "about " + x.mins + " min"));
+    }));
+  }
+  function SdGate({ stages, out, si, onStart }) {
+    const st = stages[si];
+    const so = out.length ? Math.round(out.reduce((a, x) => a + x.s, 0) / out.length) : null;
+    return /* @__PURE__ */ TH(K.Stage, { title: "Superday Simulation", sub: `Round ${si + 1} of ${stages.length}`, cls: "g2", stats: [{ label: "So far", value: so == null ? "\u2014" : so }] }, /* @__PURE__ */ TH("div", { className: "g2-col" }, /* @__PURE__ */ TH(Track, { stages, out, si }), /* @__PURE__ */ TH("div", { className: "sd-card oa-in", key: si }, /* @__PURE__ */ TH("span", { className: "oa-lbl" }, "Round ", si + 1, " of ", stages.length, " \xB7 about ", st.mins, " min"), /* @__PURE__ */ TH("h3", null, st.name), /* @__PURE__ */ TH("span", { className: "muted" }, st.sub), /* @__PURE__ */ TH("span", { className: "g2-chip k1" }, "Tests: ", SKILL[st.id]), /* @__PURE__ */ TH("button", { className: "start", onClick: onStart, autoFocus: true }, "Start round ", si + 1))));
+  }
+  return { MM, Moc, Etf, Desks, Board, Fermi, HiLo, makeOdds, SdGate, Track, QLine, Dots };
+}();
+/* ---- end TIP_G2 ---- */
 var TIP_MM = (function() {
   const { TH, TF, R, typing } = TIP;
   const K = TIP_KIT;
@@ -2734,7 +3327,7 @@ var TIP_MM = (function() {
       openQuote(0);
     }, []);
     useEffect(() => {
-      if (phase === "quote" && bidRef.current) bidRef.current.focus();
+      if (phase === "quote" && bidRef.current && !K.isTouch()) bidRef.current.focus();
     }, [phase, qKey]);
     function botQuotes(nk, sx) {
       const e = I.ev(sx, nk), d = I.sd(sx, nk);
@@ -2891,6 +3484,7 @@ var TIP_MM = (function() {
       );
     }
     const pnlNow = cash + pos * ev + (I.spot ? hedge * I.spot(st, k) : 0);
+    if (I === cards && take || (I === dice || I === binary) && !take) return TH(TIP_G2.MM, { I, take, s, title, st, k, steps, phase, ri, ev, pos, cash, tot, tape, rows, quotes, bid, ask, setBid, setAsk, setErr, err, maxW, ask2, left, submitQuote, takeTrade, afterFill, nextRound, val, roundPnl, pnlNow, bidRef, took, fx, rnd, size: sizeOf() });
     const quoting = phase === "quote";
     return /* @__PURE__ */ TH(
       K.Stage,
@@ -2956,6 +3550,13 @@ var TIP_GAMES = (function() {
     const [pos, setPos] = useState(0), [pnl, setPnl] = useState(0), [log, setLog] = useState([]), [stats, setStats] = useState({ hit: 0, miss: 0, bad: 0, ops: 0 });
     const [done, setDone] = useState(false);
     const nav = px.reduce((a, p, i) => a + W[i] * p, 0);
+    const histR = useRef(null), prevR = useRef([null, null, null]), lastR = useRef(px);
+    if (!histR.current) histR.current = px.map((v) => [v]);
+    if (lastR.current !== px) {
+      prevR.current = lastR.current;
+      lastR.current = px;
+      histR.current = histR.current.map((h, j) => [...h, px[j]].slice(-40));
+    }
     const now = K.useTick(!done, 200);
     const left = Math.max(0, s.duration - (now - t0) / 1e3);
     const live = useRef(null);
@@ -3019,18 +3620,7 @@ var TIP_GAMES = (function() {
         notes: "NAV is the weighted sum of the components. Buy the ETF when its ask is below NAV by more than the fee, sell when its bid is above NAV by more than the fee, and leave everything else."
       }
     );
-    const gapNow = q ? (q.bid + q.ask) / 2 - nav : 0;
-    return /* @__PURE__ */ TH(
-      K.Stage,
-      {
-        title: "ETF Arbitrage",
-        sub: "Trade the ETF when it is away from NAV",
-        clock: left,
-        clockFrac: left / s.duration,
-        stats: [{ label: "Trades", value: stats.hit + stats.bad }, { label: "P&L", value: K.signed(pnl, 2), tone: pnl >= 0 ? "up" : "dn", pop: true }]
-      },
-      /* @__PURE__ */ TH("div", { className: "etf-grid" }, /* @__PURE__ */ TH("div", { className: "etf-basket" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Basket QNT = ", W.map((w, i) => `${w}·${"ABC"[i]}`).join(" + ")), px.map((p, i) => /* @__PURE__ */ TH("div", { key: i, className: "etf-comp" }, /* @__PURE__ */ TH("span", { className: "etf-tk" }, "ABC"[i]), /* @__PURE__ */ TH("b", { key: p, className: "oa-pop" }, p.toFixed(2)), /* @__PURE__ */ TH("em", null, "weight ", W[i]))), /* @__PURE__ */ TH("div", { className: "etf-nav" + (s.showNav ? "" : " hide") }, /* @__PURE__ */ TH("span", null, "NAV"), /* @__PURE__ */ TH("b", null, s.showNav ? nav.toFixed(2) : "work it out"))), /* @__PURE__ */ TH("div", { className: "etf-quote" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Market maker's ETF quote · ", s.units, " units · fee ", s.fee.toFixed(2), "/unit"), q ? /* @__PURE__ */ TH("div", { className: "etf-q" + (q.taken ? " taken" : ""), key: q.bid + ":" + q.ask }, /* @__PURE__ */ TH("button", { className: "mm-px bid", disabled: !!q.taken, onClick: () => trade("sell") }, "Sell ", /* @__PURE__ */ TH("b", null, q.bid.toFixed(2)), /* @__PURE__ */ TH("kbd", null, "S")), /* @__PURE__ */ TH("button", { className: "mm-px ask", disabled: !!q.taken, onClick: () => trade("buy") }, "Buy ", /* @__PURE__ */ TH("b", null, q.ask.toFixed(2)), /* @__PURE__ */ TH("kbd", null, "B"))) : /* @__PURE__ */ TH("div", { className: "etf-q wait" }, "requoting…"), s.showNav && q ? /* @__PURE__ */ TH("div", { className: "etf-gap" }, /* @__PURE__ */ TH(K.Meter, { v: Math.min(1, Math.abs(gapNow) / (s.maxGap || 1)), max: 1, tone: Math.abs(gapNow) > s.fee + 0.05 ? "k2" : "", label: `ETF mid vs NAV: ${K.signed(gapNow, 2)}` })) : null, /* @__PURE__ */ TH("div", { className: "mm-tape" }, log.map((t, i) => /* @__PURE__ */ TH("div", { key: log.length - i, className: "mm-tick " + t.tone }, t.txt)))))
-    );
+    return TH(TIP_G2.Etf, { s, W, px, hist: histR.current, prev: prevR.current, nav, q, pnl, stats, log, left, trade });
   }
   function Desks({ settings: s, onFinish, onRestart }) {
     const [rng] = useState(() => jt());
@@ -3045,7 +3635,7 @@ var TIP_GAMES = (function() {
     };
     const left = K.useCountdown(s.time, !fb && !done, key);
     function deal(kk) {
-      const f = fair(kk), sd = Math.sqrt((s.n - kk) * 14) + 0.5;
+      const f = fair(kk + 1), sd = Math.sqrt((s.n - kk - 1) * 14) + 0.5;
       const off = rng() < s.offShare ? rng.int(0, 2) : -1, side = rng() < 0.5 ? 1 : -1;
       const desks = ["North", "East", "West"].map((n, i) => {
         const hw = Math.max(0.5, Math.round(sd * (0.25 + rng() * 0.2) * 2) / 2);
@@ -3064,7 +3654,7 @@ var TIP_GAMES = (function() {
     function pick(v) {
       if (fb || done || !q) return;
       let gain = 0;
-      if (v !== "none") {
+      if (v !== "none" && v !== "timeout") {
         const [i, side] = v.split(":"), d = q.desks[+i];
         gain = side === "buy" ? q.f - d.ask : d.bid - q.f;
       }
@@ -3089,7 +3679,7 @@ var TIP_GAMES = (function() {
     if (done && res) return /* @__PURE__ */ TH(
       K.Result,
       {
-        headline: res.score + " points",
+        headline: String(res.score).replace("-", "−") + " points",
         sub: `${res.correct} of ${res.total} calls right`,
         ring: res.total ? res.correct / res.total : 0,
         onRestart,
@@ -3099,8 +3689,7 @@ var TIP_GAMES = (function() {
       }
     );
     if (!q) return null;
-    const ch = [...q.desks.flatMap((d, i) => [{ value: i + ":sell", node: /* @__PURE__ */ TH("span", null, "Sell to ", d.n, " at ", /* @__PURE__ */ TH("b", null, d.bid.toFixed(1))) }, { value: i + ":buy", node: /* @__PURE__ */ TH("span", null, "Buy from ", d.n, " at ", /* @__PURE__ */ TH("b", null, d.ask.toFixed(1))) }]), { value: "none", node: /* @__PURE__ */ TH("span", null, "No trade") }];
-    return /* @__PURE__ */ TH(K.Stage, { title: "Card Game", sub: `Card ${k + 1} of ${s.n} revealed`, clock: fb ? null : left, clockFrac: left / s.time, stats: [{ label: "Points", value: score, pop: true }], total: s.n, results: hist.map((h) => h.ok), at: k }, /* @__PURE__ */ TH("div", { className: "oa-q" }, /* @__PURE__ */ TH("div", { className: "oa-prompt" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Contract: sum of ", s.n, " cards dealt from one deck (A=1 … K=13)"), /* @__PURE__ */ TH("div", { className: "mm-row" }, deck.map((c, i) => /* @__PURE__ */ TH(K.Card, { key: i + (i <= k ? "u" : "d"), v: c.v, s: c.s, hidden: i > k, flip: i === k, size: 44 }))), /* @__PURE__ */ TH("div", { className: "desk-row" }, q.desks.map((d, i) => /* @__PURE__ */ TH("div", { key: i, className: "desk" }, /* @__PURE__ */ TH("span", null, d.n), /* @__PURE__ */ TH("b", null, d.bid.toFixed(1), " / ", d.ask.toFixed(1)))))), /* @__PURE__ */ TH(K.Choices, { items: ch, cols: 2, disabled: !!fb, onPick: pick, picked: fb ? fb.v : null, correct: q.ans }), fb ? /* @__PURE__ */ TH(K.Banner, { ok: fb.ok, title: fb.ok ? `+${fb.pts}` : `${fb.pts}` }, "Fair after this card: ", q.f.toFixed(2), ".") : null));
+    return TH(TIP_G2.Desks, { s, deck, k, q, fb, left, pick, score, hist });
   }
   function Board({ settings: s, onFinish, onRestart }) {
     const [rng] = useState(() => jt());
@@ -3120,17 +3709,21 @@ var TIP_GAMES = (function() {
     const [stake, setStake] = useState(null);
     const [pnl, setPnl] = useState(0), [hist, setHist] = useState([]), [fb, setFb] = useState(null), [done, setDone] = useState(false);
     const left = K.useCountdown(s.time, !fb && !done, key);
-    function answer(isArb) {
+    function answer(isArb, stakes, timeout) {
       if (fb || done) return;
       let gain = 0;
-      if (isArb) {
+      if (isArb && stakes) {
+        const spent0 = stakes.reduce((a, b) => a + b, 0), sc = spent0 > s.budget ? s.budget / spent0 : 1;
+        const st2 = stakes.map((v) => v * sc), pays = m.odds.map((d, j) => st2[j] * d);
+        gain = Math.round((Math.min(...pays) - spent0 * sc) * 100) / 100;
+      } else if (isArb) {
         const pay = s.budget / m.imp;
         gain = Math.round((pay - s.budget) * 100) / 100;
       }
       const ok = isArb === m.arb;
       setPnl((x) => x + gain);
       setHist((h) => [...h, { ok, text: `${m.names.map((n, j) => n + " " + m.odds[j].toFixed(2)).join(", ")} · implied ${(m.imp * 100).toFixed(1)}%`, shown: isArb ? "arb, " + K.signed(gain, 2) : "pass", answer: m.arb ? "arbitrage" : "no arbitrage" }]);
-      setFb({ ok, gain, isArb });
+      setFb({ ok, gain, isArb, timeout: !!timeout });
     }
     function next() {
       if (i + 1 >= s.markets) {
@@ -3143,7 +3736,7 @@ var TIP_GAMES = (function() {
       setKey((x) => x + 1);
     }
     useEffect(() => {
-      if (!fb && !done && left <= 0) answer(false);
+      if (!fb && !done && left <= 0) answer(false, null, true);
     }, [left <= 0]);
     const res = useMemo(() => done ? { pnl: Math.round(pnl * 100) / 100, correct: hist.filter((h) => h.ok).length, total: hist.length } : null, [done]);
     Jt(done, res, onFinish);
@@ -3159,21 +3752,7 @@ var TIP_GAMES = (function() {
         notes: "Add 1/odds across the best price for every outcome. Below 100% there is an arbitrage: stake in proportion to 1/odds and every outcome pays budget ÷ total. At 100% or more, betting all outcomes loses the overround."
       }
     );
-    const pays = m.odds.map((d) => s.budget / m.imp / d);
-    return /* @__PURE__ */ TH(
-      K.Stage,
-      {
-        title: "Betting Board",
-        sub: `Market ${i + 1} of ${s.markets} · budget ${K.money(s.budget)}`,
-        clock: fb ? null : left,
-        clockFrac: left / s.time,
-        stats: [{ label: "P&L", value: K.signed(pnl, 2), tone: pnl >= 0 ? "up" : "dn", pop: true }],
-        total: s.markets,
-        results: hist.map((h) => h.ok),
-        at: i
-      },
-      /* @__PURE__ */ TH("div", { className: "oa-q" }, /* @__PURE__ */ TH("div", { className: "oa-prompt" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Best decimal odds across books"), /* @__PURE__ */ TH("div", { className: "bb-row" }, m.names.map((n, j) => /* @__PURE__ */ TH("div", { key: j, className: "bb-cell", style: { animationDelay: j * 0.06 + "s" } }, /* @__PURE__ */ TH("span", null, n), /* @__PURE__ */ TH("b", null, m.odds[j].toFixed(2)), /* @__PURE__ */ TH("em", null, m.books[j]), fb && fb.isArb ? /* @__PURE__ */ TH("i", null, "stake ", K.money(pays[j], 2)) : null))), fb ? /* @__PURE__ */ TH("div", { className: "bb-imp" }, "Implied total: ", /* @__PURE__ */ TH("b", { className: m.arb ? "up" : "dn" }, (m.imp * 100).toFixed(1), "%")) : null), !fb ? /* @__PURE__ */ TH(K.Choices, { items: [{ value: true, node: /* @__PURE__ */ TH("span", null, "Arbitrage: stake to lock it in") }, { value: false, node: /* @__PURE__ */ TH("span", null, "No arbitrage: pass") }], cols: 2, onPick: answer }) : /* @__PURE__ */ TH(K.Banner, { ok: fb.ok, onNext: next, title: fb.ok ? "Right." : "Wrong." }, m.arb ? `The prices imply ${(m.imp * 100).toFixed(1)}%, so staking in proportion to 1/odds pays ${K.money(s.budget / m.imp, 2)} whatever happens.` : `The prices imply ${(m.imp * 100).toFixed(1)}%: covering every outcome loses money.`, fb.isArb ? ` You locked ${K.signed(fb.gain, 2)}.` : ""))
-    );
+    return TH(TIP_G2.Board, { s, m, fb, left, i, pnl, hist, answer, next });
   }
   const fmtN = (v) => {
     const a = Math.abs(v);
@@ -3244,26 +3823,7 @@ var TIP_GAMES = (function() {
         notes: "Interviewers want calibrated, narrow intervals built from a clear decomposition. Too narrow and you miss; too wide and the interval says nothing."
       }
     );
-    const box = (v, set, ph) => /* @__PURE__ */ TH("div", { className: "oa-num-box" }, /* @__PURE__ */ TH("input", { inputMode: "decimal", value: v, placeholder: ph, disabled: !!fb, onChange: (e) => set(e.target.value), onKeyDown: (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        submit();
-      }
-    } }));
-    return /* @__PURE__ */ TH(
-      K.Stage,
-      {
-        title: "Fermi Estimation",
-        sub: `Question ${i + 1} of ${list.length}`,
-        clock: fb ? null : left,
-        clockFrac: left / s.time,
-        stats: [{ label: "Score", value: hist.reduce((a, h) => a + h.pts, 0), pop: true }, { label: "Hit rate", value: hist.length ? K.pct(hist.filter((h) => h.inside).length / hist.length) : "—" }],
-        total: list.length,
-        results: hist.map((h) => h.inside),
-        at: i
-      },
-      /* @__PURE__ */ TH("div", { className: "oa-q", key: i }, /* @__PURE__ */ TH("div", { className: "oa-prompt" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Give a 90% confidence interval", q[3] ? " in " + q[3] : ""), /* @__PURE__ */ TH("div", { className: "oa-mid" }, q[1])), /* @__PURE__ */ TH("div", { className: "fe-row" }, box(lo, setLo, "Low"), box(pt, setPt, "Best guess (optional)"), box(hi, setHi, "High")), /* @__PURE__ */ TH("div", { className: "small muted", style: { textAlign: "center" } }, "You can type 3.5m, 120k or 2bn."), !fb ? /* @__PURE__ */ TH("button", { className: "start", style: { alignSelf: "center" }, onClick: () => submit() }, "Submit") : /* @__PURE__ */ TH(K.Banner, { ok: fb.inside, onNext: next, title: fb.inside ? "Inside your interval." : "Outside your interval." }, "Answer: ", /* @__PURE__ */ TH("b", null, fmtN(q[2]), " ", q[3]), " · ", fb.pts, " points."))
-    );
+    return TH(TIP_G2.Fermi, { s, q, i, n: list.length, fb, lo, hi, pt, setLo, setHi, setPt, fmtN, parseN, left, submit, next, hist, score: hist.reduce((a, h) => a + h.pts, 0) });
   }
   function HiLo({ settings: s, onFinish, onRestart }) {
     const [rng] = useState(() => jt());
@@ -3281,8 +3841,8 @@ var TIP_GAMES = (function() {
       const d = tie ? -amt : win ? amt * s.odds : -amt;
       setBank((b) => Math.round((b + d) * 100) / 100);
       const best = Math.max(pHi, pLo), kb = kelly(best), rightSide = p >= best - 1e-9 || kb === 0;
-      setHist((h) => [...h, { ok: rightSide && Math.abs(amt / bank - kb) <= 0.05 + kb * 0.25, text: `${K.rankName(cur.v)} → called ${side === "hi" ? "higher" : "lower"} (p = ${p.toFixed(2)})`, shown: `staked ${(amt / bank * 100).toFixed(0)}%`, answer: `Kelly ${(kb * 100).toFixed(0)}% on ${pHi >= pLo ? "higher" : "lower"}`, explain: `Next card ${K.rankName(nxt.v)}: ${tie ? "tie loses" : win ? "won" : "lost"} ${K.money(Math.abs(d), 2)}.` }]);
-      setFb({ win: win && !tie, d, nxt, kf, frac: amt / bank });
+      setHist((h) => [...h, { cur, side, p, frac: bank ? amt / bank : 0, kb, best: pHi >= pLo ? "hi" : "lo", win: win && !tie, tie, d, ok: rightSide && Math.abs(amt / bank - kb) <= 0.05 + kb * 0.25, text: `${K.rankName(cur.v)} → called ${side === "hi" ? "higher" : "lower"} (p = ${p.toFixed(2)})`, shown: `staked ${(amt / bank * 100).toFixed(0)}%`, answer: `Kelly ${(kb * 100).toFixed(0)}% on ${pHi >= pLo ? "higher" : "lower"}`, explain: `Next card ${K.rankName(nxt.v)}: ${tie ? "tie loses" : win ? "won" : "lost"} ${K.money(Math.abs(d), 2)}.` }]);
+      setFb({ win: win && !tie, tie, d, nxt, kf, kb, frac: bank ? amt / bank : 0 });
     }
     function next() {
       if (i + 2 >= Math.min(deck.length, s.cards + 1) || bank <= 0) {
@@ -3321,8 +3881,9 @@ var TIP_GAMES = (function() {
         notes: "Count the cards left above and below the current one, take the side with the higher probability, and stake the Kelly fraction p − (1 − p)/b. Ties lose."
       }
     );
-    const quick = [0, kelly(Math.max(pHi, pLo)) / 2, kelly(Math.max(pHi, pLo))].map((f) => Math.floor(f * bank));
-    return /* @__PURE__ */ TH(K.Stage, { title: "Higher or Lower", sub: `Card ${i + 1} of ${s.cards} · pays ${s.odds}:1 · ties lose`, stats: [{ label: "Bankroll", value: K.money(bank, 0), pop: true, tone: bank >= s.bankroll ? "up" : "dn" }], total: s.cards, results: hist.map((h) => h.ok), at: i }, /* @__PURE__ */ TH("div", { className: "oa-q" }, /* @__PURE__ */ TH("div", { className: "oa-prompt" }, /* @__PURE__ */ TH("div", { className: "hl-row" }, /* @__PURE__ */ TH(K.Card, { v: cur.v, s: cur.s, size: 78 }), fb ? /* @__PURE__ */ TH(K.Card, { key: "n" + i, v: fb.nxt.v, s: fb.nxt.s, size: 78, flip: true }) : /* @__PURE__ */ TH(K.Card, { hidden: true, size: 78 })), s.counter ? /* @__PURE__ */ TH("div", { className: "hl-count" }, /* @__PURE__ */ TH("span", null, "Higher ", /* @__PURE__ */ TH("b", null, hiN)), /* @__PURE__ */ TH("span", null, "Same ", /* @__PURE__ */ TH("b", null, n - hiN - loN)), /* @__PURE__ */ TH("span", null, "Lower ", /* @__PURE__ */ TH("b", null, loN)), /* @__PURE__ */ TH("span", null, "of ", n, " left")) : null), !fb ? /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "oa-num" }, /* @__PURE__ */ TH("div", { className: "oa-num-box" }, /* @__PURE__ */ TH("span", null, "$"), /* @__PURE__ */ TH("input", { inputMode: "decimal", value: stake, placeholder: "Stake", onChange: (e) => setStake(e.target.value) })), quick.map((v, j) => /* @__PURE__ */ TH("button", { key: j, className: "btn sm", onClick: () => setStake(String(v)) }, ["$0", "½ Kelly", "Kelly"][j], s.counter || j === 0 ? "" : "?"))), /* @__PURE__ */ TH(K.Choices, { items: [{ value: "hi", node: /* @__PURE__ */ TH("span", null, "▲ Higher") }, { value: "lo", node: /* @__PURE__ */ TH("span", null, "▼ Lower") }], cols: 2, onPick: bet })) : /* @__PURE__ */ TH(K.Banner, { ok: fb.d >= 0 && fb.win, onNext: next, title: fb.win ? `Won ${K.money(fb.d, 2)}.` : fb.d < 0 ? `Lost ${K.money(-fb.d, 2)}.` : "No stake." }, "You staked ", (fb.frac * 100).toFixed(0), "% of bankroll; Kelly was ", (fb.kf * 100).toFixed(0), "%.")));
+    const bankHist = hist.reduce((a, h) => [...a, Math.round((a[a.length - 1] + h.d) * 100) / 100], [s.bankroll]);
+    const last = i + 2 >= Math.min(deck.length, s.cards + 1) || bank <= 0;
+    return TH(TIP_G2.HiLo, { s, cur, fb, hist, bank, stake, setStake, pHi, pLo, hiN, loN, n, kelly, bet, next, i, bankHist, last });
   }
   const mmStats = { extraStats: TIP_MM.stats, charts: TIP_MM.charts };
   const defs = [
@@ -8901,34 +9462,7 @@ var TIP_MMT = (function() {
       const sh = shown.reduce((a, c) => a + c.v, 0), M = 51 - shown.length;
       return (q.mid - sh - unk * (364 - sh) / M) / (1 - unk / M);
     };
-    return /* @__PURE__ */ TH(
-      K.Stage,
-      {
-        title: "Market of Cards",
-        sub: `Round ${ri + 1} of ${rounds} · ${quoting ? "make your market" : "trade on theirs"}`,
-        clock: left,
-        clockFrac: left / s.time,
-        stats: [{ label: "Position", value: (pos > 0 ? "+" : "") + pos, pop: true }, { label: "Cash", value: K.signed(cash, 1) }],
-        cls: "mm-stage"
-      },
-      /* @__PURE__ */ TH("div", { className: "mm-grid" }, /* @__PURE__ */ TH("div", { className: "mm-left" }, /* @__PURE__ */ TH("div", { className: "mm-info" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Contract: the sum of all ", 4 + s.center, " cards"), /* @__PURE__ */ TH("div", { className: "mc-hands" }, /* @__PURE__ */ TH("div", { className: "mc-seat me" }, /* @__PURE__ */ TH("span", null, "You"), /* @__PURE__ */ TH(K.Card, { v: deal.you.v, s: deal.you.s, size: 48 })), deal.bots.map((c, j) => /* @__PURE__ */ TH("div", { key: j, className: "mc-seat" }, /* @__PURE__ */ TH("span", null, BOTS[j]), /* @__PURE__ */ TH(K.Card, { hidden: true, size: 48 })))), /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Centre"), /* @__PURE__ */ TH("div", { className: "mm-row" }, deal.mid.map((c, j) => /* @__PURE__ */ TH(K.Card, { key: j + (j < ri ? "s" : "h"), v: c.v, s: c.s, hidden: j >= ri, flip: j === ri - 1, size: 48 })))), s.showFair ? /* @__PURE__ */ TH("div", { className: "mm-fair" }, "Your fair value now: ", /* @__PURE__ */ TH("b", null, myFair.toFixed(1)), " (shown on Easy)") : null), /* @__PURE__ */ TH("div", { className: "mm-right" }, quoting ? /* @__PURE__ */ TH("div", { className: "mm-ticket" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Your market · size 1 · max width ", s.width, " · limit ±", s.limit), /* @__PURE__ */ TH("div", { className: "mm-quote" }, /* @__PURE__ */ TH("label", { className: "bid" }, /* @__PURE__ */ TH("span", null, "Bid"), /* @__PURE__ */ TH("input", { inputMode: "decimal", value: bid, onChange: (e) => {
-        setBid(e.target.value);
-        setErr("");
-      }, onKeyDown: (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          submitQuote();
-        }
-      }, autoFocus: true })), /* @__PURE__ */ TH("label", { className: "ask" }, /* @__PURE__ */ TH("span", null, "Ask"), /* @__PURE__ */ TH("input", { inputMode: "decimal", value: ask, onChange: (e) => {
-        setAsk(e.target.value);
-        setErr("");
-      }, onKeyDown: (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          submitQuote();
-        }
-      } }))), err ? /* @__PURE__ */ TH("div", { className: "mm-err" }, err) : null, /* @__PURE__ */ TH("button", { className: "start", onClick: () => submitQuote() }, "Quote")) : /* @__PURE__ */ TH("div", { className: "mm-book" }, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "The traders' markets · size 1 each"), (quotes || []).map((q, i) => /* @__PURE__ */ TH("div", { key: i, className: "mm-bot" + (q.used ? " used" : "") }, /* @__PURE__ */ TH("span", { className: "mm-bot-n" }, q.n, s.showFair ? /* @__PURE__ */ TH("em", { className: "mc-imp" }, " card ≈ ", Math.max(1, Math.min(13, Math.round(implied(q))))) : null), /* @__PURE__ */ TH("button", { className: "mm-px bid", disabled: q.used, onClick: () => take(i, -1) }, "Sell ", /* @__PURE__ */ TH("b", null, f1(q.bid))), /* @__PURE__ */ TH("button", { className: "mm-px ask", disabled: q.used, onClick: () => take(i, 1) }, "Buy ", /* @__PURE__ */ TH("b", null, f1(q.ask))))), err ? /* @__PURE__ */ TH("div", { className: "mm-err" }, err) : null, /* @__PURE__ */ TH("button", { className: "ghost", onClick: next }, ri + 1 >= rounds ? "Settle" : "Reveal the next centre card")), /* @__PURE__ */ TH("div", { className: "mm-tape" }, tape.map((t, i) => /* @__PURE__ */ TH("div", { key: tape.length - i, className: "mm-tick " + (t.tone || "") }, t.txt)))))
-    );
+    return TH(TIP_G2.Moc, { s, deal, ri, rounds, phase, quotes, bid, ask, setBid, setAsk, err, setErr, pos, cash, tape, left, submitQuote, take, next, implied, myFair, names: BOTS });
   }
   const EVENTS = [
     (r) => {
@@ -8958,70 +9492,7 @@ var TIP_MMT = (function() {
     () => ({ t: "Three dice are rolled. You win if all three show different numbers.", p: 120 / 216, why: "6·5·4/216." }),
     () => ({ t: "Two cards are drawn. You win if they are the same colour.", p: 25 / 51, why: "After the first card, 25 of the 51 left match its colour." })
   ];
-  function OddsBet({ settings: s, onFinish, onRestart }) {
-    const [rng] = useState(() => jt());
-    const mk = () => {
-      const e = rng.pick(EVENTS)(rng);
-      let edge = (rng() - 0.45) * 0.6;
-      const b = Math.max(0.1, Math.round(((1 + edge) / e.p - 1) * 10) / 10);
-      const kelly = Math.max(0, (b * e.p - (1 - e.p)) / b);
-      return { ...e, b, kelly, ev: e.p * (b + 1) - 1 };
-    };
-    const [bet, setBet] = useState(mk), [i, setI] = useState(0), [bank, setBank] = useState(s.bankroll), [kBank, setKBank] = useState(s.bankroll), [frac, setFrac] = useState(0.1), [fb, setFb] = useState(null), [log, setLog] = useState([]), [done, setDone] = useState(false);
-    const place = (f) => {
-      if (fb || done) return;
-      const win = rng() < bet.p, stake = bank * f, d = win ? stake * bet.b : -stake, kd = win ? kBank * bet.kelly * bet.b : -kBank * bet.kelly;
-      setBank((x) => Math.round((x + d) * 100) / 100);
-      setKBank((x) => Math.round((x + kd) * 100) / 100);
-      setLog((l) => [...l, { f, k: bet.kelly, win, d, ev: bet.ev }]);
-      setFb({ win, d, f, ...bet });
-    };
-    const next = () => {
-      if (i + 1 >= s.bets) {
-        setDone(true);
-        return;
-      }
-      setI(i + 1);
-      setBet(mk());
-      setFb(null);
-    };
-    useEffect(() => {
-      const h = (e) => {
-        if (typing(e)) return;
-        if (!fb && e.key === "Enter") {
-          e.preventDefault();
-          place(frac);
-        } else if (!fb && (e.key === "p" || e.key === "P")) place(0);
-      };
-      window.addEventListener("keydown", h);
-      return () => window.removeEventListener("keydown", h);
-    });
-    const res = useMemo(() => {
-      if (!done) return null;
-      const gap = log.reduce((a, x) => a + Math.abs(x.f - x.k), 0) / log.length;
-      const goodPass = log.filter((x) => x.k === 0 && x.f === 0).length, bad = log.filter((x) => x.k === 0).length;
-      return { pnl: Math.round((bank - s.bankroll) * 100) / 100, score: Math.round((bank - s.bankroll) * 100) / 100, kellyPnl: Math.round((kBank - s.bankroll) * 100) / 100, gap: Math.round(gap * 1e3) / 10, passes: goodPass + " of " + bad };
-    }, [done]);
-    Jt(done, res, onFinish);
-    if (done && res) return /* @__PURE__ */ TH(
-      K.Result,
-      {
-        headline: K.money(res.pnl, 2) + " P&L",
-        sub: `Bankroll ${K.money(bank, 2)} from ${K.money(s.bankroll, 0)}`,
-        onRestart,
-        metrics: [
-          { label: "Your P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" },
-          { label: "Kelly on the same bets", value: K.money(res.kellyPnl, 2), tone: res.kellyPnl >= 0 ? "up" : "dn" },
-          { label: "Average distance from Kelly", value: res.gap + " pts", sub: "percentage points of bankroll" },
-          { label: "Bad bets passed", value: res.passes, sub: "negative-EV offers you turned down" }
-        ],
-        review: log.map((x, k) => ({ ok: Math.abs(x.f - x.k) <= 0.05, text: `Bet ${k + 1}: you staked ${Math.round(x.f * 100)}%, Kelly ${Math.round(x.k * 100)}%`, shown: K.signed(x.d, 2) })),
-        notes: "Kelly stakes f* = (b·p − q) / b of the bankroll, where b is the payout per $1, p the chance of winning and q = 1 − p. Bet nothing when the edge is negative. Staking more than Kelly adds risk without adding long-run growth."
-      }
-    );
-    const fr = [0, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5];
-    return /* @__PURE__ */ TH(K.Stage, { title: "Odds Betting", sub: `Bet ${i + 1} of ${s.bets}`, stats: [{ label: "Bankroll", value: K.money(bank, 0), tone: bank >= s.bankroll ? "up" : "dn", pop: true }], total: s.bets, results: log.map((x) => x.d >= 0), at: i }, /* @__PURE__ */ TH("div", { className: "ob-wrap" }, /* @__PURE__ */ TH("div", { className: "oa-big-q" }, /* @__PURE__ */ TH(K.T, null, bet.t)), /* @__PURE__ */ TH("div", { className: "ob-odds" }, "Pays ", /* @__PURE__ */ TH("b", null, bet.b.toFixed(1), " to 1"), s.showP ? /* @__PURE__ */ TH("span", { className: "muted" }, " · win chance ", (bet.p * 100).toFixed(1), "% (shown on Easy)") : null), !fb ? /* @__PURE__ */ TH(TF, null, /* @__PURE__ */ TH("div", { className: "oa-lbl" }, "Stake as a share of your bankroll"), /* @__PURE__ */ TH("div", { className: "ob-fr" }, fr.map((f) => /* @__PURE__ */ TH("button", { key: f, type: "button", className: "chip" + (frac === f ? " on" : ""), onClick: () => setFrac(f) }, f ? Math.round(f * 100) + "%" : "0%"))), /* @__PURE__ */ TH("div", { className: "row" }, /* @__PURE__ */ TH("button", { className: "btn", onClick: () => place(0) }, "Pass ", /* @__PURE__ */ TH("kbd", null, "P")), /* @__PURE__ */ TH("span", { className: "sp" }), /* @__PURE__ */ TH("button", { className: "start", disabled: !frac, onClick: () => place(frac) }, "Bet ", K.money(bank * frac, 0), " ", /* @__PURE__ */ TH("kbd", null, "Enter")))) : /* @__PURE__ */ TH(K.Banner, { ok: fb.d >= 0, onNext: next, title: fb.f === 0 ? "You passed." : fb.win ? `Won ${K.money(fb.d, 2)}.` : `Lost ${K.money(-fb.d, 2)}.` }, "Win chance ", (fb.p * 100).toFixed(1), "% (", fb.why, ") at ", fb.b.toFixed(1), " to 1 gives an edge of ", (fb.ev * 100).toFixed(1), "% per $1. ", /* @__PURE__ */ TH("b", null, "Kelly stake: ", Math.round(fb.kelly * 100), "% of bankroll"), fb.kelly === 0 ? " (pass)" : "", "; you staked ", Math.round(fb.f * 100), "%.")));
-  }
+  const OddsBet = TIP_G2.makeOdds(EVENTS, jt, Jt);
   const STAGES = [
     { id: "math", name: "Mental maths", mins: 2, sub: "As many as you can in two minutes." },
     { id: "prob", name: "Probability", mins: 2.5, sub: "Five phone-screen questions, about 30 seconds each." },
@@ -9063,17 +9534,18 @@ var TIP_MMT = (function() {
         notes: "Round scores: mental maths and probability from accuracy and how many you reached; market making and news from how close your quotes were to fair (quote error), the share of quotes you made in time, and a bonus for a positive P&L. The overall score is the average."
       }
     );
-    if (!ready) return /* @__PURE__ */ TH("div", { className: "card sd-gate" }, /* @__PURE__ */ TH("div", { className: "oa-sub" }, "Round ", si + 1, " of ", STAGES.length, " · about ", st.mins, " min"), /* @__PURE__ */ TH("h3", null, st.name), /* @__PURE__ */ TH("p", { className: "muted" }, st.sub), /* @__PURE__ */ TH("div", { className: "sd-steps" }, STAGES.map((x, k) => /* @__PURE__ */ TH("span", { key: x.id, className: "chip" + (k < si ? " solved" : k === si ? " on" : "") }, k < si ? "✓ " : "", x.name, k < si ? " · " + out[k].s : ""))), /* @__PURE__ */ TH("button", { className: "start", onClick: () => setReady(true), autoFocus: true }, "Start round ", si + 1));
+    if (!ready) return TH(TIP_G2.SdGate, { stages: STAGES, out, si, onStart: () => setReady(true) });
+    const wrap = (el) => TH(TF, null, TH(TIP_G2.Track, { stages: STAGES, out, si, compact: true }), el);
     const lvl = diff === "Hard" ? "Hard" : diff === "Easy" ? "Easy" : "Medium";
     if (st.id === "math") {
       const d = D.frac;
-      return TH(TIP_DRILL.Drill, { key: "m", settings: d.presets[lvl], spec: { ...d.spec, count: null, sessionSecs: () => 120 }, title: "Round 1 · Mental maths", onFinish: finishStage, onRestart });
+      return wrap(TH(TIP_DRILL.Drill, { key: "m", settings: d.presets[lvl], spec: { ...d.spec, count: null, sessionSecs: () => 120 }, title: "Round 1 · Mental maths", onFinish: finishStage, onRestart }));
     }
     if (st.id === "prob") {
       const d = D.bto;
-      return TH(TIP_DRILL.Drill, { key: "p", settings: { ...d.presets[lvl], count: 5, time: 30 }, spec: { ...d.spec, count: () => 5, perQSecs: () => 30 }, title: "Round 2 · Probability", onFinish: finishStage, onRestart });
+      return wrap(TH(TIP_DRILL.Drill, { key: "p", settings: { ...d.presets[lvl], count: 5, time: 30 }, spec: { ...d.spec, count: () => 5, perQSecs: () => 30 }, title: "Round 2 · Probability", onFinish: finishStage, onRestart }));
     }
-    if (st.id === "mm") return TH(TIP_MM.Game, {
+    if (st.id === "mm") return wrap(TH(TIP_MM.Game, {
       key: "d",
       inst: "dice",
       mode: "make",
@@ -9081,8 +9553,8 @@ var TIP_MMT = (function() {
       onFinish: finishStage,
       onRestart,
       settings: { n: 3, target: "sum", rounds: 2, width: lvl === "Hard" ? 1.5 : 2, time: lvl === "Easy" ? 25 : 18, sharp: lvl === "Easy" ? 0 : 0.25, tighten: lvl === "Hard" ? 0.25 : 0, showFair: lvl === "Easy", size: 1 }
-    });
-    return TH(TIP_MM.Game, {
+    }));
+    return wrap(TH(TIP_MM.Game, {
       key: "n",
       inst: "binary",
       mode: "make",
@@ -9090,7 +9562,7 @@ var TIP_MMT = (function() {
       onFinish: finishStage,
       onRestart,
       settings: { news: 3, rounds: 1, width: lvl === "Hard" ? 6 : 8, time: lvl === "Easy" ? 25 : 18, sharp: lvl === "Easy" ? 0 : 0.25, story: "rates", tighten: 0, showFair: lvl === "Easy", size: 1 }
-    });
+    }));
   }
   const base = { tip: true, version: V, playFilter: PF };
   const defs = [
