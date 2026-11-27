@@ -246,3 +246,10 @@ html[data-size=big] body { zoom: 1.15; }
 
 /* no blue flash when tapping buttons on phones (27 Nov) */
 *{-webkit-tap-highlight-color:transparent}
+
+/* Android app (27 Nov): everything runs edge to edge; the app passes the status and button bar heights as --sat / --sab */
+html{--sat:0px;--sab:0px}
+body{padding-top:var(--sat)!important;padding-bottom:var(--sab)!important}
+.scrim{padding-top:calc(var(--sat) + 12px)!important;padding-bottom:calc(var(--sab) + 12px)!important}
+
+.tip-gloss-search{top:calc(var(--sat) + 8px)}

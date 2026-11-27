@@ -60,7 +60,7 @@ html:has(.au){scrollbar-gutter:auto!important}
 .tabs.fade-l.fade-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); }
 /* this app: gate, backdrop C in the KaTeX fonts */
 html.au-gate #root{display:none}
-.au-bg .tx{position:absolute;white-space:nowrap;font-family:KaTeX_Math,KaTeX_Main,serif;font-style:italic}
+.au-bg .tx{position:absolute;white-space:nowrap;font-family:KaTeX_Main,serif;font-style:normal}
 .au-bg .tx i{font-family:KaTeX_Math;font-style:italic}.au-bg .tx sub,.au-bg .tx sup{font-size:.7em}
 .au-bg .tx .bb{font-family:KaTeX_AMS;font-style:normal;font-weight:400}
 .au-bg .ob{position:absolute;font:13px/19px ui-monospace,Menlo,Consolas,monospace;font-style:normal}

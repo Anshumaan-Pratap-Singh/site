@@ -40,6 +40,23 @@
     return s;
   }
 
+  /* LaTeX look for the backdrop (27 Nov): single letters in KaTeX math italic, words (log, Var, bid), digits, brackets
+     and operators upright in KaTeX roman, as LaTeX sets them; x^{..} and x_{..} become raised and lowered text */
+  function texify(root) {
+    const walk = n => {
+      for (const c of [...n.childNodes]) {
+        if (c.nodeType === 1) { if (!c.classList.contains("bb") && c.tagName !== "I") walk(c); continue; }
+        if (c.nodeType !== 3 || !c.textContent) continue;
+        let t = c.textContent.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+        t = t.replace(/\^\{([^}]*)\}/g, "\u0001sup\u0002$1\u0001/sup\u0002").replace(/_\{([^}]*)\}/g, "\u0001sub\u0002$1\u0001/sub\u0002");
+        t = t.replace(/[A-Za-z]{2,}|[A-Za-zα-ωϕϑϵ]/g, m => m.length > 1 ? m : "\u0001i\u0002" + m + "\u0001/i\u0002");
+        const s = document.createElement("span"); s.innerHTML = t.replace(/\u0001/g, "<").replace(/\u0002/g, ">");
+        c.replaceWith(...s.childNodes);
+      }
+    };
+    walk(root);
+  }
+
   /* ---------- screens ---------- */
   let root = null, mode = "login", busy = false, err = "", info = "", form = { name: "", email: "", pw: "" }, show = false;
   const C = () => window.tipCloud;
@@ -93,7 +110,7 @@
       note(), cont, again, H("p", { class: "au-center" }, "Can't find it? Check spam, or ", H("button", { type: "button", onclick: () => C().signOut().then(() => go("create")) }, "use a different email"), "."));
   }
   function draw() {
-    if (!root) { root = H("div", { class: "au" }); root.append(H("div", { class: "au-bg", "aria-hidden": "true" })); root.firstChild.innerHTML = backdrop(); root.append(H("main", { class: "au-main" })); doc.body.append(root); }
+    if (!root) { root = H("div", { class: "au" }); root.append(H("div", { class: "au-bg", "aria-hidden": "true" })); root.firstChild.innerHTML = backdrop(); root.firstChild.querySelectorAll(".tx").forEach(texify); root.append(H("main", { class: "au-main" })); doc.body.append(root); }
     const focus = doc.activeElement && root.contains(doc.activeElement) ? [...root.querySelectorAll("input")].indexOf(doc.activeElement) : -1;
     const card = H("div", { class: "au-card" + (mode === "create" ? " au-compact" : "") },
       H("div", { class: "au-top" }, H("img", { class: "au-logo", src: "icons/icon-192.png", alt: "", width: 64, height: 64 }), H("b", null, "Trading Interview Practice")), body());

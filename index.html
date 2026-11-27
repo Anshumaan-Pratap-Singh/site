@@ -42,9 +42,10 @@ if ('serviceWorker' in navigator && /(^|\.)github\.io$|^localhost$|^127\.0\.0\.1
   window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
 </script>
 <script>
-/* Android app: draw the sign-in screens edge to edge (behind the status and button bars), normal bars otherwise (27 Nov) */
-(function(){if(!(window.WBAndroid&&WBAndroid.setEdge))return;var on=null;function chk(){var v=!!document.querySelector(".au,.au-splash");if(v!==on){on=v;try{WBAndroid.setEdge(v)}catch(e){}}}
-new MutationObserver(chk).observe(document.documentElement,{childList:true,subtree:true});document.addEventListener("DOMContentLoaded",chk);})();
+/* Android app: edge to edge everywhere; light bar icons on the navy sign-in screens and in dark mode, dark icons otherwise (27 Nov) */
+(function(){if(!(window.WBAndroid&&(WBAndroid.setBars||WBAndroid.setEdge)))return;var last=null,set=WBAndroid.setBars?function(v){WBAndroid.setBars(v)}:function(v){WBAndroid.setEdge(v)};
+function chk(){var v=!!document.querySelector(".au,.au-splash")||document.documentElement.getAttribute("data-theme")==="dark";if(v!==last){last=v;try{set(v)}catch(e){}}}
+new MutationObserver(chk).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["data-theme"]});document.addEventListener("DOMContentLoaded",chk);window.addEventListener("load",function(){last=null;chk()});})();
 </script>
 </body>
 </html>

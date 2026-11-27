@@ -100,6 +100,7 @@ public class MainActivity extends Activity {
         });
 
         web.addJavascriptInterface(new Bridge(), "WBAndroid");
+        edgeAll();
         if (state != null) web.restoreState(state);
         else web.loadUrl(START);
     }
@@ -190,7 +191,9 @@ public class MainActivity extends Activity {
            (Credential Manager) gets a Google ID token and hands it to the page, which signs in to Firebase with it. */
         /* sign-in screens (27 Nov): the navy backdrop runs edge to edge, behind the status and button bars */
         @JavascriptInterface
-        public void setEdge(boolean on) { runOnUiThread(() -> edge(on)); }
+        public void setBars(boolean light) { runOnUiThread(() -> bars(light)); }
+        @JavascriptInterface
+        public void setEdge(boolean on) { runOnUiThread(() -> bars(on)); }
 
         @JavascriptInterface
         public void googleSignIn() {
@@ -222,25 +225,26 @@ public class MainActivity extends Activity {
     }
 
     /* Serves the packed site from assets/site with the right content types (.wasm for the C++ compiler and Python). */
-    private int origStatus, origNav, origVis; private boolean edgeOn = false;
-    private void edge(boolean on) {
-        android.view.Window w = getWindow(); View d = w.getDecorView();
-        if (on) {
-            if (!edgeOn) { origStatus = w.getStatusBarColor(); origNav = w.getNavigationBarColor(); origVis = d.getSystemUiVisibility(); }
-            w.setStatusBarColor(android.graphics.Color.TRANSPARENT); w.setNavigationBarColor(android.graphics.Color.TRANSPARENT);
-            if (android.os.Build.VERSION.SDK_INT >= 29) { w.setStatusBarContrastEnforced(false); w.setNavigationBarContrastEnforced(false); }
-            /* light icons on navy: no LIGHT_STATUS_BAR / LIGHT_NAVIGATION_BAR flags */
-            d.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
-            edgeOn = true;
-            web.postDelayed(this::sendInsets, 60); web.postDelayed(this::sendInsets, 400);
-        } else if (edgeOn) {
-            w.setStatusBarColor(origStatus); w.setNavigationBarColor(origNav); d.setSystemUiVisibility(origVis); edgeOn = false;
-            web.evaluateJavascript("document.documentElement.style.removeProperty('--sat');document.documentElement.style.removeProperty('--sab')", null);
-        }
+    /* edge to edge everywhere (27 Nov): the page draws behind the status and button bars; the bars are see-through
+       and the page gets their heights as --sat / --sab. The page picks light or dark bar icons (setBars). */
+    private boolean lightIcons = true;
+    private void edgeAll() {
+        android.view.Window w = getWindow();
+        w.setStatusBarColor(android.graphics.Color.TRANSPARENT); w.setNavigationBarColor(android.graphics.Color.TRANSPARENT);
+        if (android.os.Build.VERSION.SDK_INT >= 29) { w.setStatusBarContrastEnforced(false); w.setNavigationBarContrastEnforced(false); }
+        if (android.os.Build.VERSION.SDK_INT >= 28) w.getAttributes().layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        flags();
+        w.getDecorView().setOnApplyWindowInsetsListener((v, in) -> { web.post(this::sendInsets); return v.onApplyWindowInsets(in); });
     }
-    /* the bars' heights, in CSS pixels, so the card stays clear of them */
+    private void flags() {
+        int f = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+        if (!lightIcons) f |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | (android.os.Build.VERSION.SDK_INT >= 26 ? View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR : 0);
+        getWindow().getDecorView().setSystemUiVisibility(f);
+    }
+    private void bars(boolean light) { lightIcons = light; flags(); sendInsets(); }
+    /* the bars' heights, in CSS pixels */
     private void sendInsets() {
-        android.view.WindowInsets in = getWindow().getDecorView().getRootWindowInsets(); if (in == null || !edgeOn) return;
+        android.view.WindowInsets in = getWindow().getDecorView().getRootWindowInsets(); if (in == null || web == null) return;
         float dp = getResources().getDisplayMetrics().density;
         web.evaluateJavascript("document.documentElement.style.setProperty('--sat','" + Math.round(in.getSystemWindowInsetTop() / dp) + "px');"
             + "document.documentElement.style.setProperty('--sab','" + Math.round(in.getSystemWindowInsetBottom() / dp) + "px')", null);
