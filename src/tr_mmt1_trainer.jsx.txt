@@ -122,7 +122,7 @@ var TIP_MMT = (function () {
       <K.Stage title="Mental Math Trainer" sub={MODE[s.mode] + (hard ? " · Hard" : "") + " · " + label(s).replace(" Hard", "")}
         clock={timed ? (durMs - el) / 1000 : null} clockFrac={timed ? frac : null}
         stats={timed ? [{ label: hard ? "Net" : "Score", value: hard ? st.current.correct - st.current.wrong : st.current.correct, pop: true }, { label: "Streak", value: st.current.streak, tone: st.current.streak >= 5 ? "hot" : "", pop: true }]
-          : [{ label: "Time", value: fmtClock(el, true) }, { label: hard ? "Answered" : "Solved", value: count + "/" + s.target, pop: true }]} cls="mt-stage">
+          : [{ label: "Time", value: fmtClock(el, true) }, { label: hard ? "Answered" : "Solved", value: count + " of " + s.target, pop: true }]} cls="mt-stage">
         {!timed ? <div className="tip-wbar mt-prog"><i style={{ width: frac * 100 + "%" }}></i></div> : null}
         <div className={"mt-q" + (flash ? " " + flash : "")} key={qi}>
           <div className="mt-text">{TIP.FT(q.text)}</div>
@@ -172,7 +172,7 @@ var TIP_MMT = (function () {
       const tot = plays.reduce((a, p) => a + (p.total || 0), 0), c = plays.reduce((a, p) => a + (p.correct || 0), 0);
       const accs = plays.filter(p => p.total).map(p => Math.round(100 * p.correct / p.total)), best = accs.length ? Math.max(...accs) : null;
       return <div className="tip-stats tip-stats4">
-        <div className="tip-stat"><span>Accuracy</span><b>{tot ? Math.round(100 * c / tot) + "%" : "—"}</b><em>{c}/{tot} questions</em></div>
+        <div className="tip-stat"><span>Accuracy</span><b>{tot ? Math.round(100 * c / tot) + "%" : "—"}</b><em>{c} of {tot} questions</em></div>
         <div className="tip-stat"><span>Best accuracy</span><b>{best == null ? "—" : best + "%"}</b><em>in one session</em></div>
         <div className="tip-stat"><span>Questions answered</span><b>{tot}</b><em>all sessions</em></div>
         <div className="tip-stat"><span>Imported</span><b>{plays.filter(p => p.imported).length}</b><em>from the old trainer</em></div>

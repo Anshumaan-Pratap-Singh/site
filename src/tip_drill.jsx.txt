@@ -202,7 +202,7 @@ var TIP_DRILL = (function () {
       const last = plays.slice(-5), lastAcc = last.reduce((a, p) => a + (p.total || 0), 0) ? last.reduce((a, p) => a + (p.correct || 0), 0) / last.reduce((a, p) => a + (p.total || 0), 0) : null;
       return (
         <div className="tip-stats tip-stats4">
-          <div className="tip-stat"><span>Accuracy</span><b>{q ? Math.round(c / q * 100) + "%" : "—"}</b><em>{c}/{q} questions</em></div>
+          <div className="tip-stat"><span>Accuracy</span><b>{q ? Math.round(c / q * 100) + "%" : "—"}</b><em>{c} of {q} questions</em></div>
           <div className="tip-stat"><span>Last 5 sessions</span><b>{lastAcc == null ? "—" : Math.round(lastAcc * 100) + "%"}</b><em>accuracy</em></div>
           {def.noSpeed ? <div className="tip-stat"><span>Questions</span><b>{q}</b><em>answered in total</em></div>
             : <div className="tip-stat"><span>Avg time</span><b>{fmtMs(avg)}</b><em>per correct answer</em></div>}

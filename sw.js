@@ -25,11 +25,13 @@ const CORE = [
 "data/coding.json",
 "data/trading.json",
 "dice3d.js",
+"frac.js",
 "icons/apple-touch-icon.png",
 "icons/icon-192.png",
 "icons/icon-512.png",
 "icons/icon-maskable.png",
 "index.html",
+"lesson.css",
 "logos/akuna.png",
 "logos/balyasny.png",
 "logos/barclays.png",
@@ -190,7 +192,7 @@ const BIG = [
 "pyodide/pyodide.js",
 "pyodide/python_stdlib.wasm"
 ];
-const CORE_CACHE = 'tip-core-da6177bf7c', BIG_CACHE = 'tip-big-f94c81c55e', FONT_CACHE = 'tip-fonts-1';
+const CORE_CACHE = 'tip-core-8958d3f6d4', BIG_CACHE = 'tip-big-f94c81c55e', FONT_CACHE = 'tip-fonts-1';
 const KEEP = [CORE_CACHE, BIG_CACHE, FONT_CACHE];
 const url = p => new URL(p, self.registration.scope).href;
 const bigSet = new Set(BIG.map(url)), coreSet = new Set(CORE.map(url));

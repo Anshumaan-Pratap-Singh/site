@@ -137,7 +137,7 @@ var TIP_GAMES = (function () {
           <div className="oa-prompt">
             <div className="oa-lbl">Contract: sum of {s.n} cards dealt from one deck (A=1 … K=13)</div>
             <div className="mm-row">{deck.map((c, i) => <K.Card key={i + (i <= k ? "u" : "d")} v={c.v} s={c.s} hidden={i > k} flip={i === k} size={44} />)}</div>
-            <div className="desk-row">{q.desks.map((d, i) => <div key={i} className="desk"><span>{d.n}</span><b>{d.bid.toFixed(1)} / {d.ask.toFixed(1)}</b></div>)}</div>
+            <div className="desk-row">{q.desks.map((d, i) => <div key={i} className="desk"><span>{d.n}</span><b>{d.bid.toFixed(1)} of {d.ask.toFixed(1)}</b></div>)}</div>
           </div>
           <K.Choices items={ch} cols={2} disabled={!!fb} onPick={pick} picked={fb ? fb.v : null} correct={q.ans} />
           {fb ? <K.Banner ok={fb.ok} title={fb.ok ? `+${fb.pts}` : `${fb.pts}`}>Fair after this card: {q.f.toFixed(2)}.</K.Banner> : null}

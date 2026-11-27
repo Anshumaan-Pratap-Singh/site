@@ -253,3 +253,9 @@ body{padding-top:var(--sat)!important;padding-bottom:var(--sab)!important}
 .scrim{padding-top:calc(var(--sat) + 12px)!important;padding-bottom:calc(var(--sab) + 12px)!important}
 
 .tip-gloss-search{top:calc(var(--sat) + 8px)}
+
+/* stacked plain-text fractions (frac.js, 27 Nov): numerator over denominator, full size */
+.sfrac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;line-height:1.05;margin:0 .1em;text-align:center}
+.sfrac > span{display:block;padding:0 .12em}.sfrac > span + span{border-top:max(1px,.06em) solid currentColor;padding-top:.06em}
+/* mid widths: title, tabs and the two header buttons stay on one line; the tabs scroll (27 Nov) */
+@media (min-width: 901px) { .top { flex-wrap: nowrap; } .top .tabs { min-width: 0; flex: 1 1 auto; overflow-x: auto; scrollbar-width: none; } .top .tabs::-webkit-scrollbar { display: none; } }

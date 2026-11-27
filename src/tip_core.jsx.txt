@@ -216,7 +216,7 @@ var TIP = (function () {
     const L = open != null ? lessons[open] : null;
     return (
       <section className="card tip-panel tip-lessons">
-        <div className="tip-h-row"><h3 className="tip-h">Lessons</h3><span className="tip-cap">{done.length}/{lessons.length} done</span></div>
+        <div className="tip-h-row"><h3 className="tip-h">Lessons</h3><span className="tip-cap">{done.length} of {lessons.length} done</span></div>
         <div className="tip-lesson-list">
           {lessons.map((l, i) => (
             <button key={i} type="button" className={"tip-lesson-btn" + (open === i ? " on" : "") + (done.includes(i) ? " done" : "")} onClick={() => setOpen(open === i ? null : i)}>
@@ -586,7 +586,7 @@ var TIP = (function () {
       status(stage);
       const finish = r => { clearTimeout(timer); busy = null; ready = true; done(r); };
       busy = m => {
-        if (m.t === "fetch") status("Downloading the C++ compiler (" + mb(m.done) + " / " + mb(m.total) + " MB, first run only)\u2026");
+        if (m.t === "fetch") status("Downloading the C++ compiler (" + mb(m.done) + " of " + mb(m.total) + " MB, first run only)\u2026");
         else if (m.t === "ready") ready = true;
         else if (m.t === "compile") status(ready ? "Compiling\u2026" : "Loading the C++ compiler\u2026");
         else if (m.t === "run") { status("Running\u2026"); timer = setTimeout(() => { w.terminate(); w = null; ready = false; finish({ timeout: true, compileMs: m.compileMs }); }, 15000); }
@@ -605,7 +605,7 @@ var TIP = (function () {
       <div className="card col tip-cpp">
         <div className="row">
           <h3 style={{ margin: 0 }}>Tests (C++)</h3>
-          {tests.length ? <span className={"chip " + (pass === tests.length && r.exit === 0 ? "easy" : "hard")}>{pass}/{tests.length} passed</span> : null}
+          {tests.length ? <span className={"chip " + (pass === tests.length && r.exit === 0 ? "easy" : "hard")}>{pass} of {tests.length} passed</span> : null}
           <span className="sp"></span>
           <span className="small muted">{r.compileMs != null ? "compiled in " + (r.compileMs / 1000).toFixed(1) + " s" : ""}{r.runMs != null ? " \u00b7 ran in " + r.runMs + " ms" : ""}</span>
         </div>

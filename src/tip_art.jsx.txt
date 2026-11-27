@@ -41,7 +41,21 @@ var TIP_ART = (function () {
   const Act = ({ children }) => <g><K a="opacity" kf={[[0, 0], [.05, 1], [.9, 1], [.97, 0]]} />{children}</g>;
   /* shown between t0 and t1; `pre` marks things that only exist before the result (hidden in the still picture) */
   const Show = ({ t0, t1, pre, children }) => still() && pre ? null : <g><K a="opacity" kf={win(t0 || 0, t1)} />{children}</g>;
-  const Txt = ({ x, y, s, c, a, children, b }) => <text x={x} y={y} className={"tx" + (c ? " c" + c : "") + (b ? " b" : "")} style={{ fontSize: s || 11 }} textAnchor={a || "middle"}>{children}</text>;
+  /* labels: a fraction like 3/4 inside a label is drawn stacked, numerator over denominator (27 Nov) */
+  const Txt = ({ x, y, s, c, a, children, b }) => {
+    const z = s || 11, cls = "tx" + (c ? " c" + c : "") + (b ? " b" : ""), t = typeof children === "string" ? children : null;
+    const m = t && /(\d+(?:\.\d+)?|\b[A-Za-z])\/(\d+(?:\.\d+)?|[A-Za-z]\b)/.exec(t);
+    if (!m) return <text x={x} y={y} className={cls} style={{ fontSize: z }} textAnchor={a || "middle"}>{children}</text>;
+    const pre = t.slice(0, m.index), post = t.slice(m.index + m[0].length), cw = z * .58, fw = Math.max(m[1].length, m[2].length) * cw * .85 + z * .35;
+    const W = (pre.length + post.length) * cw + fw, an = a || "middle", x0 = an === "middle" ? x - W / 2 : an === "end" ? x - W : x, fx = x0 + pre.length * cw + fw / 2;
+    return <g>
+      {pre ? <text x={x0} y={y} className={cls} style={{ fontSize: z }} textAnchor="start">{pre}</text> : null}
+      <text x={fx} y={y - z * .5} className={cls} style={{ fontSize: z * .85 }} textAnchor="middle">{m[1]}</text>
+      <rect x={fx - fw / 2 + z * .12} y={y - z * .38} width={fw - z * .24} height={Math.max(1, z * .08)} className={cls} />
+      <text x={fx} y={y + z * .45} className={cls} style={{ fontSize: z * .85 }} textAnchor="middle">{m[2]}</text>
+      {post ? <text x={x0 + pre.length * cw + fw} y={y} className={cls} style={{ fontSize: z }} textAnchor="start">{post}</text> : null}
+    </g>;
+  };
   const Tile = ({ x, y, w, h, r, c, solid, soft, dash, label, ls, lc }) => <g>
     <rect x={x} y={y} width={w} height={h} rx={r == null ? 6 : r} className={solid ? "f" + c : soft ? "t" + c : dash ? "s" + c + " dash" : "tile"} />
     {label != null ? <Txt x={x + w / 2} y={y + h / 2 + (ls || 12) * .36} s={ls || 12} c={solid ? "inv" : lc || (soft || dash ? c : null)}>{label}</Txt> : null}
@@ -248,7 +262,7 @@ var TIP_ART = (function () {
         </g>; })}
       <Txt x={256} y={38} s={10}>positive test</Txt>
       <Show t0={.5}><Txt x={256} y={62} s={13} c={1} b>ℙ(A | +)</Txt></Show>
-      <Show t0={.64}><Chip x={230} y={72} w={52} h={20} c={2} solid label="3 / 9" ls={11} /></Show>
+      <Show t0={.64}><Chip x={230} y={72} w={52} h={20} c={2} solid label="3/9" ls={11} /></Show>
       <Hit x={256} y={82} at={.64} r={20} />
     </Act>;
   };
@@ -1115,7 +1129,7 @@ var TIP_ART = (function () {
     {["Maths", "Prob", "Market", "News"].map((t, i) => <g key={i}><Tile x={34 + i * 66} y={40} w={56} h={26} label={t} ls={9} />
       <Show t0={.1 + i * .14}><Tile x={34 + i * 66} y={40} w={56} h={26} c={3} soft label={t} ls={9} /></Show>
       {i < 3 ? <Draw d={`M${92 + i * 66},53H${98 + i * 66}`} c={1} t0={.1 + i * .14} t1={.16 + i * .14} /> : null}</g>)}
-    <Show t0={.62}><Chip x={128} y={78} w={64} h={22} c={2} solid label="78 / 100" ls={10} /></Show><Hit x={160} y={89} at={.64} r={20} />
+    <Show t0={.62}><Chip x={128} y={78} w={64} h={22} c={2} solid label="78 of 100" ls={10} /></Show><Hit x={160} y={89} at={.64} r={20} />
   </Act>;
   S.daily = () => <Act>
     {Array.from({ length: 7 }, (_, i) => <g key={i}><Tile x={46 + i * 34} y={30} w={28} h={28} r={7} label={["M", "T", "W", "T", "F", "S", "S"][i]} ls={10} />

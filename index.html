@@ -26,6 +26,7 @@ try{document.documentElement.setAttribute('data-size',localStorage.getItem('tip-
 <link rel="stylesheet" href="anim.css">
 <link rel="stylesheet" href="tip.css">
 <link rel="stylesheet" href="motion.css">
+<link rel="stylesheet" href="lesson.css">
 <link rel="stylesheet" href="auth.css">
 </head>
 <body>
@@ -47,5 +48,6 @@ if ('serviceWorker' in navigator && /(^|\.)github\.io$|^localhost$|^127\.0\.0\.1
 function chk(){var v=!!document.querySelector(".au,.au-splash")||document.documentElement.getAttribute("data-theme")==="dark";if(v!==last){last=v;try{set(v)}catch(e){}}}
 new MutationObserver(chk).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["data-theme"]});document.addEventListener("DOMContentLoaded",chk);window.addEventListener("load",function(){last=null;chk()});})();
 </script>
+<script src="frac.js"></script>
 </body>
 </html>

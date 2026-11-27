@@ -35,7 +35,7 @@
     fields: [
       { key: "count", label: "Days", type: "num", min: 20, max: 120 },
       { key: "time", label: "Time per day", type: "num", min: 2, max: 20, unit: "s" },
-      { key: "level", label: "Signals", type: "sel", choices: [{ value: 1, label: "Strong (90/70/30/10%), up to 2" }, { value: 2, label: "Strong, up to 3" }, { value: 3, label: "Weak (75/60/40/25%), up to 3" }] },
+      { key: "level", label: "Signals", type: "sel", choices: [{ value: 1, label: "Strong (90, 70, 30 or 10%), up to 2" }, { value: 2, label: "Strong, up to 3" }, { value: 3, label: "Weak (75/60/40/25%), up to 3" }] },
     ],
     presets: { Easy: { count: 30, time: 8, level: 1 }, Medium: { count: 50, time: 5, level: 2 }, Hard: { count: 70, time: 4, level: 3 } },
     note: "Several symbols combine: multiply their odds. Even a perfect forecaster is 'wrong' about the weather sometimes; only your choice is scored.",

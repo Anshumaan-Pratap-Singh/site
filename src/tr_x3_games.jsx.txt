@@ -145,7 +145,7 @@
     const next = () => { if (i + 1 >= s.bets) { setDone(true); return; } setI(i + 1); setBet(mk()); setFb(null); };
     useEffect(() => { const h = e => { if (typing(e)) return; if (!fb && e.key === "Enter") { e.preventDefault(); place(frac); } else if (!fb && (e.key === "p" || e.key === "P")) place(0); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); });
     const res = useMemo(() => { if (!done) return null; const gap = log.reduce((a, x) => a + Math.abs(x.f - x.k), 0) / log.length; const goodPass = log.filter(x => x.k === 0 && x.f === 0).length, bad = log.filter(x => x.k === 0).length;
-      return { pnl: Math.round((bank - s.bankroll) * 100) / 100, score: Math.round((bank - s.bankroll) * 100) / 100, kellyPnl: Math.round((kBank - s.bankroll) * 100) / 100, gap: Math.round(gap * 1000) / 10, passes: goodPass + "/" + bad }; }, [done]);
+      return { pnl: Math.round((bank - s.bankroll) * 100) / 100, score: Math.round((bank - s.bankroll) * 100) / 100, kellyPnl: Math.round((kBank - s.bankroll) * 100) / 100, gap: Math.round(gap * 1000) / 10, passes: goodPass + " of " + bad }; }, [done]);
     Jt(done, res, onFinish);
     if (done && res) return <K.Result headline={K.money(res.pnl, 2) + " P&L"} sub={`Bankroll ${K.money(bank, 2)} from ${K.money(s.bankroll, 0)}`} onRestart={onRestart}
       metrics={[{ label: "Your P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" }, { label: "Kelly on the same bets", value: K.money(res.kellyPnl, 2), tone: res.kellyPnl >= 0 ? "up" : "dn" },
@@ -191,7 +191,7 @@
     const res = useMemo(() => { if (!done) return null; const sc = Math.round(out.reduce((a, x) => a + x.s, 0) / out.length); return { score: sc, stages: out.map(x => [x.id, x.s]), pnl: out.filter(x => x.r.pnl != null).reduce((a, x) => a + x.r.pnl, 0), mins: Math.round((Date.now() - t0) / 6000) / 10 }; }, [done]);
     Jt(done, res, onFinish);
     if (done && res) return <K.Result headline={res.score + " / 100"} sub={`Four rounds in ${res.mins} minutes`} ring={res.score / 100} ringLabel={res.score + ""} onRestart={onRestart}
-      metrics={out.map(x => ({ label: x.name, value: x.s + " / 100", tone: x.s >= 70 ? "up" : x.s < 45 ? "dn" : "" }))}
+      metrics={out.map(x => ({ label: x.name, value: x.s + " of 100", tone: x.s >= 70 ? "up" : x.s < 45 ? "dn" : "" }))}
       notes="Round scores: mental maths and probability from accuracy and how many you reached; market making and news from how close your quotes were to fair (quote error), the share of quotes you made in time, and a bonus for a positive P&L. The overall score is the average." />;
     if (!ready) return (
       <div className="card sd-gate">

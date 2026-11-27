@@ -39,7 +39,7 @@ var TIP_FIRMINFO = (function () {
           links: [{ go: ["trainers", "seq"], label: "Sequence Trainer" }] },
         { name: "Beat the Odds", detail: "Probability and expected-value questions, about 90 seconds each; pick the closest of the options.",
           links: [{ go: ["trainers", "bto"], label: "Beat the Odds" }, { go: ["trainers", "prob"], label: "Probability Trainer" }] },
-        { name: "Likelihood List, Intervals, Orderbooks", detail: "Modules reported for the 2026/27 invites: rank outcomes by probability, give tight ranges that contain the answer, and read order books.",
+        { name: "Likelihood List, Intervals, Orderbooks", detail: "Modules reported for the 2026–27 invites: rank outcomes by probability, give tight ranges that contain the answer, and read order books.",
           links: [{ go: ["trainers", "likelihood"], label: "Likelihood List" }, { go: ["trainers", "intervals"], label: "Intervals" }, { go: ["trainers", "orderbook"], label: "Orderbooks" }] },
         { name: "Zap-N and Zap-Q", detail: "Zap-N is a set of short cognitive games (memory, reaction, planning, risk), about an hour in total. Zap-Q is a personality questionnaire.",
           links: [{ go: ["trainers"], label: "Cognitive games" }] },

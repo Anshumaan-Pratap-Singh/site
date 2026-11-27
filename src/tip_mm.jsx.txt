@@ -344,7 +344,7 @@ var TIP_MM = (function () {
     return (
       <div className="tip-stats tip-stats4">
         <div className="tip-stat"><span>Average P&L</span><b className={avg >= 0 ? "up" : "dn"}>{K.signed(avg, 2)}</b><em>per session</em></div>
-        <div className="tip-stat"><span>Winning sessions</span><b>{Math.round(win / n * 100)}%</b><em>{win}/{n}</em></div>
+        <div className="tip-stat"><span>Winning sessions</span><b>{Math.round(win / n * 100)}%</b><em>{win} of {n}</em></div>
         <div className="tip-stat"><span>Quote error</span><b>{qe.length ? (qe.reduce((a, p) => a + p.quoteErr, 0) / qe.length).toFixed(2) : "—"}</b><em>avg |mid − fair|</em></div>
         <div className="tip-stat"><span>Sessions</span><b>{n}</b><em>played</em></div>
       </div>

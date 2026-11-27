@@ -1,4 +1,4 @@
-/* Optiver online-assessment modules (2026/27 invites): Beat the Odds, Likelihood List, Intervals and Orderbooks.
+/* Optiver online-assessment modules (2026–27 invites): Beat the Odds, Likelihood List, Intervals and Orderbooks.
    Formats follow candidate reports (TraderMaths and QuantVault, Nov 2026): Beat the Odds is about 90 s per question
    with a closest-answer format, Likelihood List about 90 s per ranking, Intervals 40 to 60 s with tight ranges
    scoring best, Orderbooks 20 questions in 8 minutes. Optiver does not publish its scoring, so ours is stated in each note. */
@@ -113,7 +113,7 @@
   }
   TIP_TRAINERS.register(trainer({
     id: "likelihood", name: "Likelihood List",
-    blurb: "New in Optiver's 2026/27 assessment: rank a short list of outcomes from most to least likely, from dice, coins, cards or a small table of past results. Only the full order counts.",
+    blurb: "New in Optiver's 2026–27 assessment: rank a short list of outcomes from most to least likely, from dice, coins, cards or a small table of past results. Only the full order counts.",
     fields: [
       { key: "count", label: "Rankings", type: "num", min: 3, max: 20 },
       { key: "time", label: "Time per ranking", type: "num", min: 30, max: 180, unit: "s" },
@@ -154,7 +154,7 @@
   }
   TIP_TRAINERS.register(trainer({
     id: "intervals", name: "Intervals",
-    blurb: "New in Optiver's 2026/27 assessment: bound a probability or expected value with a low and a high. Ranges that contain the answer score more the tighter they are; ranges that miss score nothing.",
+    blurb: "New in Optiver's 2026–27 assessment: bound a probability or expected value with a low and a high. Ranges that contain the answer score more the tighter they are; ranges that miss score nothing.",
     fields: [
       { key: "count", label: "Questions", type: "num", min: 5, max: 40 },
       { key: "time", label: "Time per question", type: "num", min: 20, max: 120, unit: "s" },
@@ -162,7 +162,7 @@
     presets: { Easy: { count: 8, time: 75 }, Medium: { count: 15, time: 60 }, Hard: { count: 25, time: 40 } },
     note: "Interval points: 10 × (1 − width / scale), at least 1 if the answer is inside, where the scale is 1 for probabilities and the answer's size otherwise. A miss scores 0.",
   }, { gen: genInt, count: s => s.count, perQSecs: s => s.time, always: true,
-    summary: hist => { const p = hist.reduce((a, h) => a + (h.ipts || 0), 0); return [{ label: "Interval points", value: p + " / " + hist.length * 10, key: "ipts", raw: p, sub: "tight and right scores best" }]; },
+    summary: hist => { const p = hist.reduce((a, h) => a + (h.ipts || 0), 0); return [{ label: "Interval points", value: p + " of " + hist.length * 10, key: "ipts", raw: p, sub: "tight and right scores best" }]; },
     onRecord: (q, raw) => ({ ipts: q.pts ? q.pts(raw) : 0 }) }));
 
   /* ============ Orderbooks: read a book, pick the profitable trade ============ */
@@ -222,7 +222,7 @@
   }
   TIP_TRAINERS.register(trainer({
     id: "orderbook", name: "Orderbooks",
-    blurb: "New in Optiver's 2026/27 assessment: read a simplified bid and ask book and pick the profitable trade, the cost of sweeping the book or the P&L of clearing inventory. The real module is 20 questions in 8 minutes.",
+    blurb: "New in Optiver's 2026–27 assessment: read a simplified bid and ask book and pick the profitable trade, the cost of sweeping the book or the P&L of clearing inventory. The real module is 20 questions in 8 minutes.",
     fields: [
       { key: "count", label: "Questions", type: "num", min: 5, max: 40 },
       { key: "secs", label: "Session length", type: "num", min: 60, max: 900, unit: "s" },

@@ -29,7 +29,7 @@ var TIP_READY = (function () {
   const MM = "Market maker", PT = "Prop trading", HF = "Hedge fund";
   const F = (id, name, type, process, w) => ({ id, name, type, process, w });
   const FIRMS = [
-    F("optiver", "Optiver", MM, ["80 in 8 mental maths", "NumberLogic sequences", "Beat the Odds probability", "Likelihood list, Intervals and Orderbooks (2026/27)", "Zap-N cognitive games", "Interviews with market-making games"], { arith: 20, seq: 15, prob: 20, cog: 15, mm: 15, brain: 10, bet: 5 }),
+    F("optiver", "Optiver", MM, ["80 in 8 mental maths", "NumberLogic sequences", "Beat the Odds probability", "Likelihood list, Intervals and Orderbooks (2026–27)", "Zap-N cognitive games", "Interviews with market-making games"], { arith: 20, seq: 15, prob: 20, cog: 15, mm: 15, brain: 10, bet: 5 }),
     F("imc", "IMC", MM, ["SHL test: personality and inductive reasoning (2027 cycle); NeurOlympics games in earlier cycles", "Recorded video interview", "Technical interviews: brainteasers and probability", "Superday: probability, game theory, Fermi estimation"], { reason: 20, cog: 10, prob: 20, brain: 20, est: 10, mm: 15, sim: 5 }),
     F("flow", "Flow Traders", MM, ["Mental maths and sequences online assessment", "ETF case study", "Interviews"], { arith: 25, seq: 20, sim: 20, mm: 15, prob: 10, brain: 10 }),
     F("akuna", "Akuna Capital", MM, ["80-in-8 style maths test", "Sequences", "VidCruiter game", "Trader interviews"], { arith: 25, seq: 20, cog: 10, prob: 20, mm: 15, brain: 10 }),
@@ -283,7 +283,7 @@ var TIP_READY = (function () {
         <div className="row tm-titlebar"><button className="ghost sm" onClick={() => go("firms")}>{TH(se, { name: "left" })}All firms</button><Logo f={f} size={34} /><h2 className="tm-gname">{f.name}</h2><span className="sp"></span><Star on={star} onClick={toggle} name={f.name} /></div>
         <div className="tip-grid rd-grid">
           <section className="card tip-panel">
-            <div className="rd-top"><Ring v={s} size={84} /><div><div className="stat-lbl">Readiness</div><div className="stat-big">{s}<span className="muted" style={{ fontSize: 16 }}> / 100</span></div>
+            <div className="rd-top"><Ring v={s} size={84} /><div><div className="stat-lbl">Readiness</div><div className="stat-big">{s}<span className="muted" style={{ fontSize: 16 }}> of 100</span></div>
               <div className={"small " + (d > 0 ? "pos" : d < 0 ? "neg" : "muted")}>{trendTxt(d)} · {n} result{n === 1 ? "" : "s"} counted</div></div></div>
             <div className="tip-lbl">By skill area</div>
             <div className="rd-stages">{parts.map(p => (
@@ -423,7 +423,7 @@ var TIP_READY = (function () {
       return { run: r && r.day === day ? r : null, save: x => tipUpdate(G => { G[RUN] = { day, ...x }; }) }; }, count: () => 20, sessionSecs: () => 300, seed: () => seedOf(dkey(Date.now())), fast: true, okMs: 300, badMs: 1200,
     onRecord: q => ({ part: q.part }),
     summary: hist => { const parts = {}; Object.keys(PART).forEach(k => { const L = hist.filter(h => h.part === k); parts[k] = [L.filter(h => h.ok).length, L.length]; });
-      return [{ label: "By part", value: Object.keys(PART).map(k => parts[k][0] + "/" + parts[k][1]).join(" · "), sub: Object.values(PART).join(" · "), key: "parts", raw: parts }]; } });
+      return [{ label: "By part", value: Object.keys(PART).map(k => parts[k][0] + " of " + parts[k][1]).join(" · "), sub: Object.values(PART).join(" · "), key: "parts", raw: parts }]; } });
   daily.extraStats = plays => { const s = streakOf(plays); return (
     <div className="tip-stats tip-stats4">
       <div className="tip-stat"><span>Streak</span><b>{s.cur}</b><em>day{s.cur === 1 ? "" : "s"} in a row</em></div>
