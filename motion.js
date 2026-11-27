@@ -271,3 +271,43 @@
     first.observe(document.body, { childList: true, subtree: true });
   }
 })();
+
+/* ---------- SVG (SMIL) animations (27 Nov) ----------
+   Lessons, Trainers and Market Games cards carry ~900 <animate> elements in their illustrations. All
+   running at once made those pages, and opening the formula sheet, lag on phones. Card art (.tart) now
+   stays still and plays while the mouse is over its card; any other animated <svg> pauses off screen. */
+(function () {
+  var io = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      try { if (e.isIntersecting) e.target.unpauseAnimations(); else e.target.pauseAnimations(); } catch (_) { }
+    });
+  }, { rootMargin: '100px' }) : null;
+  var seen = new WeakSet();
+  function scan(root) {
+    var list = root.querySelectorAll('animate, animateTransform, animateMotion, set');
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i].ownerSVGElement;
+      while (s && s.ownerSVGElement) s = s.ownerSVGElement;
+      if (!s || seen.has(s)) continue;
+      seen.add(s);
+      try { s.pauseAnimations(); } catch (_) { }
+      if (!s.closest('.tart') && io) io.observe(s);
+    }
+  }
+  var pending = false;
+  new MutationObserver(function () {
+    if (pending) return; pending = true;
+    requestAnimationFrame(function () { pending = false; scan(document); });
+  }).observe(document.documentElement, { childList: true, subtree: true });
+  scan(document);
+  function card(e) { var c = e.target.closest && e.target.closest('.tcard'); return c && c.querySelector('.tart svg'); }
+  document.addEventListener('pointerover', function (e) {
+    if (e.pointerType !== 'mouse') return;
+    var s = card(e); if (s) try { s.unpauseAnimations(); } catch (_) { }
+  });
+  document.addEventListener('pointerout', function (e) {
+    if (e.pointerType !== 'mouse') return;
+    var s = card(e), c = e.target.closest('.tcard');
+    if (s && !(e.relatedTarget && c.contains(e.relatedTarget))) try { s.pauseAnimations(); } catch (_) { }
+  });
+})();

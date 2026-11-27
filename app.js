@@ -3683,7 +3683,7 @@ var TIP_GAMES = (function() {
         sub: `${res.correct} of ${res.total} calls right`,
         ring: res.total ? res.correct / res.total : 0,
         onRestart,
-        metrics: [{ label: "Points", value: res.score, tone: res.score >= 0 ? "up" : "dn" }, { label: "Right calls", value: `${res.correct}/${res.total}` }],
+        metrics: [{ label: "Points", value: res.score, tone: res.score >= 0 ? "up" : "dn" }, { label: "Right calls", value: `${res.correct} of ${res.total}` }],
         review: hist,
         notes: "Fair value of the sum = cards shown + the average of the unseen 52-card deck for each card still face down. Trade the desk whose bid is above fair or whose offer is below it; otherwise pass."
       }
@@ -3747,7 +3747,7 @@ var TIP_GAMES = (function() {
         sub: `${res.correct} of ${res.total} boards read right`,
         ring: res.total ? res.correct / res.total : 0,
         onRestart,
-        metrics: [{ label: "P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" }, { label: "Right calls", value: `${res.correct}/${res.total}` }],
+        metrics: [{ label: "P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" }, { label: "Right calls", value: `${res.correct} of ${res.total}` }],
         review: hist,
         notes: "Add 1/odds across the best price for every outcome. Below 100% there is an arbitrage: stake in proportion to 1/odds and every outcome pays budget ÷ total. At 100% or more, betting all outcomes loses the overround."
       }
@@ -3876,7 +3876,7 @@ var TIP_GAMES = (function() {
         sub: `${K.signed(res.pnl, 2)} from ${K.money(s.bankroll)} · ${res.kellyOk} of ${res.total} stakes within range of Kelly`,
         ring: res.total ? res.kellyOk / res.total : 0,
         onRestart,
-        metrics: [{ label: "P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" }, { label: "Near-Kelly stakes", value: `${res.kellyOk}/${res.total}` }],
+        metrics: [{ label: "P&L", value: K.money(res.pnl, 2), tone: res.pnl >= 0 ? "up" : "dn" }, { label: "Near-Kelly stakes", value: `${res.kellyOk} of ${res.total}` }],
         review: hist,
         notes: "Count the cards left above and below the current one, take the side with the higher probability, and stake the Kelly fraction p − (1 − p)/b. Ties lose."
       }
@@ -8095,7 +8095,7 @@ var TIP_MMT = (function() {
         sub: `${res.correct} of ${res.total} solved in the minimum number of moves`,
         ring: res.total ? res.correct / res.total : 0,
         onRestart,
-        metrics: [{ label: "Score", value: res.score, sub: "3 per puzzle − 1 per extra move" }, { label: "Perfect solutions", value: `${res.correct}/${res.total}` }, { label: "Avg planning time", value: res.plan.toFixed(1) + "s" }],
+        metrics: [{ label: "Score", value: res.score, sub: "3 per puzzle − 1 per extra move" }, { label: "Perfect solutions", value: `${res.correct} of ${res.total}` }, { label: "Avg planning time", value: res.plan.toFixed(1) + "s" }],
         review: hist,
         notes: "Work from the bottom of the target up: which block must end at the bottom of each column, and what has to move out of its way first?"
       }
@@ -13936,7 +13936,10 @@ var TIP_LEARN = (function() {
   const sheetCache = new Map();
   const sheetHtml = (l) => {
     let h = sheetCache.get(l);
-    if (h == null) { h = bg(l, true); sheetCache.set(l, h); }
+    if (h == null) {
+      try { h = l6.renderToString(tipFracTex(l), { displayMode: true, throwOnError: false, strict: "ignore", trust: false, output: "html" }); } catch (e) { h = bg(l, true); }
+      sheetCache.set(l, h);
+    }
     return h;
   };
   try {
@@ -13947,7 +13950,7 @@ var TIP_LEARN = (function() {
   } catch (e) {
   }
   const SheetGrid = R.memo(function SheetGrid() {
-    return TH("div", { className: "tip-sheet-grid" }, sheetLines().map((s) => TH("div", { key: s.title, className: "tip-sheet-sec" }, TH("div", { className: "tip-lbl" }, s.title), s.lines.map((l, k) => TH("div", { key: k, className: "tip-sheet-l", dangerouslySetInnerHTML: { __html: sheetHtml(l) } })))));
+    return TH("div", { className: "tip-sheet-grid" }, sheetLines().map((s) => TH("div", { key: s.title, className: "tip-sheet-sec" }, TH("div", { className: "tip-lbl" }, s.title), s.lines.map((l, k) => TH("div", { key: k, className: "tip-sheet-l", role: "math", "aria-label": l, dangerouslySetInnerHTML: { __html: sheetHtml(l) } })))));
   });
   const tidy = (t) => String(t || "").replace(/\s*\n\s*(?=\$\$)/g, " ").replace(/(\$\$[^$]+\$\$)\s*\n\s*/g, "$1");
   const ML = (t, as, cls) => M(tidy(t), as, cls);

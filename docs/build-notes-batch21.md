@@ -27,3 +27,10 @@ Trading Game C (card timeline + position dial), Market Making Dice D (focus, 3D 
 - Lessons > Formula sheet rendered all 70 KaTeX lines on every open, and motion.js slid the freshly mounted grid (about 0.8 s at 4× CPU throttle).
 - Now: each line is rendered to HTML once (`bg(tex, true)`, cached, warmed with requestIdleCallback); the grid is mounted hidden when the page is idle and stays mounted; open/close is a CSS `grid-template-rows` transition on `.tip-sheet-wrap` (tip.css). `.tip-sheet-grid` removed from motion.js accordion list.
 - Toggle now about 0.1 s at 4× throttle (about 8× faster).
+
+## 1.2.3: the real cause of the lag
+- Lessons (and Trainers, Market Games) cards hold ~930 SMIL `<animate>` elements in their `.tart` art. All ran all the time: about 3,000 style recalcs and 20 layouts per second on an idle Lessons page, which made scrolling and opening the formula sheet lag.
+- motion.js now pauses every animated `<svg>`. Card art plays only while the mouse is over its card (desktop); on phones it stays still. Other animated SVGs pause when off screen (IntersectionObserver).
+- Idle Lessons page: 0 recalcs, 0 layouts (was ~3,000 / 20 per second).
+- Formula sheet: display toggle + short fade, `content-visibility: auto` on sections, HTML-only KaTeX (role="math", aria-label = TeX).
+- Result screens: "Right calls", "Near-Kelly stakes", "Perfect solutions" read "x of y" (no stacked fraction).
