@@ -1,0 +1,191 @@
+/* Accounts and cloud sync plumbing (27 Nov 2026). Bundled to cloud.js (see docs/build-notes.md, "Accounts and sync").
+   Outside Claude, a signed-in Firebase account becomes the app's database: the storage layer in app.js (n5) asks
+   window.tipCloud.conn() for { uid, db } and uses db.doc(path).get/set/delete exactly as it uses Claude's database.
+   Data lives in Firestore at users/{uid}/docs/{name} as { json, ts }.
+   There are no sign-in screens yet: until someone signs in through window.tipCloud, conn() returns null and the app
+   keeps saving on this device as before. Inside Claude (window.claude present) none of this runs. */
+import { initializeApp } from "firebase/app";
+import {
+  initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, onAuthStateChanged,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendEmailVerification, sendPasswordResetEmail,
+  GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCredential, signOut, reload
+} from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, runTransaction } from "firebase/firestore/lite";
+
+const CONFIG = {
+  apiKey: "AIzaSyCKMStv9jPN_1xMAMXvIhsleYg-nBcfKBU",
+  authDomain: "trading-practice-aps.firebaseapp.com",
+  projectId: "trading-practice-aps",
+  storageBucket: "trading-practice-aps.firebasestorage.app",
+  messagingSenderId: "671680895091",
+  appId: "1:671680895091:web:2fdf9d00a947191c0bf206"
+};
+const LOCAL = "tradermath:";                                   /* app.js mirrors progress, drafts and packs here */
+const SMALL = /^(tip-lessons-|tip-seen-|tip-ready-stars$)/;    /* per-device extras that also sync */
+
+(function () {
+  if (window.claude) return;
+  const app = initializeApp(CONFIG);
+  const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence], popupRedirectResolver: browserPopupRedirectResolver });
+  const fs = getFirestore(app);
+  let user = null, known = false;
+  const waiters = [], listeners = new Set();
+  const usable = u => !!u && (u.emailVerified || !u.providerData.some(p => p.providerId === "password"));
+  getRedirectResult(auth).catch(() => {});
+  onAuthStateChanged(auth, u => {
+    user = u || null; known = true;
+    waiters.splice(0).forEach(f => f());
+    listeners.forEach(f => { try { f(user); } catch (e) {} });
+    if (usable(user)) { pullSmall(); resync(); }
+  });
+  const ready = () => known ? Promise.resolve() : new Promise(r => { waiters.push(r); setTimeout(r, 8000); });
+
+  /* ---------- the database adapter app.js uses ---------- */
+  const seen = {};                                             /* last ts this device read or wrote, per document */
+  const ref = name => doc(fs, "users", user.uid, "docs", name);
+  const merge = (mine, theirs) => (window.__tipMerge ? window.__tipMerge(mine, theirs) : mine);
+  async function write(name, data) {
+    if (name !== "progress") { const ts = Date.now(); await setDoc(ref(name), { json: JSON.stringify(data), ts }); seen[name] = ts; return; }
+    /* progress: if another device saved since this one last looked, merge its copy in instead of overwriting it */
+    await runTransaction(fs, async tx => {
+      const s = await tx.get(ref(name));
+      let out = data;
+      if (s.exists() && (s.data().ts || 0) > (seen[name] || 0)) out = merge(data, JSON.parse(s.data().json));
+      const ts = Date.now();
+      tx.set(ref(name), { json: JSON.stringify(out), ts });
+      seen[name] = ts;
+    });
+  }
+  const db = {
+    doc(path) {
+      const name = String(path).split("/").pop();
+      return {
+        async get() {
+          const s = await getDoc(ref(name));
+          if (s.exists()) seen[name] = s.data().ts || 0;
+          return { exists: s.exists(), data: () => (s.exists() ? JSON.parse(s.data().json) : null) };
+        },
+        set: d => write(name, d),
+        delete: () => deleteDoc(ref(name))
+      };
+    }
+  };
+
+  /* back online or back in the app: send this device's latest progress (merged with the account's copy) */
+  let busy = false;
+  async function resync() {
+    if (busy || !usable(user) || navigator.onLine === false) return;
+    busy = true;
+    try { const v = localStorage.getItem(LOCAL + "progress"); if (v) await write("progress", JSON.parse(v)); } catch (e) {}
+    try { await pushSmall(); } catch (e) {}
+    busy = false;
+  }
+  window.addEventListener("online", resync);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") resync(); });
+
+  /* ---------- small per-device keys (lesson ticks, stars, recently seen) ---------- */
+  const rawSet = Storage.prototype.setItem;
+  let stamps = {}, timer = null;
+  try { stamps = JSON.parse(localStorage.getItem("tip-cloud-stamps") || "{}"); } catch (e) {}
+  Storage.prototype.setItem = function (k, v) {
+    rawSet.call(this, k, v);
+    if (this === window.localStorage && SMALL.test(k) && usable(user)) {
+      stamps[k] = Date.now(); rawSet.call(localStorage, "tip-cloud-stamps", JSON.stringify(stamps));
+      clearTimeout(timer); timer = setTimeout(() => pushSmall().catch(() => {}), 1500);
+    }
+  };
+  const joinVal = (a, b) => {
+    try {
+      const x = JSON.parse(a), y = JSON.parse(b);
+      if (Array.isArray(x) && Array.isArray(y)) return JSON.stringify([...new Set([...x, ...y])]);
+      if (x && y && typeof x === "object" && typeof y === "object") {
+        const o = { ...x };
+        for (const k in y) o[k] = typeof o[k] === "number" && typeof y[k] === "number" ? Math.max(o[k], y[k]) : (o[k] == null ? y[k] : o[k]);
+        return JSON.stringify(o);
+      }
+    } catch (e) {}
+    return null;
+  };
+  function localSmall() {
+    const out = {};
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (SMALL.test(k)) out[k] = { v: localStorage.getItem(k), t: stamps[k] || 0 }; }
+    return out;
+  }
+  async function pushSmall() {
+    if (!usable(user)) return;
+    await runTransaction(fs, async tx => {
+      const s = await tx.get(ref("small"));
+      const remote = s.exists() ? JSON.parse(s.data().json) : {};
+      const mine = localSmall(), out = { ...remote };
+      for (const k in mine) {
+        const r = remote[k];
+        if (!r) out[k] = mine[k];
+        else { const j = joinVal(mine[k].v, r.v); out[k] = j != null ? { v: j, t: Math.max(mine[k].t, r.t) } : (mine[k].t >= r.t ? mine[k] : r); }
+      }
+      tx.set(ref("small"), { json: JSON.stringify(out), ts: Date.now() });
+    });
+  }
+  async function pullSmall() {
+    try {
+      const s = await getDoc(ref("small"));
+      if (!s.exists()) return pushSmall();
+      const remote = JSON.parse(s.data().json);
+      for (const k in remote) {
+        if (!SMALL.test(k)) continue;
+        const here = localStorage.getItem(k);
+        const v = here == null ? remote[k].v : (joinVal(here, remote[k].v) ?? ((stamps[k] || 0) >= remote[k].t ? here : remote[k].v));
+        if (v !== here) rawSet.call(localStorage, k, v);
+        stamps[k] = Math.max(stamps[k] || 0, remote[k].t || 0);
+      }
+      rawSet.call(localStorage, "tip-cloud-stamps", JSON.stringify(stamps));
+      await pushSmall();
+    } catch (e) {}
+  }
+
+  /* ---------- sign-in actions, for the sign-in screens to call (none exist yet) ---------- */
+  function google() {
+    if (window.WBAndroid && window.WBAndroid.googleSignIn) {
+      return new Promise((res, rej) => {
+        window.wbGoogleIdToken = tok => signInWithCredential(auth, GoogleAuthProvider.credential(tok)).then(res, rej);
+        window.wbGoogleError = m => rej(new Error(m || "cancelled"));
+        window.WBAndroid.googleSignIn();
+      });
+    }
+    const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: "select_account" });
+    return signInWithPopup(auth, p).catch(e => {
+      if (e && (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment")) return signInWithRedirect(auth, p);
+      throw e;
+    });
+  }
+  async function out() {
+    const uid = user && user.uid;
+    /* this device's copy of the account's data goes with the account */
+    try {
+      Object.keys(localStorage).filter(k => k.startsWith(LOCAL) || SMALL.test(k) || k === "tip-cloud-stamps").forEach(k => localStorage.removeItem(k));
+    } catch (e) {}
+    await signOut(auth);
+    if (uid) location.reload();
+  }
+
+  window.tipCloud = {
+    get on() { return usable(user); },
+    get user() { return user; },
+    needsVerify: () => !!user && !usable(user),
+    ready,
+    onChange: f => { listeners.add(f); return () => listeners.delete(f); },
+    async conn() { await ready(); return usable(user) ? { uid: user.uid, db } : null; },
+    signIn: (email, pw) => signInWithEmailAndPassword(auth, email.trim(), pw),
+    async signUp(name, email, pw) {
+      const c = await createUserWithEmailAndPassword(auth, email.trim(), pw);
+      if (name) await updateProfile(c.user, { displayName: name.trim() });
+      await sendEmailVerification(c.user);
+      return c;
+    },
+    resetPassword: email => sendPasswordResetEmail(auth, email.trim()),
+    resendVerification: () => sendEmailVerification(auth.currentUser),
+    async checkVerified() { await reload(auth.currentUser); user = auth.currentUser; return usable(user); },
+    google,
+    signOut: out,
+    resync
+  };
+})();

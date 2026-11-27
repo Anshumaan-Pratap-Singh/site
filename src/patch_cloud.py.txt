@@ -1,0 +1,24 @@
+"""Accounts and sync plumbing (27 Nov 2026): hooks app.js's storage layer (n5) to window.tipCloud (cloud.js).
+The same patches are in build.py (section 9). Because the live app.js has patches that build.py does not reproduce
+(see build notes), this script applies them to the live app.js in place:  python3 src/patch_cloud.py.txt [app.js]"""
+import sys, pathlib
+PATCHES = [
+    # a signed-in account (cloud.js) is the database outside Claude
+    ('try{if(window.claude&&typeof window.claude.use=="function"){',
+     'try{if(!window.claude&&window.tipCloud){let Q=await window.tipCloud.conn();Q&&(a=Q.uid,t=Q.db)}else if(window.claude&&typeof window.claude.use=="function"){'),
+    # loading: merge this device's copy into the account's copy (work done offline or before signing in is kept)
+    ('d=d?JSON.parse(JSON.stringify(d)):null,',
+     'd=d?JSON.parse(JSON.stringify(d)):null,window.__tipMg=!1,d&&l.progress&&!window.claude&&window.tipCloud&&(()=>{let X=i5(d,l.progress),Y={...X,updated:d.updated};JSON.stringify(Y)!==JSON.stringify(d)&&(d=X,window.__tipMg=!0)})(),'),
+    ('w&&(g.saveProgress(g.data.progress)', '(w||window.__tipMg)&&(g.saveProgress(g.data.progress)'),
+    # cloud.js merges another device's copy at save time with the same function the backup import uses
+    ('function i5(e,t){', 'window.__tipMerge=(e,t)=>i5(e,t);function i5(e,t){'),
+]
+if __name__ == '__main__':
+    p = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else 'app.js')
+    s = p.read_text(encoding='utf8')
+    for old, new in PATCHES:
+        n = s.count(old)
+        if new in s: print('already applied:', old[:50]); continue
+        if n != 1: sys.exit(f'expected 1 match, found {n}: {old[:80]!r}')
+        s = s.replace(old, new)
+    p.write_text(s, encoding='utf8'); print('patched', p)

@@ -18,6 +18,18 @@ import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 import androidx.core.content.FileProvider;
+import androidx.credentials.Credential;
+import androidx.credentials.CredentialManager;
+import androidx.credentials.CredentialManagerCallback;
+import androidx.credentials.CustomCredential;
+import androidx.credentials.GetCredentialRequest;
+import androidx.credentials.GetCredentialResponse;
+import androidx.credentials.exceptions.GetCredentialCancellationException;
+import androidx.credentials.exceptions.GetCredentialException;
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
+import org.json.JSONObject;
+import java.util.concurrent.Executors;
 import androidx.webkit.WebViewAssetLoader;
 
 import java.io.File;
@@ -173,6 +185,36 @@ public class MainActivity extends Activity {
                 catch (ActivityNotFoundException e) { pendingData = null; Toast.makeText(MainActivity.this, "No app can save files", Toast.LENGTH_LONG).show(); }
             });
         }
+
+        /* Google sign-in (27 Nov): Google blocks its sign-in page inside a WebView, so Android's own account picker
+           (Credential Manager) gets a Google ID token and hands it to the page, which signs in to Firebase with it. */
+        @JavascriptInterface
+        public void googleSignIn() {
+            runOnUiThread(() -> {
+                GetSignInWithGoogleOption opt = new GetSignInWithGoogleOption.Builder(WEB_CLIENT_ID).build();
+                GetCredentialRequest req = new GetCredentialRequest.Builder().addCredentialOption(opt).build();
+                CredentialManager.create(MainActivity.this).getCredentialAsync(MainActivity.this, req, null, Executors.newSingleThreadExecutor(),
+                    new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
+                        @Override public void onResult(GetCredentialResponse r) {
+                            Credential c = r.getCredential();
+                            if (c instanceof CustomCredential && GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL.equals(c.getType())) {
+                                String tok = GoogleIdTokenCredential.createFrom(c.getData()).getIdToken();
+                                toPage("wbGoogleIdToken", tok);
+                            } else toPage("wbGoogleError", "Google sign-in didn't return an account.");
+                        }
+                        @Override public void onError(GetCredentialException e) {
+                            toPage("wbGoogleError", e instanceof GetCredentialCancellationException ? "" : "Google sign-in failed. Check you have a Google account on this phone, or use email.");
+                        }
+                    });
+            });
+        }
+    }
+
+    private static final String WEB_CLIENT_ID = "671680895091-olrct43e9ui7sc9o27qd0278t8v420tc.apps.googleusercontent.com";
+
+    private void toPage(String fn, String arg) {
+        final String js = "window." + fn + "&&window." + fn + "(" + JSONObject.quote(arg) + ")";
+        runOnUiThread(() -> web.evaluateJavascript(js, null));
     }
 
     /* Serves the packed site from assets/site with the right content types (.wasm for the C++ compiler and Python). */

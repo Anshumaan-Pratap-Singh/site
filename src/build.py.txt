@@ -228,6 +228,11 @@ P('if(p&&p.code==="declined")return}s(d)}',
   'if(p&&p.code==="declined")return}if(window.WBAndroid&&window.WBAndroid.saveFile)try{window.wbToast=t,window.WBAndroid.saveFile(v,d);return}catch{}s(d)}')
 # the Pyodide loader is stored with the app (pyodide/pyodide.js, 0.26.4), not fetched from jsDelivr
 P('Ug="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"', 'Ug=new URL("pyodide/pyodide.js",location.href).href')
+# ---------- 9. accounts and sync plumbing (27 Nov): storage layer uses window.tipCloud (cloud.js) outside Claude ----------
+_ns = {}
+exec(src('patch_cloud.py').read_text(encoding='utf8').split("if __name__ == '__main__':")[0], _ns)
+for _old, _new in _ns['PATCHES']:
+    P(_old, _new)
 # safety: never overwrite a bigger live app.js in the artifact root (parts of it were patched on the bundle; see build notes)
 _live = ROOT / 'app.js'
 if OUT.resolve() == ROOT.resolve() and _live.exists() and '--force' not in sys.argv[1:] and len(P.s.encode('utf8')) < 0.98 * _live.stat().st_size:
@@ -237,6 +242,7 @@ if OUT.resolve() == ROOT.resolve() and _live.exists() and '--force' not in sys.a
 H = Patcher(src('base-index.html').read_text(encoding='utf8'))
 H('<title>Tradermath</title>', '<title>Trading Interview Practice</title>')
 H('<link rel="stylesheet" href="anim.css">', '<link rel="stylesheet" href="anim.css">\n<link rel="stylesheet" href="tip.css">\n<link rel="stylesheet" href="motion.css">')
+H('<script src="app.js"></script>', '<script src="cloud.js"></script>\n<script src="app.js"></script>')
 H('<script src="anim.js"></script>', '<script src="anim.js"></script>\n<script src="motion.js"></script>')
 (OUT / 'index.html').write_text(H.s, encoding='utf8')
 print('built app.js:', len(P.s), 'bytes')

@@ -59,3 +59,20 @@ Dashboard, Trading Questions, Coding Bank, Lessons, Trainers, Market Games, Glos
 11. Build safety (unified build.py, verified identical), smoke tests, search + filters on Lessons / Trainers / Market Games, +33 WSO questions (done 19 Nov).
 12. Question variety: many more types in Sequences, Probability, the three course drills, Fractions and Scale Weights; 211 Fermi facts; shared no-repeat picker; gen_test.py (done 19 Nov).
 ETF Market Making and Fermi Questions were dropped from Trainers; ETF Arbitrage and Fermi stay in Market Games. All 27 trainers are live.
+
+## Accounts and sync plumbing (27 Nov 2026)
+- Firebase project `trading-practice-aps`. `cloud.js` is built from `src/tip_cloud.src.js.txt` with esbuild
+  (`--bundle --minify --format=iife --target=es2020`, needs the `firebase` npm package, v11) and loaded before `app.js`.
+- It defines `window.tipCloud` outside Claude: `conn()` gives the storage layer (n5 in app.js) a database with the same
+  `doc(path).get/set/delete` calls as Claude's, stored in Firestore at `users/{uid}/docs/{name}` as `{ json, ts }`.
+- Loading merges this device's copy (`tradermath:progress`) into the account's copy with `i5` (the backup-import merge);
+  saving `progress` merges any newer copy from another device in a transaction. Coming back online, or back to the
+  app, sends the device's latest progress the same way.
+- The small per-device keys `tip-lessons-*`, `tip-seen-*` and `tip-ready-stars` sync through the `small` document
+  (arrays union, objects keep the larger number, otherwise newest wins). Theme and layout choices stay per device.
+- Signing out removes the account's copy from the device.
+- No sign-in screens yet: `tipCloud.signIn / signUp / resetPassword / resendVerification / checkVerified / google /
+  signOut` are there for them. Until someone signs in, the app saves on the device exactly as before.
+- Android: `WBAndroid.googleSignIn()` (Credential Manager, web client 671680895091-olrct43e…) hands a Google ID token
+  back to `window.wbGoogleIdToken`.
+- The app.js hooks are in `src/patch_cloud.py.txt` (applied to the live app.js) and in build.py section 9.
