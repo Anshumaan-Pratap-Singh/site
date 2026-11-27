@@ -13913,15 +13913,42 @@ var TIP_LEARN = (function() {
         return false;
       }
     });
+    const [seen, setSeen] = useState(open);
+    useEffect(() => {
+      if (seen) return;
+      const idle = window.requestIdleCallback || ((f) => setTimeout(f, 600));
+      const id = idle(() => setSeen(true), { timeout: 3000 });
+      return () => { try { (window.cancelIdleCallback || clearTimeout)(id); } catch (e) { } };
+    }, []);
     const tog = () => {
       setOpen(!open);
+      if (!open) setSeen(true);
       try {
         localStorage.setItem("tip-sheet-open", open ? "0" : "1");
       } catch (e) {
       }
     };
-    return /* @__PURE__ */ TH("section", { className: "card tip-sheet" }, /* @__PURE__ */ TH("button", { className: "tip-sheet-h", onClick: tog, "aria-expanded": open }, /* @__PURE__ */ TH("span", { className: "gicon" }, TH(se, { name: "sigma" })), /* @__PURE__ */ TH("div", { className: "grow" }, /* @__PURE__ */ TH("b", null, "Formula sheet"), /* @__PURE__ */ TH("div", { className: "small muted" }, "Probability, distributions, processes, options and number facts on one page")), /* @__PURE__ */ TH("span", { className: "tip-chev" + (open ? " on" : "") }, TH(se, { name: "right" }))), open ? /* @__PURE__ */ TH("div", { className: "tip-sheet-grid" }, D.SHEET.map((s) => /* @__PURE__ */ TH("div", { key: s.title, className: "tip-sheet-sec" }, /* @__PURE__ */ TH("div", { className: "tip-lbl" }, s.title), s.lines.flatMap((l) => l.split(/\\qquad/)).map((l) => l.trim()).filter(Boolean).map((l, k) => /* @__PURE__ */ TH("div", { key: k, className: "tip-sheet-l" }, M("$$" + l + "$$", "div")))))) : null);
+    return /* @__PURE__ */ TH("section", { className: "card tip-sheet" }, /* @__PURE__ */ TH("button", { className: "tip-sheet-h", onClick: tog, "aria-expanded": open }, /* @__PURE__ */ TH("span", { className: "gicon" }, TH(se, { name: "sigma" })), /* @__PURE__ */ TH("div", { className: "grow" }, /* @__PURE__ */ TH("b", null, "Formula sheet"), /* @__PURE__ */ TH("div", { className: "small muted" }, "Probability, distributions, processes, options and number facts on one page")), /* @__PURE__ */ TH("span", { className: "tip-chev" + (open ? " on" : "") }, TH(se, { name: "right" }))), TH("div", { className: "tip-sheet-wrap" + (open ? " on" : ""), "aria-hidden": !open }, seen ? TH(SheetGrid, null) : null));
   }
+  /* formula sheet (27 Nov): the KaTeX is rendered to HTML once (warmed while the page is idle), the grid stays
+     mounted after the first open, and open/close is a CSS height transition, so toggling it is cheap */
+  const sheetLines = () => D.SHEET.map((s) => ({ title: s.title, lines: s.lines.flatMap((l) => l.split(/\\qquad/)).map((l) => l.trim()).filter(Boolean) }));
+  const sheetCache = new Map();
+  const sheetHtml = (l) => {
+    let h = sheetCache.get(l);
+    if (h == null) { h = bg(l, true); sheetCache.set(l, h); }
+    return h;
+  };
+  try {
+    const todo = sheetLines().flatMap((s) => s.lines);
+    const idle = window.requestIdleCallback || ((f) => setTimeout(() => f({ timeRemaining: () => 8 }), 200));
+    const step = (dl) => { while (todo.length && dl.timeRemaining() > 2) sheetHtml(todo.shift()); if (todo.length) idle(step); };
+    idle(step);
+  } catch (e) {
+  }
+  const SheetGrid = R.memo(function SheetGrid() {
+    return TH("div", { className: "tip-sheet-grid" }, sheetLines().map((s) => TH("div", { key: s.title, className: "tip-sheet-sec" }, TH("div", { className: "tip-lbl" }, s.title), s.lines.map((l, k) => TH("div", { key: k, className: "tip-sheet-l", dangerouslySetInnerHTML: { __html: sheetHtml(l) } })))));
+  });
   const tidy = (t) => String(t || "").replace(/\s*\n\s*(?=\$\$)/g, " ").replace(/(\$\$[^$]+\$\$)\s*\n\s*/g, "$1");
   const ML = (t, as, cls) => M(tidy(t), as, cls);
   const words = (l) => [l.intro, ...(l.sections || []).flatMap((x) => x.p), ...(l.examples || []).flatMap((e) => [e.q, ...e.a])].join(" ").split(/\s+/).length;

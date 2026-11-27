@@ -152,7 +152,7 @@
   }, true);
 
   /* ---------- accordions slide open and closed ---------- */
-  var BODY = '.trk-accp, .trk-fl, .trk2-body, .tip-sheet-grid';
+  var BODY = '.trk-accp, .trk-fl, .trk2-body'; /* the formula sheet slides with CSS (tip.css .tip-sheet-wrap) */
   function slide(el, open, done) {
     var h = el.scrollHeight;
     el.style.overflow = 'hidden';

@@ -22,3 +22,8 @@ Trading Game C (card timeline + position dial), Market Making Dice D (focus, 3D 
 ## Checks
 - smoke_test.py PASS (desktop 360, phone 73).
 - Every game played to its results screen at 1280 px; Trading, Card Game and Higher or Lower also at 390 px. No page errors.
+
+## 1.2.2: formula sheet opens fast
+- Lessons > Formula sheet rendered all 70 KaTeX lines on every open, and motion.js slid the freshly mounted grid (about 0.8 s at 4× CPU throttle).
+- Now: each line is rendered to HTML once (`bg(tex, true)`, cached, warmed with requestIdleCallback); the grid is mounted hidden when the page is idle and stays mounted; open/close is a CSS `grid-template-rows` transition on `.tip-sheet-wrap` (tip.css). `.tip-sheet-grid` removed from motion.js accordion list.
+- Toggle now about 0.1 s at 4× throttle (about 8× faster).

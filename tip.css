@@ -812,6 +812,10 @@
 /* Lessons tab */
 .tip-lessons-tab, .tip-gloss { display: flex; flex-direction: column; gap: 14px; }
 .tip-sheet { padding: 0; overflow: hidden; }
+.tip-sheet-wrap { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows .26s cubic-bezier(.22,1,.36,1), opacity .2s, visibility 0s .26s; }
+.tip-sheet-wrap.on { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows .26s cubic-bezier(.22,1,.36,1), opacity .2s, visibility 0s; }
+.tip-sheet-wrap > * { min-height: 0; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .tip-sheet-wrap, .tip-sheet-wrap.on { transition: none; } }
 .tip-sheet-h { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; background: transparent; border: 0; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .tip-chev { display: inline-flex; color: var(--muted); transition: transform .2s; }
 .tip-chev.on { transform: rotate(90deg); }
