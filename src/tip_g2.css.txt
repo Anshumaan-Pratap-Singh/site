@@ -293,8 +293,12 @@
   .g2 .ea-act kbd { display: none; }
   .g2 .bb-tiles { gap: 8px; } .g2 .bb-tile { padding: 12px 10px; } .g2 .bb-tile .o { font-size: 26px; }
   .g2 .bb-tile .g2-chip { font-size: 10.5px; padding: 2px 6px; white-space: normal; }
-  .g2 .bb-tb input { width: 84px; padding: 6px 8px; font-size: 15px; }
-  .g2 .bb-tb th, .g2 .bb-tb td { padding: 6px 4px; }
+  .g2 .bb-tb { table-layout: fixed; }
+  .g2 .bb-tb input { width: 100%; min-width: 0; padding: 6px 6px; font-size: 15px; }
+  .g2 .bb-tb th, .g2 .bb-tb td { padding: 6px 3px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+  .g2 .bb-tb th:nth-child(4), .g2 .bb-tb td:nth-child(4) { display: none; }
+  .g2 .bb-tb th:nth-child(1) { width: 31%; } .g2 .bb-tb th:nth-child(2) { width: 17%; } .g2 .bb-tb th:nth-child(3) { width: 31%; } .g2 .bb-tb th { font-size: 10px; letter-spacing: .03em; }
+  .g2 .bb-min { flex-direction: column; align-items: flex-start; gap: 2px; } .g2 .bb-min > span { font-size: 13px; }
   .g2 .bb-odds { font-size: 17px; }
   .g2 .bb-call { grid-template-columns: 1fr; }
   .g2 .bb-call kbd, .g2 .of-opts kbd, .g2 .ca-desk kbd, .g2 .ca-pass kbd { display: none; }

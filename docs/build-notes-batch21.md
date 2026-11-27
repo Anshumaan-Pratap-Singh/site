@@ -17,7 +17,7 @@ Trading Game C (card timeline + position dial), Market Making Dice D (focus, 3D 
 - Odds Betting: four sizes (Pass 0%, Small 2%, Medium 10%, Big 30%), 10 s ring per bet (timeout = pass). Right size = nearest to Kelly; result adds `hits`.
 - Higher or Lower: the played card is not repeated as "now"; the bankroll line shows only once it moves.
 - MM games no longer focus the bid box on touch devices.
-- Mobile: every layout stacks at 900 px and 640 px.
+- Mobile: every layout stacks at 900 px and 640 px. Betting Board stake table on phones: fixed columns, Pays column hidden (1.2.1).
 
 ## Checks
 - smoke_test.py PASS (desktop 360, phone 73).
