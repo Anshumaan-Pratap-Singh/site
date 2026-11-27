@@ -274,14 +274,15 @@
 
 /* ---------- SVG (SMIL) animations (27 Nov) ----------
    Lessons, Trainers and Market Games cards carry ~900 <animate> elements in their illustrations. All
-   running at once made those pages, and opening the formula sheet, lag on phones. Card art (.tart) now
-   stays still and plays while the mouse is over its card; any other animated <svg> pauses off screen. */
+   running at once made those pages, and opening the formula sheet, lag on phones. Now an animated <svg>
+   plays only while it is on screen (card art: at least half visible) and pauses during scrolling. */
 (function () {
-  var io = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) {
-    es.forEach(function (e) {
-      try { if (e.isIntersecting) e.target.unpauseAnimations(); else e.target.pauseAnimations(); } catch (_) { }
-    });
-  }, { rootMargin: '100px' }) : null;
+  if (!('IntersectionObserver' in window)) return;
+  var vis = new Set(), scrolling = false, t = 0;
+  function apply(s) { try { if (vis.has(s) && !scrolling) s.unpauseAnimations(); else s.pauseAnimations(); } catch (_) { } }
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) vis.add(e.target); else vis.delete(e.target); apply(e.target); });
+  }, { threshold: 0.5 });
   var seen = new WeakSet();
   function scan(root) {
     var list = root.querySelectorAll('animate, animateTransform, animateMotion, set');
@@ -291,7 +292,7 @@
       if (!s || seen.has(s)) continue;
       seen.add(s);
       try { s.pauseAnimations(); } catch (_) { }
-      if (!s.closest('.tart') && io) io.observe(s);
+      io.observe(s);
     }
   }
   var pending = false;
@@ -300,14 +301,9 @@
     requestAnimationFrame(function () { pending = false; scan(document); });
   }).observe(document.documentElement, { childList: true, subtree: true });
   scan(document);
-  function card(e) { var c = e.target.closest && e.target.closest('.tcard'); return c && c.querySelector('.tart svg'); }
-  document.addEventListener('pointerover', function (e) {
-    if (e.pointerType !== 'mouse') return;
-    var s = card(e); if (s) try { s.unpauseAnimations(); } catch (_) { }
-  });
-  document.addEventListener('pointerout', function (e) {
-    if (e.pointerType !== 'mouse') return;
-    var s = card(e), c = e.target.closest('.tcard');
-    if (s && !(e.relatedTarget && c.contains(e.relatedTarget))) try { s.pauseAnimations(); } catch (_) { }
-  });
+  window.addEventListener('scroll', function () {
+    if (!scrolling) { scrolling = true; vis.forEach(apply); }
+    clearTimeout(t);
+    t = setTimeout(function () { scrolling = false; vis.forEach(apply); }, 160);
+  }, { passive: true, capture: true });
 })();

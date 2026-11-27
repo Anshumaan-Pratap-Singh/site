@@ -34,3 +34,7 @@ Trading Game C (card timeline + position dial), Market Making Dice D (focus, 3D 
 - Idle Lessons page: 0 recalcs, 0 layouts (was ~3,000 / 20 per second).
 - Formula sheet: display toggle + short fade, `content-visibility: auto` on sections, HTML-only KaTeX (role="math", aria-label = TeX).
 - Result screens: "Right calls", "Near-Kelly stakes", "Perfect solutions" read "x of y" (no stacked fraction).
+
+## 1.2.4: card art animates again
+- User wanted the card animations back. motion.js now plays an animated `<svg>` while at least half of it is on screen (IntersectionObserver, threshold 0.5) and pauses it off screen and while scrolling (resumes 160 ms after the last scroll event).
+- Cost: 1–3 cards play at a time instead of ~45. Lessons idle: about 18% main thread on a phone width with one card in view, 26% on desktop with three (was all 45 cards at once).
