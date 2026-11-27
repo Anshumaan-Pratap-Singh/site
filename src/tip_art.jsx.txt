@@ -215,7 +215,7 @@ var TIP_ART = (function () {
           <K a="height" kf={[[0, 0], [.15, 0], [.82, hts[i] * 6]]} /><K a="y" kf={[[0, 98], [.15, 98], [.82, 98 - hts[i] * 6]]} /></rect></g>)}
       <path d="M195,70V98M118,98H202" className="ax" />
       {balls.map((b, i) => <Comet key={i} path={pathOf(b)} c={i % 2 ? 5 : 1} t0={.06 + i * .09} t1={.28 + i * .09} r={3} />)}
-      <Txt x={250} y={42} s={12} c={1} b>P(k)</Txt><Txt x={250} y={60} s={11} c={5}>C(4,k) / 16</Txt>
+      <Txt x={250} y={42} s={12} c={1} b>ℙ(k)</Txt><Txt x={250} y={60} s={11} c={5}>C(4,k) / 16</Txt>
       <Show t0={.84}><Bump x={160} y={74} at={.84}><path d="M139,74Q160,56 181,74" className="s2 w3" /></Bump></Show>
       <Hit x={160} y={70} at={.82} r={14} />
     </Act>;
@@ -247,7 +247,7 @@ var TIP_ART = (function () {
           {p ? <Show t0={.14 + (i % 7) * .025}><circle cx={x} cy={y} r="6.8" className="s2" /></Show> : null}
         </g>; })}
       <Txt x={256} y={38} s={10}>positive test</Txt>
-      <Show t0={.5}><Txt x={256} y={62} s={13} c={1} b>P(A | +)</Txt></Show>
+      <Show t0={.5}><Txt x={256} y={62} s={13} c={1} b>ℙ(A | +)</Txt></Show>
       <Show t0={.64}><Chip x={230} y={72} w={52} h={20} c={2} solid label="3 / 9" ls={11} /></Show>
       <Hit x={256} y={82} at={.64} r={20} />
     </Act>;
@@ -261,7 +261,7 @@ var TIP_ART = (function () {
         {v ? <Comet path={`M${69 + i * 34},58Q${(69 + i * 34 + 252) / 2},96 252,${92 - on.slice(0, i).filter(Boolean).length * 12}`} c={3} t0={.12 + i * .08} t1={.32 + i * .08} r={3} /> : null}</g>)}
       {[0, 1, 2].map(k => <Show key={k} t0={[.34, .48, .56][k]}><rect x="240" y={84 - k * 12} width="24" height="10" rx="3" className="t3" /></Show>)}
       <path d="M234,96H270" className="ax" />
-      <Txt x={142} y={84} s={12} c={1} b>E[ΣI] = ΣE[I]</Txt>
+      <Txt x={142} y={84} s={12} c={1} b>𝔼[ΣI] = Σ𝔼[I]</Txt>
       <Show t0={.64}><Chip x={276} y={52} w={30} h={20} c={2} solid label="3" ls={11} /></Show>
       <Hit x={252} y={62} at={.62} r={18} />
     </Act>;
@@ -391,7 +391,7 @@ var TIP_ART = (function () {
       <path d="M56,56H250" className="s5 dash" /><Txt x={262} y={59} s={9} c={5} a="start">X₀</Txt>
       <Draw d={d} c={1} t0={.06} t1={.58} /><Comet path={d} c={1} t0={.06} t1={.58} />
       <Show t0={.6}><Dot x={228} y={22} c={2} r={4.5} /></Show>
-      <Show t0={.66}><Chip x={60} y={2} w={96} h={15} c={2} solid label="E[X_τ] = X₀" ls={9} /></Show>
+      <Show t0={.66}><Chip x={60} y={2} w={96} h={15} c={2} solid label="𝔼[X_τ] = X₀" ls={9} /></Show>
       <Hit x={228} y={22} at={.6} r={14} />
     </Act>;
   };
@@ -1017,7 +1017,7 @@ var TIP_ART = (function () {
   /* ===== 22 Nov additions ===== */
   S.bto = () => <Act>
     <Die x={40} y={30} s={30} n={6} /><Die x={76} y={30} s={30} n={3} />
-    <Txt x={136} y={30} s={10}>P(sum ≥ 9)?</Txt>
+    <Txt x={136} y={30} s={10}>ℙ(sum ≥ 9)?</Txt>
     {["12%", "28%", "45%", "63%", "80%"].map((t, i) => <g key={i}><Show t0={.08 + i * .04}><Chip x={128 + i * 34} y={54} w={30} h={20} c={i === 1 ? 2 : 1} soft={i !== 1} label={t} ls={8} /></Show></g>)}
     <Show t0={.5}><Chip x={162} y={54} w={30} h={20} c={2} solid label="28%" ls={8} /></Show>
     <Comet path="M100,46Q140,90 177,64" c={2} t0={.3} t1={.5} r={3} /><Hit x={177} y={64} at={.5} r={18} />

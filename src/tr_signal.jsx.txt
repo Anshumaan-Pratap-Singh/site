@@ -15,7 +15,7 @@
     const sun = r() < p, best = p >= 0.5 ? "sun" : "rain";
     const outcome = sun ? "sun" : "rain";
     return {
-      text: `Day ${i + 1}: ${cards.map(c => SYM[c][0]).join(" + ")} (P(sun) = ${Math.round(p * 100)}%)`, kind: "d" + cards.join(""), answer: best === "sun" ? "Sun" : "Rain",
+      text: `Day ${i + 1}: ${cards.map(c => SYM[c][0]).join(" + ")} (ℙ(sun) = ${Math.round(p * 100)}%)`, kind: "d" + cards.join(""), answer: best === "sun" ? "Sun" : "Rain",
       explain: `With these symbols the chance of sun was ${Math.round(p * 100)}%, so the better forecast was ${best}. It was actually ${outcome}.`,
       prompt: ({ picked }) => <div className="col" style={{ alignItems: "center", gap: 10 }}>
         <div className="oa-lbl">Today's signals</div>

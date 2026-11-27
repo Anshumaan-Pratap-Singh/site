@@ -7720,7 +7720,7 @@
     "After the first $16$: you are ahead, tied, or behind. By symmetry, ahead and behind are equally likely."
    ],
    "solution": [
-    "Compare your first $16$ coins with my $16$. Let $a$ = P(you ahead) $=$ P(you behind), and $t$ = P(tie), so $2a + t = 1$.",
+    "Compare your first $16$ coins with my $16$. Let $a$ = $\\mathbb{P}$(you ahead) $=$ $\\mathbb{P}$(you behind), and $t$ = P(tie), so $2a + t = 1$.",
     "If you are ahead you have already won; if behind you cannot win (one coin gains at most one head); if tied you win exactly when your last coin is heads.",
     "$\\mathbb{P}(\\text{win}) = a + \\frac{t}{2} = \\frac{2a + t}{2} = \\frac12$."
    ]
