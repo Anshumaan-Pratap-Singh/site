@@ -44,11 +44,11 @@
         S("Citadel Securities: Spark London", "https://www.citadelsecurities.com/careers/programs-and-events/citadel-securities-spark/apply-london/"),
         S("Bright Network: Quantitative Trading Intern (Europe) 2027", "https://www.brightnetwork.co.uk/graduate-jobs/citadel-securities/quantitative-trading-intern-europe-2027-ajri")] },
 
-    sig: { checked: C,
+    sig: { checked: "28 Nov 2026",
       programmes: [
-        { id: "disc", name: "Discovery Programme: Quantitative Trading (Dublin)", who: "Second-year students (the 2026 edition was for 2028 graduates) in maths, statistics, CS, actuarial or similar",
-          when: "Two to three days in Dublin, usually April", apply: "Shortlisting starts in January. Watch SIG's careers site for the 2027 edition.",
-          url: "https://careers-sig.icims.com/jobs/9858/discovery-programme-%3a-quantitative-trading-%28on-site%29/job" },
+        { id: "disc", name: "Discovery Programme: Quantitative Trading & Strategy Development (Dublin)", who: "Second-year students (the 2026 edition was for 2028 graduates) in maths, statistics, CS, actuarial or similar",
+          when: "Two to three days in Dublin, usually April", apply: "The 2027 edition (for students who can intern in summer 2028) is open now. Send a CV; eligible applicants get an online maths test. No deadline listed (from a student tracker site).",
+          url: "https://www.tradermath.org/firms/sig/jobs/discovery-programme-quantitative-trading-quantitative-strategy-development-on-site-in-dublin-ee0c40" },
         { id: "qti27", name: "Quantitative Trading Internship: Summer 2027 (Dublin)", who: "Penultimate-year students", when: "10 weeks, late June to late August 2027; accommodation provided",
           apply: "Hired on a rolling basis, so apply early. Classes cover options, game theory, poker and mock trading; strong interns are invited to the graduate programme.",
           url: "https://www.efinancialcareers.com/jobs-Ireland-Dublin-Quantitative_Trading_Internship_Summer_2027.id24569154" },
@@ -411,8 +411,8 @@
       topics: [{ name: "Market making and order books", links: [T("orderbook", "Orderbooks"), ...MM] }, why("Wintermute")],
       sources: [S("Wintermute: careers", "https://jobs.lever.co/wintermute-trading"), S("Wintermute: Algorithmic Trading Internship", "https://builtin.com/job/algorithmic-trading-internship-summer-2026/7057410")] },
 
-    keyrock: { checked: C,
-      programmes: [{ id: "car", name: "Internships and graduate roles", who: "See current postings", when: "Varies", apply: "No 2027 student programme found when checked; watch Keyrock's careers page.", url: "https://keyrock.com/careers/" }],
+    keyrock: { checked: "28 Nov 2026",
+      programmes: [{ id: "car", name: "Internships and graduate roles", who: "See current postings", when: "Varies", apply: "No 2027 student programme found when checked; watch Keyrock's careers page.", url: "https://keyrock.com/careers/" }, { id: "qai27", name: "Quantitative Analyst Intern: Digital Assets Market Making (Brussels)", who: "Students with strong maths and coding", when: "About 6 months from 1 Mar 2027; paid, with accommodation. London possible after 1–2 months in Brussels.", apply: "Closes 30 Nov 2026 (date from a job aggregator, not Keyrock's own page).", url: "https://builtinlondon.uk/job/quantitative-analyst-intern-digital-assets-market-making-hft/11942415", deadlines: [{ l: "Applications", at: "2026-11-30T23:59:00+00:00" }] }],
       stages: [{ name: "Interviews", detail: "Expect market-making, crypto and coding questions.", links: [...MM, CODE] }],
       topics: [{ name: "Crypto market making", links: MM }],
       sources: [S("Keyrock: careers", "https://keyrock.com/careers/")] },
